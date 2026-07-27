@@ -225,8 +225,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           WHERE sale_id = ${saleId} AND org_id = ${orgId}
         `;
         for (const s of supplies) {
+          const supplyQty = Math.round(Number(s.quantity));
           await sql`
-            UPDATE supplies SET stock = stock + ${s.quantity}
+            UPDATE supplies SET stock = stock + ${supplyQty}
             WHERE id = ${s.supply_id} AND org_id = ${orgId}
           `;
           await sql`
@@ -235,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               quantity, reference_type, reference_id
             ) VALUES (
               ${orgId}, ${userId}, 'IN', ${s.supply_id},
-              ${s.quantity}, 'SALE_CANCELLED', ${saleId}
+              ${supplyQty}, 'SALE_CANCELLED', ${saleId}
             )
           `;
         }
@@ -833,8 +834,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
       // 2. Devolver stock de insumos
       for (const s of supplies) {
+        const supplyQty = Math.round(Number(s.quantity));
         await sql`
-          UPDATE supplies SET stock = stock + ${s.quantity}
+          UPDATE supplies SET stock = stock + ${supplyQty}
           WHERE id = ${s.supply_id} AND org_id = ${orgId}
         `;
         await sql`
@@ -843,7 +845,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             quantity, reference_type, reference_id
           ) VALUES (
             ${orgId}, ${userId}, 'IN', ${s.supply_id},
-            ${s.quantity}, 'SALE_CANCELLED', ${saleId}
+            ${supplyQty}, 'SALE_CANCELLED', ${saleId}
           )
         `;
       }

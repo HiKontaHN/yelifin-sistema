@@ -2,7 +2,7 @@
 "use client"
 
 import {
-  BarChart3, Box, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
+  BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
   Home, ShoppingCart, Users, Package, PackageOpen, Settings,
   User, Building2, Receipt,
   Shield, Tags, Wallet, ArrowLeftRight, UserCog,
@@ -71,7 +71,7 @@ const mainNav: NavItemDef[] = [
     ],
   },
   { title: "Eventos",     url: "/events",   icon: Calendar,  module: "EVENTS" },
-  { title: "Suministros", url: "/supplies", icon: Box,        module: "INVENTORY" },
+  { title: "Suministros", url: "/supplies", icon: ShoppingBag, module: "INVENTORY" },
 ]
 
 const secondaryNav: NavItemDef[] = [
