@@ -2,9 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
+import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -84,19 +82,23 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FlaskConical className="size-5 text-primary" />
-            Suministros usados
-          </DialogTitle>
-          <p className="text-xs text-muted-foreground">
-            Selecciona los suministros utilizados en esta venta para calcular el costo real
-          </p>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-hidden flex flex-col gap-3 min-h-0">
+    <ResponsiveModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Suministros usados"
+      subtitle="Selecciona los suministros utilizados en esta venta para calcular el costo real"
+      icon={FlaskConical}
+      width="md"
+      bodyClassName="flex flex-col gap-3 min-h-0"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">Cancelar</Button>
+          <Button onClick={handleConfirm} className="flex-1">
+            Confirmar ({selected.length} suministros)
+          </Button>
+        </>
+      }
+    >
 
           {/* Búsqueda */}
           <div className="relative">
@@ -204,15 +206,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
               </div>
             </div>
           )}
-        </div>
 
-        <DialogFooter className="pt-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleConfirm}>
-            Confirmar ({selected.length} suministros)
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </ResponsiveModal>
   );
 }
