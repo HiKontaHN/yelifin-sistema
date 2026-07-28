@@ -103,7 +103,7 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {/* Error general del form */}
       {formError && (
         <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -121,7 +121,7 @@ export function LoginForm() {
           autoComplete="email"
           {...register("email")}
           disabled={isLoading}
-          className={errors.email ? "border-destructive" : ""}
+          className={`h-12 rounded-xl bg-white text-base ${errors.email ? "border-destructive" : "border-slate-200"}`}
         />
         {errors.email && (
           <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -133,7 +133,7 @@ export function LoginForm() {
           <Label htmlFor="password">Contraseña</Label>
           <button
             type="button"
-            className="text-sm text-primary hover:underline disabled:opacity-50"
+            className="text-sm font-semibold text-[#0068ff] hover:underline disabled:opacity-50"
             disabled={isResetting}
             onClick={async () => {
               const email = (
@@ -186,12 +186,12 @@ export function LoginForm() {
             autoComplete="current-password"
             {...register("password")}
             disabled={isLoading}
-            className={errors.password ? "border-destructive" : ""}
+            className={`h-12 rounded-xl bg-white pr-10 text-base ${errors.password ? "border-destructive" : "border-slate-200"}`}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             tabIndex={-1}
           >
             {showPassword ? (
@@ -206,7 +206,7 @@ export function LoginForm() {
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button type="submit" className="h-12 w-full rounded-xl bg-[#8cff00] font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
         {isLoading ? (
           <>
             <Loader2 className="mr-2 size-4 animate-spin" />
