@@ -18,6 +18,7 @@ import { useCurrency }       from "@/hooks/swr/use-currency";
 import { useEvent }          from "@/hooks/swr/use-events";
 import { Fab }               from "@/components/ui/fab";
 import { EditEventDialog }   from "@/components/events/edit-event-dialog";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 
 // ── Utils ──────────────────────────────────────────────────────────────
 const formatDate = (d: string) =>
@@ -50,6 +51,7 @@ export default function EventDetailPage({ params }: Props) {
   const { back, push } = useRouter();
   const { format }   = useCurrency();
   const { event, isLoading, mutate } = useEvent(Number(id));
+  const { show_profit: showProfit } = useModulePermissions("EVENTS");
   const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) return <EventDetailSkeleton />;
@@ -67,8 +69,8 @@ export default function EventDetailPage({ params }: Props) {
 
   const statusCfg  = STATUS_CONFIG[event.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.COMPLETED;
   const { summary } = event;
-  const isProfit   = summary.net_profit >= 0;
-  const extraExpenses = summary.total_expenses - event.fixed_cost;
+  const isProfit   = (summary.net_profit ?? 0) >= 0;
+  const extraExpenses = (summary.total_expenses ?? 0) - event.fixed_cost;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto pb-10">
@@ -99,7 +101,7 @@ export default function EventDetailPage({ params }: Props) {
       </div>
 
       {/* ── Métricas principales ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className={`grid gap-3 ${showProfit ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-2"}`}>
         <Card className="pt-2 pb-2">
           <CardContent className="pl-3.5 py-3">
             <div className="flex items-center justify-between mb-1">
@@ -111,34 +113,38 @@ export default function EventDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        <Card className="pt-2 pb-2">
-          <CardContent className="pl-3.5 py-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Gastos totales</span>
-              <TrendingDown className="size-3.5 text-muted-foreground shrink-0" />
-            </div>
-            <p className="text-base font-bold text-red-500 truncate">{format(summary.total_expenses)}</p>
-            {event.fixed_cost > 0 && (
-              <p className="text-[10px] text-muted-foreground">incl. fijo {format(event.fixed_cost)}</p>
-            )}
-          </CardContent>
-        </Card>
+        {showProfit && (
+          <Card className="pt-2 pb-2">
+            <CardContent className="pl-3.5 py-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Gastos totales</span>
+                <TrendingDown className="size-3.5 text-muted-foreground shrink-0" />
+              </div>
+              <p className="text-base font-bold text-red-500 truncate">{format(summary.total_expenses ?? 0)}</p>
+              {event.fixed_cost > 0 && (
+                <p className="text-[10px] text-muted-foreground">incl. fijo {format(event.fixed_cost)}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-        <Card className={`pt-2 pb-2 col-span-2 ${isProfit ? "border-green-200 bg-green-50 dark:bg-green-950/20" : "border-red-200 bg-red-50 dark:bg-red-950/20"}`}>
-          <CardContent className="pl-3.5 py-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Ganancia neta</span>
-              <TrendingUp className={`size-3.5 shrink-0 ${isProfit ? "text-green-600" : "text-red-500"}`} />
-            </div>
-            <p className={`text-lg font-bold truncate ${isProfit ? "text-green-600" : "text-red-500"}`}>
-              {format(summary.net_profit)}
-            </p>
-            <p className={`text-[10px] ${isProfit ? "text-green-600" : "text-red-500"}`}>
-              ROI {summary.roi.toFixed(1)}%
-              {summary.total_tax > 0 && ` · ISV ${format(summary.total_tax)}`}
-            </p>
-          </CardContent>
-        </Card>
+        {showProfit && (
+          <Card className={`pt-2 pb-2 col-span-2 ${isProfit ? "border-green-200 bg-green-50 dark:bg-green-950/20" : "border-red-200 bg-red-50 dark:bg-red-950/20"}`}>
+            <CardContent className="pl-3.5 py-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Ganancia neta</span>
+                <TrendingUp className={`size-3.5 shrink-0 ${isProfit ? "text-green-600" : "text-red-500"}`} />
+              </div>
+              <p className={`text-lg font-bold truncate ${isProfit ? "text-green-600" : "text-red-500"}`}>
+                {format(summary.net_profit ?? 0)}
+              </p>
+              <p className={`text-[10px] ${isProfit ? "text-green-600" : "text-red-500"}`}>
+                ROI {(summary.roi ?? 0).toFixed(1)}%
+                {summary.total_tax > 0 && ` · ISV ${format(summary.total_tax)}`}
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ── Desglose financiero ── */}
@@ -166,35 +172,41 @@ export default function EventDetailPage({ params }: Props) {
               <span>-{format(summary.total_tax)}</span>
             </div>
           )}
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Ganancia de ventas</span>
-            <span className="font-medium text-green-600">{format(summary.total_profit)}</span>
-          </div>
-
-          <Separator />
-
-          {event.fixed_cost > 0 && (
-            <div className="flex justify-between text-red-500">
-              <span>Costo fijo del evento</span>
-              <span>-{format(event.fixed_cost)}</span>
-            </div>
-          )}
-          {extraExpenses > 0 && (
-            <div className="flex justify-between text-red-500">
-              <span>Gastos adicionales</span>
-              <span>-{format(extraExpenses)}</span>
+          {showProfit && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ganancia de ventas</span>
+              <span className="font-medium text-green-600">{format(summary.total_profit ?? 0)}</span>
             </div>
           )}
 
-          <Separator />
+          {showProfit && (
+            <>
+              <Separator />
 
-          <div className={`flex justify-between font-bold text-base ${isProfit ? "text-green-600" : "text-red-500"}`}>
-            <span className="flex items-center gap-1.5">
-              <TrendingUp className="size-4" />
-              Ganancia neta
-            </span>
-            <span>{format(summary.net_profit)}</span>
-          </div>
+              {event.fixed_cost > 0 && (
+                <div className="flex justify-between text-red-500">
+                  <span>Costo fijo del evento</span>
+                  <span>-{format(event.fixed_cost)}</span>
+                </div>
+              )}
+              {extraExpenses > 0 && (
+                <div className="flex justify-between text-red-500">
+                  <span>Gastos adicionales</span>
+                  <span>-{format(extraExpenses)}</span>
+                </div>
+              )}
+
+              <Separator />
+
+              <div className={`flex justify-between font-bold text-base ${isProfit ? "text-green-600" : "text-red-500"}`}>
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="size-4" />
+                  Ganancia neta
+                </span>
+                <span>{format(summary.net_profit ?? 0)}</span>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -239,7 +251,7 @@ export default function EventDetailPage({ params }: Props) {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold">{format(sale.total)}</p>
-                    <p className="text-xs text-green-600">+{format(sale.profit)}</p>
+                    {showProfit && <p className="text-xs text-green-600">+{format(sale.profit ?? 0)}</p>}
                   </div>
                   <Badge variant="outline" className="shrink-0 gap-1 text-xs">
                     <PayIcon className="size-3" />
@@ -253,7 +265,7 @@ export default function EventDetailPage({ params }: Props) {
       </Card>
 
       {/* ── Gastos adicionales ── */}
-      {event.expenses.length > 0 && (
+      {showProfit && event.expenses.length > 0 && (
         <Card className="border-red-200 dark:border-red-800/40">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -269,7 +281,7 @@ export default function EventDetailPage({ params }: Props) {
                   <p className="text-xs text-muted-foreground">{formatDateTime(expense.occurred_at)}</p>
                 </div>
                 <p className="text-sm font-semibold text-red-600 shrink-0">
-                  -{format(expense.amount)}
+                  -{format(expense.amount ?? 0)}
                 </p>
               </div>
             ))}

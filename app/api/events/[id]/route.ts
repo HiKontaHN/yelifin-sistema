@@ -1,7 +1,7 @@
 // app/api/events/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -88,7 +88,7 @@ export async function GET(
     const end    = new Date(event.ends_at);
     const status = now < start ? "PLANNED" : now <= end ? "ACTIVE" : "COMPLETED";
 
-    return Response.json({
+    const payload = {
       data: {
         id:          event.id,
         name:        event.name,
@@ -132,7 +132,15 @@ export async function GET(
           occurred_at: String(e.occurred_at),
         })),
       },
-    });
+    };
+
+    // Permisos atómicos del rol: anular ganancias/gastos si no puede verlos
+    const perms = await getModulePermissions(auth.data, 'EVENTS');
+    if (!perms.showProfit) {
+      nullifyKeysDeep(payload, new Set(["total_profit", "total_expenses", "net_profit", "roi", "profit", "amount"]));
+    }
+
+    return Response.json(payload);
 
   } catch (error) {
     console.error(" GET /api/events/[id]:", error);

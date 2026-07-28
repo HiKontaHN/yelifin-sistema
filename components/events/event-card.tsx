@@ -40,10 +40,11 @@ type Props = {
   onAddExpense: (event: Event) => void;
   canEdit?:     boolean;
   canDelete?:   boolean;
+  showProfit?:  boolean;
 };
 
 // ── Component ──────────────────────────────────────────────────────────
-export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEdit = true, canDelete = true }: Props) {
+export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEdit = true, canDelete = true, showProfit = true }: Props) {
   const { push }   = useRouter();
   const { format } = useCurrency();
 
@@ -119,36 +120,40 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
 
       {/* ── Stats ── */}
       <div className="px-4 pb-3 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
+        <div className={`grid gap-2 ${showProfit ? "grid-cols-2" : "grid-cols-1"}`}>
           <div className="rounded-lg bg-muted/50 p-2.5">
             <p className="text-[11px] text-muted-foreground">Ventas</p>
             <p className="text-sm font-bold">{format(event.total_sales)}</p>
           </div>
-          <div className="rounded-lg bg-muted/50 p-2.5">
-            <p className="text-[11px] text-muted-foreground">Gastos</p>
-            <p className="text-sm font-bold">{format(event.total_expenses)}</p>
-          </div>
+          {showProfit && (
+            <div className="rounded-lg bg-muted/50 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Gastos</p>
+              <p className="text-sm font-bold">{format(event.total_expenses ?? 0)}</p>
+            </div>
+          )}
         </div>
 
         {/* Ganancia + ROI */}
-        <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-          <div>
-            <p className="text-[11px] text-muted-foreground">Ganancia neta</p>
-            <p className={`text-sm font-bold ${event.net_profit >= 0 ? "text-green-600" : "text-destructive"}`}>
-              {format(event.net_profit)}
-            </p>
+        {showProfit && (
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+            <div>
+              <p className="text-[11px] text-muted-foreground">Ganancia neta</p>
+              <p className={`text-sm font-bold ${(event.net_profit ?? 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
+                {format(event.net_profit ?? 0)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] text-muted-foreground">ROI</p>
+              <p className={`text-sm font-bold flex items-center justify-end gap-0.5 ${(event.roi ?? 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
+                {(event.roi ?? 0) >= 0
+                  ? <TrendingUp className="size-3.5" />
+                  : <TrendingDown className="size-3.5" />
+                }
+                {(event.roi ?? 0).toFixed(1)}%
+              </p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-[11px] text-muted-foreground">ROI</p>
-            <p className={`text-sm font-bold flex items-center justify-end gap-0.5 ${event.roi >= 0 ? "text-green-600" : "text-destructive"}`}>
-              {event.roi >= 0
-                ? <TrendingUp className="size-3.5" />
-                : <TrendingDown className="size-3.5" />
-              }
-              {event.roi.toFixed(1)}%
-            </p>
-          </div>
-        </div>
+        )}
 
         {event.fixed_cost > 0 && (
           <p className="text-[11px] text-muted-foreground px-0.5">

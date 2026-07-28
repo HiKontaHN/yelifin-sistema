@@ -31,9 +31,9 @@ export default function EventsPage() {
 
   // ── Stats globales ──────────────────────────────────────────────────
   const totalSales  = events.reduce((s, e) => s + e.total_sales, 0);
-  const totalProfit = events.reduce((s, e) => s + e.net_profit,  0);
+  const totalProfit = events.reduce((s, e) => s + (e.net_profit ?? 0), 0);
   const avgRoi      = events.length
-    ? events.reduce((s, e) => s + e.roi, 0) / events.length
+    ? events.reduce((s, e) => s + (e.roi ?? 0), 0) / events.length
     : 0;
   const activeCount = events.filter((e) => e.status === "ACTIVE").length;
 
@@ -103,6 +103,7 @@ export default function EventsPage() {
             <EventCard
               canEdit={canEdit}
               canDelete={canDelete}
+              showProfit={showProfit}
               key={event.id}
               event={event}
               onView={(e) => push(`/events/${e.id}`)}

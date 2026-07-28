@@ -68,7 +68,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/inventory)",
       "Bash(curl -s http://localhost:3000/inventory)",
       "Bash(pnpm --version)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

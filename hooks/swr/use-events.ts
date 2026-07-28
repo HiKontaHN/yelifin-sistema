@@ -15,9 +15,9 @@ export interface Event {
   notes:          string | null;
   status:         EventStatus;
   total_sales:    number;
-  total_expenses: number;
-  net_profit:     number;
-  roi:            number;
+  total_expenses: number | null;
+  net_profit:     number | null;
+  roi:            number | null;
   created_at:     string;
 }
 
@@ -25,10 +25,10 @@ export interface EventDetail extends Event {
   summary: {
     total_sales:    number;
     total_tax:      number;
-    total_profit:   number;
-    total_expenses: number;
-    net_profit:     number;
-    roi:            number;
+    total_profit:   number | null;
+    total_expenses: number | null;
+    net_profit:     number | null;
+    roi:            number | null;
     sales_count:    number;
     by_account:     Record<string, number>;
   };
@@ -46,12 +46,12 @@ export interface EventDetail extends Event {
     customer_name:  string | null;
     account_name:   string | null;
     items_count:    number;
-    profit:         number;
+    profit:         number | null;
   }[];
   expenses: {
     id:          number;
     description: string;
-    amount:      number;
+    amount:      number | null;
     occurred_at: string;
   }[];
 }
