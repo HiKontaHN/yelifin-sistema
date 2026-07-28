@@ -11,7 +11,7 @@ export function LandingHero() {
           <h2 className="max-w-3xl text-4xl font-normal leading-[1.06] tracking-normal text-black min-[390px]:text-5xl sm:text-6xl lg:text-7xl">
             Hacemos que administrar tu negocio sea{" "}
             <span className="inline-block rounded-md bg-[#0068ff] px-2 pb-1 text-white">
-              mas facil
+              más facil
             </span>
           </h2>
 
@@ -31,7 +31,6 @@ export function LandingHero() {
             </Link>
             <Link href="#como-funciona" className="w-full sm:w-auto">
               <Button variant="outline" className="h-12 w-full rounded-xl border-[#0068ff] px-7 font-semibold text-[#0068ff] hover:bg-blue-50 hover:text-[#0057d6] sm:w-auto">
-                <Play className="size-4 fill-current" />
                 Ver como funciona
               </Button>
             </Link>

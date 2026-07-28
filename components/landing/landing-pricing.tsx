@@ -32,7 +32,7 @@ export function LandingPricing() {
                 <span className="pb-2 text-slate-500">USD / mes</span>
               </div>
             </div>
-            <span className="rounded-full bg-[#8cff00] px-3 py-1 text-xs font-bold text-black">30 dias gratis</span>
+            <span className="rounded-full bg-[#8cff00] px-3 py-1 text-normal font-bold text-black">30 dias gratis</span>
           </div>
 
           <div className="mt-7 grid gap-3">

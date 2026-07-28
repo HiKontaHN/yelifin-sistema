@@ -1,9 +1,24 @@
-import { CalendarDays, CreditCard, Eye, MonitorSmartphone, MoreVertical, Pencil, ShoppingCart, Star, Trash2, Users, X } from "lucide-react";
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  CalendarDays,
+  CreditCard,
+  Eye,
+  MonitorSmartphone,
+  MoreVertical,
+  Pencil,
+  ShoppingCart,
+  Star,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 
 export function LandingTools() {
   return (
     <section className="bg-white px-5 py-16 sm:px-8">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
         <div>
           <h2 className="text-3xl font-normal leading-tight text-black sm:text-4xl">
             Herramientas que sí ayudan
@@ -11,32 +26,34 @@ export function LandingTools() {
           <p className="mt-2 text-slate-600 sm:mt-3">Lo que nos hace diferentes</p>
         </div>
 
-        <div className="mt-10 grid auto-rows-auto gap-6 md:grid-cols-2 xl:grid-cols-4">
-          <ToolCard className="xl:row-span-2" icon={<CalendarDays className="size-5" />} title="Eventos">
+        <div className="mt-10 grid auto-rows-auto gap-6 md:grid-cols-2 xl:grid-cols-6">
+          <ToolCard className="xl:col-span-2 xl:row-span-2" icon={<CalendarDays className="size-5" />} title="Eventos">
             <p className="text-sm leading-5 text-slate-600">
               Conoce la rentabilidad real de cada evento. Registra gastos y descubre tu ganancia real.
             </p>
             <EventPreview />
           </ToolCard>
 
-          <ToolCard className="md:min-h-[280px]" icon={<Star className="size-5" />} title="Fidelización">
+          <ToolCard className="md:min-h-70 xl:col-span-2" icon={<Star className="size-5" />} title="Fidelización">
             <p className="text-sm leading-5 text-slate-600">
               Define niveles para recompensar a tus clientes frecuentes
             </p>
             <LoyaltyPreview />
           </ToolCard>
 
-          <ToolCard className="md:min-h-[280px]" icon={<Users className="size-5" />} title="Equipo y Roles">
-            <p className="text-sm leading-5 text-slate-600">
-              Invita a tu equipo y asigna permisos según el rol de cada integrante.
-            </p>
-          </ToolCard>
+          <div className="flex flex-col gap-6 md:min-h-70 xl:col-span-2">
+            <ToolCard className="flex-1" icon={<Users className="size-5" />} title="Equipo y Roles">
+              <p className="text-sm leading-5 text-slate-600">
+                Invita a tu equipo y asigna permisos según el rol de cada integrante.
+              </p>
+            </ToolCard>
 
-          <ToolCard className="md:min-h-[280px]" icon={<MonitorSmartphone className="size-5" />} title="Multiplataforma">
-            <p className="text-sm leading-5 text-slate-600">
-              Accede a la plataforma desde cualquier dispositivo con conexión a internet.
-            </p>
-          </ToolCard>
+            <ToolCard className="flex-1" icon={<MonitorSmartphone className="size-5" />} title="Multiplataforma">
+              <p className="text-sm leading-5 text-slate-600">
+                Accede a la plataforma desde cualquier dispositivo con conexión a internet.
+              </p>
+            </ToolCard>
+          </div>
 
           <ToolCard className="md:col-span-2 xl:col-span-2" icon={<ShoppingCart className="size-5" />} title="Suministros">
             <p className="text-sm leading-5 text-slate-600">
@@ -57,7 +74,17 @@ export function LandingTools() {
   );
 }
 
-function ToolCard({ title, icon, children, className = "" }: { title: string; icon: React.ReactNode; children: React.ReactNode; className?: string }) {
+function ToolCard({
+  title,
+  icon,
+  children,
+  className = "",
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <article className={`rounded-xl border border-slate-200 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.08)] sm:p-6 ${className}`}>
       <div className="mb-4 flex items-center gap-2 text-base font-bold text-[#0068ff]">
@@ -134,32 +161,75 @@ function LoyaltyPreview() {
 }
 
 function SuppliesPreview() {
-  const supplies = [
-    ["Stickers de regalo", "L 0.09"],
-    ["Bolsas de empacar 20x30", "L 3.78"],
-  ];
+  const [supplies, setSupplies] = useState([
+    { name: "Stickers de regalo", unitCost: 0.09, quantity: 1 },
+    { name: "Bolsas de empacar 20x30", unitCost: 3.78, quantity: 1 },
+  ]);
+
+  const total = useMemo(
+    () => supplies.reduce((sum, item) => sum + item.unitCost * item.quantity, 0),
+    [supplies],
+  );
+
+  const updateQuantity = (index: number, delta: number) => {
+    setSupplies((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, quantity: Math.max(1, item.quantity + delta) }
+          : item,
+      ),
+    );
+  };
+
+  const removeSupply = (index: number) => {
+    setSupplies((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
 
   return (
     <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50/45 p-3">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-bold text-orange-600">Suministros</span>
-        <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-sm font-bold text-orange-600">2</span>
+        <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-sm font-bold text-orange-600">
+          {supplies.length}
+        </span>
       </div>
-      <div className="space-y-3">
-        {supplies.map(([name, price]) => (
-          <div key={name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="space-y-2.5">
+        {supplies.map((item, index) => (
+          <div key={item.name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="break-words text-base font-bold text-slate-800">{name}</p>
-                <p className="mt-3 text-sm font-bold text-orange-600">{price}</p>
+                <p className="break-words text-sm font-bold text-slate-800 sm:text-base">{item.name}</p>
+                <p className="mt-2 text-sm font-bold text-orange-600">L {item.unitCost.toFixed(2)}</p>
               </div>
-              <X className="size-5 shrink-0 text-slate-500" />
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-0.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                onClick={() => removeSupply(index)}
+                aria-label={`Quitar ${item.name}`}
+              >
+                <X className="size-5" />
+              </button>
             </div>
+
             <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-              <div className="flex h-9 items-center rounded-full border border-slate-200 bg-white text-slate-700">
-                <button className="h-full px-4 text-xl leading-none">−</button>
-                <span className="min-w-8 text-center text-base font-medium">1</span>
-                <button className="h-full px-4 text-xl leading-none">+</button>
+              <div className="flex h-8 items-center rounded-full border border-slate-200 bg-white text-slate-700">
+                <button
+                  type="button"
+                  className="h-full px-3 text-lg leading-none"
+                  onClick={() => updateQuantity(index, -1)}
+                  aria-label={`Restar ${item.name}`}
+                >
+                  −
+                </button>
+                <span className="min-w-7 text-center text-sm font-medium">{item.quantity}</span>
+                <button
+                  type="button"
+                  className="h-full px-3 text-lg leading-none"
+                  onClick={() => updateQuantity(index, 1)}
+                  aria-label={`Sumar ${item.name}`}
+                >
+                  +
+                </button>
               </div>
               <span className="text-xs text-slate-500">unit</span>
             </div>
@@ -168,7 +238,7 @@ function SuppliesPreview() {
       </div>
       <div className="mt-3 flex justify-between text-sm text-orange-600">
         <span>Costo suministros</span>
-        <span className="font-bold">-L 3.87</span>
+        <span className="font-bold">-L {total.toFixed(2)}</span>
       </div>
     </div>
   );
