@@ -1,7 +1,7 @@
 // app/api/sales/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit, getModulePermissions } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -119,6 +119,12 @@ export async function GET(request: NextRequest) {
 
     const tz = await getOrgTimezone(orgId);
 
+    // Ganancia de ventas ligadas a un evento requiere permiso en AMBOS módulos
+    // (doble validación): SALES.showProfit Y EVENTS.showProfit.
+    const salesPerms  = await getModulePermissions(auth.data, 'SALES');
+    const eventsPerms = await getModulePermissions(auth.data, 'EVENTS');
+    const eventProfitOk = eventsPerms.showProfit;
+
     const { fromDateISO, toDateISO, payment } = resolveRange(searchParams, tz);
 
     const search    = searchParams.get("search")?.trim()   || null;
@@ -134,7 +140,7 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(s.total) FILTER (WHERE s.status = 'COMPLETED'), 0)   AS total_revenue,
         COALESCE(
           SUM(
-            CASE WHEN s.status = 'COMPLETED'
+            CASE WHEN s.status = 'COMPLETED' AND (s.event_id IS NULL OR ${eventProfitOk})
               THEN COALESCE(prof.profit, 0) - COALESCE(s.tax, 0)
               ELSE 0
             END
@@ -214,15 +220,22 @@ export async function GET(request: NextRequest) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
+    const data = sales.map((s: any) => ({
+      ...s,
+      net_profit: (!salesPerms.showProfit || (s.event_id && !eventProfitOk))
+        ? null
+        : Number(s.net_profit),
+    }));
+
     return Response.json({
-      data:       sales,
+      data,
       total:      count,
       page,
       totalPages,
       limit,
       stats: {
         total_revenue:   Number(statsRow.total_revenue),
-        total_profit:    Number(statsRow.total_profit),
+        total_profit:    salesPerms.showProfit ? Number(statsRow.total_profit) : null,
         pending_count:   statsRow.pending_count,
         completed_count: statsRow.completed_count,
       },

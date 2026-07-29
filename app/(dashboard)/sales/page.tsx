@@ -287,10 +287,10 @@ export default function SalesPage() {
               </div>
               {isLoading ? <Skeleton className="h-6 w-20" /> : (
                 <div className="flex items-baseline gap-1.5">
-                  <p className="text-base font-bold text-green-600 sm:text-lg truncate">{format(stats.total_profit)}</p>
+                  <p className="text-base font-bold text-green-600 sm:text-lg truncate">{format(stats.total_profit ?? 0)}</p>
                   {stats.total_revenue > 0 && (
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {((stats.total_profit / stats.total_revenue) * 100).toFixed(0)}%
+                      {(((stats.total_profit ?? 0) / stats.total_revenue) * 100).toFixed(0)}%
                     </span>
                   )}
                 </div>
@@ -412,7 +412,7 @@ export default function SalesPage() {
                       )
                     }
                   </div>
-                  <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && showProfit && sale.net_profit != null) ? "grid-cols-3" : "grid-cols-2"}`}>
                     <div>
                       <p className="text-[10px] text-muted-foreground mb-0.5">Productos</p>
                       <p className="text-sm font-semibold">{sale.items_count}</p>
@@ -421,11 +421,11 @@ export default function SalesPage() {
                       <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
                       <p className="text-sm font-bold truncate">{format(Number(sale.total))}</p>
                     </div>
-                    {!isPending && showProfit && (
+                    {!isPending && showProfit && sale.net_profit != null && (
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">Ganancia</p>
                         <p className="text-sm font-bold text-green-600 truncate">
-                          {format(Number(sale.net_profit - sale.discount))}
+                          {format(Number(sale.net_profit) - sale.discount)}
                         </p>
                       </div>
                     )}
@@ -520,9 +520,9 @@ export default function SalesPage() {
                       <TableCell className="text-right font-medium">{format(Number(sale.total))}</TableCell>
                       {showProfit && (
                         <TableCell className="text-right">
-                          {isPending
+                          {isPending || sale.net_profit == null
                             ? <span className="text-muted-foreground text-xs">—</span>
-                            : <span className="text-green-600 font-medium">{format(Number(sale.net_profit - sale.discount))}</span>
+                            : <span className="text-green-600 font-medium">{format(Number(sale.net_profit) - sale.discount)}</span>
                           }
                         </TableCell>
                       )}

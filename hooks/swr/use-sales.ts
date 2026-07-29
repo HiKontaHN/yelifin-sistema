@@ -71,7 +71,7 @@ export type Sale = {
   sold_at:        string;
   notes:          string | null;
   items_count:    number;
-  net_profit:     number;
+  net_profit:     number | null;
 };
 
 export type SaleDetail = Sale & {
@@ -85,7 +85,7 @@ export type SaleDetail = Sale & {
     image_url:    string | null;
     quantity:     number;
     unit_price:   number;
-    unit_cost:    number;
+    unit_cost:    number | null;
     line_total:   number;
   }[];
   supplies: {
@@ -93,8 +93,8 @@ export type SaleDetail = Sale & {
     supply_id:   number;
     supply_name: string;
     quantity:    number;
-    unit_cost:   number;
-    line_total:  number;
+    unit_cost:   number | null;
+    line_total:  number | null;
   }[];
 };
 
@@ -114,7 +114,7 @@ export type SalesFilters = {
 
 export type SalesStats = {
   total_revenue:   number;
-  total_profit:    number;
+  total_profit:    number | null;
   pending_count:   number;
   completed_count: number;
 };

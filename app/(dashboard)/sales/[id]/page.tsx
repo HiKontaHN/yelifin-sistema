@@ -36,6 +36,7 @@ import { useSale, usePatchSale } from "@/hooks/swr/use-sales";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -49,6 +50,8 @@ export default function SaleDetailPage({ params }: Props) {
   const { refresh, push }   = useRouter();
   const { format }          = useCurrency();
   const tz                  = useTimezone();
+  const salesPerms          = useModulePermissions("SALES");
+  const eventsPerms         = useModulePermissions("EVENTS");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen,  setCancelOpen]  = useState(false);
@@ -66,14 +69,20 @@ export default function SaleDetailPage({ params }: Props) {
       </div>
     );
 
+  // Doble validación: una venta ligada a un evento solo muestra ganancia/costos
+  // si el rol tiene permiso en AMBOS módulos (SALES y EVENTS), igual que hace
+  // el backend en app/api/sales/[id]/route.ts.
+  const eventGateOk = !sale.event_id || eventsPerms.show_profit;
+  const canSeeCosts = salesPerms.show_costs && salesPerms.show_profit && eventGateOk;
+
   const taxRate        = getTaxRate(sale.tax_rate);
   const taxAmount      = Number(sale.tax ?? 0);
   const productsCost   = sale.items.reduce(
-    (acc, i) => acc + Number(i.unit_cost) * i.quantity,
+    (acc, i) => acc + Number(i.unit_cost ?? 0) * i.quantity,
     0,
   );
   const suppliesCost   = (sale.supplies ?? []).reduce(
-    (acc, s) => acc + Number(s.line_total),
+    (acc, s) => acc + Number(s.line_total ?? 0),
     0,
   );
   const shippingAmount = Number(sale.shipping_cost ?? 0);
@@ -263,7 +272,7 @@ export default function SaleDetailPage({ params }: Props) {
       </div>
 
       {/* Resumen financiero */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${canSeeCosts ? "grid-cols-2" : "grid-cols-1"}`}>
         <Card>
           <CardContent className="pl-3.5 text-center">
             <p className="text-xs text-muted-foreground">Total cobrado</p>
@@ -283,6 +292,7 @@ export default function SaleDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
+        {canSeeCosts && (
         <Card className={isPending
           ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20"
           : "border-green-200 bg-green-50 dark:bg-green-950/20"}
@@ -301,6 +311,7 @@ export default function SaleDetailPage({ params }: Props) {
             </p>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Productos vendidos */}
@@ -313,7 +324,7 @@ export default function SaleDetailPage({ params }: Props) {
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {sale.items.map((item) => {
-            const itemCost   = Number(item.unit_cost) * item.quantity;
+            const itemCost   = Number(item.unit_cost ?? 0) * item.quantity;
             const itemProfit = Number(item.line_total) - itemCost;
             const itemMargin = Number(item.line_total) > 0
               ? (itemProfit / Number(item.line_total)) * 100
@@ -345,19 +356,25 @@ export default function SaleDetailPage({ params }: Props) {
                     <span>
                       {item.quantity} × {format(Number(item.unit_price))}
                     </span>
-                    <span>Costo: {format(Number(item.unit_cost))}/u</span>
+                    {canSeeCosts && (
+                      <span>Costo: {format(Number(item.unit_cost ?? 0))}/u</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-bold text-sm">
                     {format(Number(item.line_total))}
                   </p>
-                  <p className="text-xs text-green-600 font-medium">
-                    +{format(itemProfit)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {itemMargin.toFixed(1)}%
-                  </p>
+                  {canSeeCosts && (
+                    <>
+                      <p className="text-xs text-green-600 font-medium">
+                        +{format(itemProfit)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {itemMargin.toFixed(1)}%
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -366,7 +383,7 @@ export default function SaleDetailPage({ params }: Props) {
       </Card>
 
       {/* Suministros usados */}
-      {(sale.supplies ?? []).length > 0 && (
+      {canSeeCosts && (sale.supplies ?? []).length > 0 && (
         <Card className="border-orange-200 dark:border-orange-800/40">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400">
@@ -385,11 +402,11 @@ export default function SaleDetailPage({ params }: Props) {
                     {s.supply_name}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {s.quantity} × {format(Number(s.unit_cost))}
+                    {s.quantity} × {format(Number(s.unit_cost ?? 0))}
                   </p>
                 </div>
                 <p className="text-sm font-semibold text-orange-700 dark:text-orange-400 shrink-0">
-                  -{format(Number(s.line_total))}
+                  -{format(Number(s.line_total ?? 0))}
                 </p>
               </div>
             ))}
@@ -449,34 +466,38 @@ export default function SaleDetailPage({ params }: Props) {
             </div>
           )}
 
-          <Separator />
+          {canSeeCosts && (
+            <>
+              <Separator />
 
-          <div className="flex justify-between text-muted-foreground">
-            <span>Costo productos</span>
-            <span>-{format(productsCost)}</span>
-          </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Costo productos</span>
+                <span>-{format(productsCost)}</span>
+              </div>
 
-          {suppliesCost > 0 && (
-            <div className="flex justify-between text-orange-600">
-              <span className="flex items-center gap-1.5">
-                <ShoppingBag className="size-3.5" />
-                Costo suministros
-              </span>
-              <span>-{format(suppliesCost)}</span>
-            </div>
+              {suppliesCost > 0 && (
+                <div className="flex justify-between text-orange-600">
+                  <span className="flex items-center gap-1.5">
+                    <ShoppingBag className="size-3.5" />
+                    Costo suministros
+                  </span>
+                  <span>-{format(suppliesCost)}</span>
+                </div>
+              )}
+
+              <Separator />
+
+              <div className={`flex justify-between font-bold ${
+                isPending ? "text-amber-700" : "text-green-600"
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="size-4" />
+                  {profitLabel}
+                </span>
+                <span>{format(totalProfit)}</span>
+              </div>
+            </>
           )}
-
-          <Separator />
-
-          <div className={`flex justify-between font-bold ${
-            isPending ? "text-amber-700" : "text-green-600"
-          }`}>
-            <span className="flex items-center gap-1.5">
-              <TrendingUp className="size-4" />
-              {profitLabel}
-            </span>
-            <span>{format(totalProfit)}</span>
-          </div>
         </CardContent>
       </Card>
 

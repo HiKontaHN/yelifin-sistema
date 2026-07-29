@@ -35,8 +35,8 @@ frontend ocultara la columna visualmente).
 | REPORTS | `GET /api/reports/events(+/export)` | ✅ (ya existía) | ✅ |
 | **EVENTS** | `GET /api/events` | ✅ **corregido** | ✅ **corregido** |
 | **EVENTS** | `GET /api/events/[id]` | ✅ **corregido** | ✅ **corregido** |
-| SALES | `GET /api/sales` | ❌ pendiente | ⚠️ parcial (`sales/page.tsx` oculta ganancia en UI, pero el JSON trae `net_profit`/`stats.total_profit` igual) |
-| SALES | `GET /api/sales/[id]` | ❌ pendiente | ⚠️ no verificado |
+| **SALES** | `GET /api/sales` | ✅ **corregido** (+ doble validación con EVENTS) | ✅ **corregido** |
+| **SALES** | `GET /api/sales/[id]` | ✅ **corregido** (+ doble validación con EVENTS) | ✅ **corregido** |
 | INVENTORY | `GET /api/inventory` | ❌ pendiente | ⚠️ parcial (`inventory/page.tsx` oculta columna con `showCosts`, pero el JSON trae `avg_unit_cost`/`total_value` igual) |
 | INVENTORY | `GET /api/inventory/movements` | ❌ pendiente | ⚠️ no verificado |
 | INVENTORY | `GET /api/purchases?with_items=true` | ❌ pendiente | ⚠️ no verificado |
@@ -79,18 +79,86 @@ frontend ocultara la columna visualmente).
 proyecto no tiene `node_modules` instalado en este entorno. Pendiente correr
 antes de mergear.
 
+## Cambios aplicados — SALES + doble validación con EVENTS (esta sesión)
+
+**Problema adicional detectado:** una venta puede estar ligada a un evento
+(`sales.event_id`). Desde el detalle de evento se navega a `/sales/[id]`, que
+es una pantalla del módulo **SALES** — protegida solo por `SALES.canView`, sin
+mirar `EVENTS` en absoluto. Antes de esta sesión, además, `SALES` no filtraba
+costos/ganancias del todo (gap ya anotado arriba como "❌ pendiente"): tanto
+`GET /api/sales` como `GET /api/sales/[id]` devolvían `net_profit`/`unit_cost`
+reales sin mirar `show_costs`/`show_profit`, aunque el frontend ya ocultaba
+esas columnas visualmente en `sales/page.tsx`.
+
+**Regla adoptada — doble validación (AND) para ventas de evento:** para que se
+muestre ganancia/costo de una venta con `event_id` no basta con el permiso de
+`SALES`; también se requiere `EVENTS.showProfit`. Gana el más restrictivo:
+
+```
+showProfit = SALES.showProfit AND (venta.event_id es null OR EVENTS.showProfit)
+```
+
+`SALES.showCosts` se evalúa aparte y solo a nivel de `SALES` (no hay concepto
+de "costos" en `EVENTS` hoy — `fixed_cost` nunca se oculta, mismo criterio que
+ya existía).
+
+**Backend**
+
+- `app/api/sales/route.ts` (`GET`, lista + stats) — se agrega
+  `getModulePermissions('SALES')` y `getModulePermissions('EVENTS')`. La query
+  de `stats.total_profit` excluye en SQL la ganancia de ventas con `event_id`
+  cuando `!EVENTS.showProfit` (`AND (s.event_id IS NULL OR ${eventProfitOk})`
+  en el `CASE`); si `!SALES.showProfit` se anula el stat completo. Por fila,
+  `net_profit` se anula a `null` si falta `SALES.showProfit` o si la venta
+  tiene `event_id` y falta `EVENTS.showProfit`.
+- `app/api/sales/[id]/route.ts` (`GET`) — no había ningún cálculo de ganancia
+  server-side; el frontend la deriva de `sale_items.unit_cost` /
+  `sale_supplies.unit_cost`. Por eso el campo que se anula es `unit_cost`
+  (items y supplies) cuando falta `SALES.showCosts` **o** falta el
+  `showProfit` combinado (SALES AND EVENTS si aplica) — anular solo `showCosts`
+  no hubiera bastado, porque con costos ocultos pero perfil de ganancia
+  "permitido" igual se puede derivar el margen si el AND con EVENTS lo estaba
+  bloqueando. También se anula `sale_supplies.line_total` (es costo, a
+  diferencia de `sale_items.line_total` que es precio de venta y se mantiene
+  visible).
+
+**Frontend**
+
+- `hooks/swr/use-sales.ts` — `Sale.net_profit`, `SalesStats.total_profit`,
+  `SaleDetail.items[].unit_cost` y `SaleDetail.supplies[].unit_cost/line_total`
+  ahora son `number | null`.
+- `app/(dashboard)/sales/page.tsx` — las celdas/tarjetas de ganancia por fila
+  ahora chequean `sale.net_profit != null` además del flag `showProfit` del
+  módulo (una fila individual puede venir nula por el AND con EVENTS aunque el
+  rol sí vea ganancias de `SALES` en general). El stat agregado de la cabecera
+  no necesitó guard adicional: solo se muestra cuando `showProfit` (SALES) es
+  `true`, y en ese caso el backend nunca lo devuelve `null`.
+- `app/(dashboard)/sales/[id]/page.tsx` — nueva lógica `canSeeCosts =
+  SALES.show_costs && SALES.show_profit && (!event_id || EVENTS.show_profit)`
+  vía `useModulePermissions("SALES")` + `useModulePermissions("EVENTS")`.
+  Oculta: la tarjeta de "Ganancia neta/estimada" (grid pasa de 2 a 1 columna),
+  el costo/ganancia/margen por producto vendido, la tarjeta completa de
+  "Suministros usados" (son costo, no ingreso), y el bloque de "Costo
+  productos / Costo suministros / Ganancia neta" del desglose. Los cálculos
+  (`productsCost`, `suppliesCost`) usan `?? 0` para tolerar `null` sin romper
+  el render cuando el bloque está oculto.
+
+**Nota:** no se corrió `npm run lint` / `tsc --noEmit` en esta sesión.
+Pendiente correr antes de mergear.
+
 ## Siguiente paso sugerido
 
 Aplicar el mismo patrón (backend + revisión de frontend) a, en este orden de
 impacto/uso:
 
-1. `app/api/sales/route.ts` + `app/api/sales/[id]/route.ts`
-2. `app/api/inventory/route.ts` + `app/api/inventory/movements/route.ts`
-3. `app/api/products/[id]/detail/route.ts`
-4. `app/api/purchases/route.ts` (`with_items=true`)
+1. `app/api/inventory/route.ts` + `app/api/inventory/movements/route.ts`
+2. `app/api/products/[id]/detail/route.ts`
+3. `app/api/purchases/route.ts` (`with_items=true`)
 
 En cada uno, replicar: agregar `getModulePermissions`/`nullifyKeysDeep` en el
 handler, marcar los tipos de los hooks SWR afectados como `number | null`, y
 revisar el componente de página/tarjeta correspondiente para que oculte —no
 solo el dato ya reciba `null`— cualquier cálculo derivado (evitar `.toFixed()`
-sobre `null`, sumas `NaN`, etc.), igual que se hizo aquí para `EVENTS`.
+sobre `null`, sumas `NaN`, etc.), igual que se hizo aquí para `EVENTS` y
+`SALES`. Si algún otro módulo también puede quedar "ligado" a otro (como
+`SALES`↔`EVENTS`), evaluar si necesita la misma doble validación (AND).

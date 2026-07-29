@@ -1,7 +1,7 @@
 // app/api/sales/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -74,11 +74,34 @@ export async function GET(request: NextRequest, { params }: Params) {
       WHERE ss.sale_id = ${saleId} AND ss.org_id = ${orgId}
     `;
 
+    // Ganancia/costos de una venta ligada a un evento requieren permiso en
+    // AMBOS módulos (doble validación): SALES Y EVENTS. unit_cost (items y
+    // supplies) es de donde el frontend deriva la ganancia en esta pantalla,
+    // así que se anula tanto si falta showCosts como si falta showProfit (de
+    // cualquiera de los dos módulos) — de lo contrario la ganancia seguiría
+    // siendo derivable aunque no haya un campo "profit" explícito.
+    // sale_supplies.line_total también es costo (no ingreso, a diferencia de
+    // sale_items.line_total que es precio de venta) y se anula junto con él.
+    const salesPerms  = await getModulePermissions(auth.data, 'SALES');
+    const eventsPerms = sale.event_id ? await getModulePermissions(auth.data, 'EVENTS') : null;
+    const showProfit  = salesPerms.showProfit && (!sale.event_id || !!eventsPerms?.showProfit);
+    const canSeeCosts = salesPerms.showCosts && showProfit;
+
+    const itemsOut = items.map((i: any) => ({
+      ...i,
+      unit_cost: canSeeCosts ? i.unit_cost : null,
+    }));
+    const suppliesOut = supplies.map((s: any) => ({
+      ...s,
+      unit_cost:  canSeeCosts ? s.unit_cost  : null,
+      line_total: canSeeCosts ? s.line_total : null,
+    }));
+
     return Response.json({
       data: {
         ...sale,
-        items,
-        supplies,
+        items:    itemsOut,
+        supplies: suppliesOut,
         next_id: neighbors?.newer_id ?? null,
         prev_id: neighbors?.older_id ?? null,
       },
