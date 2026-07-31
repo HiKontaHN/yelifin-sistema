@@ -140,14 +140,18 @@ export function CartItemRow({
                   const n = parseFloat(raw);
                   onDiscountChange(
                     item.product_id,
-                    isNaN(n) ? 0 : Math.max(0, n),
+                    isNaN(n) ? 0 : Math.min(100, Math.max(0, n)),
                     item.variant_id,
                   );
                 }}
-                className="h-6 text-xs px-1.5 w-20"
+                className="h-6 text-xs px-1.5 w-20 pr-5"
                 min="0"
+                max="100"
                 placeholder="0"
               />
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-medium">
+                %
+              </span>
             </div>
           </div>
         )}

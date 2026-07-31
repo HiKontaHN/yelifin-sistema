@@ -22,9 +22,7 @@ import { Badge }    from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
+import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -82,12 +80,12 @@ const MODULES: { key: OrgModule; label: string; subitems?: string[] }[] = [
   },
 ];
 
-const PERM_COLS: { key: keyof ModulePermissions; label: string; short: string }[] = [
-  { key: "can_view",    label: "Ver",      short: "V"  },
-  { key: "can_edit",    label: "Editar",   short: "E"  },
-  { key: "can_delete",  label: "Eliminar", short: "Elm" },
-  { key: "show_costs",  label: "Costos",   short: "C"  },
-  { key: "show_profit", label: "Ganancia", short: "G"  },
+const PERM_COLS: { key: keyof ModulePermissions; label: string; mobileLabel: string; hint: string }[] = [
+  { key: "can_view",    label: "Ver",      mobileLabel: "Ver",           hint: "Puede entrar y ver el módulo" },
+  { key: "can_edit",    label: "Editar",   mobileLabel: "Crear / editar", hint: "Puede crear y modificar registros" },
+  { key: "can_delete",  label: "Eliminar", mobileLabel: "Eliminar",      hint: "Puede borrar registros" },
+  { key: "show_costs",  label: "Costos",   mobileLabel: "Ver costos",    hint: "Ve precios de compra y costos" },
+  { key: "show_profit", label: "Ganancia", mobileLabel: "Ver ganancias", hint: "Ve utilidades y márgenes" },
 ];
 
 type PermState = Record<OrgModule, ModulePermissions>;
@@ -130,49 +128,95 @@ function PermGrid({
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b">
-            <th className="text-left py-2 pr-3 font-medium text-muted-foreground w-40">Sección</th>
-            {PERM_COLS.map((c) => (
-              <th key={c.key} className="text-center py-2 px-1 font-medium text-muted-foreground min-w-[48px]">
-                <span className="hidden sm:inline">{c.label}</span>
-                <span className="sm:hidden">{c.short}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {MODULES.map(({ key, label, subitems }) => (
-            <tr key={key} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="py-2.5 pr-3">
-                <span className="font-medium text-sm">{label}</span>
-                {subitems && subitems.length > 0 && (
-                  <ul className="mt-0.5 space-y-0.5">
-                    {subitems.map((s) => (
-                      <li key={s} className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <span className="opacity-50">›</span> {s}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </td>
-              {PERM_COLS.map((col) => (
-                <td key={col.key} className="py-2.5 px-1 text-center align-top pt-3">
-                  <Checkbox
-                    checked={perms[key][col.key]}
-                    onCheckedChange={() => toggle(key, col.key)}
-                    disabled={readOnly}
-                    className="mx-auto"
-                  />
-                </td>
+    <>
+      {/* ── Móvil: una tarjeta por módulo con etiquetas completas ── */}
+      <div className="sm:hidden space-y-3">
+        {MODULES.map(({ key, label, subitems }) => {
+          const activeCount = PERM_COLS.filter((c) => perms[key][c.key]).length;
+          return (
+            <div key={key} className="rounded-xl border p-3 space-y-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm">{label}</p>
+                  {subitems && subitems.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      {subitems.join(" · ")}
+                    </p>
+                  )}
+                </div>
+                <Badge variant={activeCount > 0 ? "secondary" : "outline"} className="text-[10px] shrink-0">
+                  {activeCount}/{PERM_COLS.length}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                {PERM_COLS.map((col) => (
+                  <label
+                    key={col.key}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm",
+                      !readOnly && "cursor-pointer active:bg-muted/50",
+                      perms[key][col.key] ? "border-primary/40 bg-primary/5" : "border-border",
+                    )}
+                  >
+                    <Checkbox
+                      checked={perms[key][col.key]}
+                      onCheckedChange={() => toggle(key, col.key)}
+                      disabled={readOnly}
+                    />
+                    <span className="leading-tight">{col.mobileLabel}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Desktop: tabla ── */}
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2 pr-3 font-medium text-muted-foreground w-40">Sección</th>
+              {PERM_COLS.map((c) => (
+                <th key={c.key} className="text-center py-2 px-1 font-medium text-muted-foreground min-w-[48px]" title={c.hint}>
+                  {c.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {MODULES.map(({ key, label, subitems }) => (
+              <tr key={key} className="border-b last:border-0 hover:bg-muted/30">
+                <td className="py-2.5 pr-3">
+                  <span className="font-medium text-sm">{label}</span>
+                  {subitems && subitems.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5">
+                      {subitems.map((s) => (
+                        <li key={s} className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <span className="opacity-50">›</span> {s}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+                {PERM_COLS.map((col) => (
+                  <td key={col.key} className="py-2.5 px-1 text-center align-top pt-3">
+                    <Checkbox
+                      checked={perms[key][col.key]}
+                      onCheckedChange={() => toggle(key, col.key)}
+                      disabled={readOnly}
+                      className="mx-auto"
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -214,63 +258,37 @@ function RoleDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent
-        className={cn(
-          "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-          "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
-          "max-h-[92dvh] flex flex-col p-0",
-          "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
-          "sm:-translate-x-1/2 sm:-translate-y-1/2",
-          "sm:w-full sm:max-w-xl",
-          "sm:rounded-2xl sm:border",
-          "sm:max-h-[90vh]",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out",
-          "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
-          "data-[state=closed]:slide-out-to-bottom sm:data-[state=closed]:slide-out-to-bottom-[48%]",
-          "duration-300",
-        )}
-      >
-
-        <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-        </div>
-
-        <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
-          <DialogTitle>{isEdit ? "Editar rol" : "Nuevo rol"}</DialogTitle>
-        </DialogHeader>
-
-        <div
-          className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          <div className="space-y-1.5">
-            <Label htmlFor="roleName">Nombre del rol</Label>
-            <Input
-              id="roleName"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej. Cajero, Bodeguero, Contador…"
-              disabled={busy}
-              autoFocus
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Permisos por módulo</Label>
-            <PermGrid perms={perms} onChange={setPerms} />
-          </div>
-        </div>
-
-        <div className="shrink-0 px-5 py-4 border-t flex gap-3">
+    <ResponsiveModal
+      open
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      title={isEdit ? "Editar rol" : "Nuevo rol"}
+      width="xl"
+      footer={
+        <>
           <Button variant="outline" onClick={onClose} disabled={busy} className="flex-1">Cancelar</Button>
           <Button onClick={handleSave} disabled={busy} className="flex-1 gap-2">
             {busy && <Loader2 className="size-3.5 animate-spin" />}
             {isEdit ? "Guardar cambios" : "Crear rol"}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="roleName">Nombre del rol</Label>
+        <Input
+          id="roleName"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej. Cajero, Bodeguero, Contador…"
+          disabled={busy}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Permisos por módulo</Label>
+        <PermGrid perms={perms} onChange={setPerms} />
+      </div>
+    </ResponsiveModal>
   );
 }
 

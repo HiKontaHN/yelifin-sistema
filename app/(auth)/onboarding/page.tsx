@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSWRConfig } from "swr";
-import { KontaIcon } from "@/components/shared/konta-icon";
-import { KontaTitle } from "@/components/shared/konta-title";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -133,7 +133,7 @@ export default function OnboardingPage() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.error || "Error al guardar");
 
-            toast.success("¡Todo listo! Bienvenido a Konta 🎉");
+            toast.success("¡Todo listo! Bienvenido a HiKonta 🎉");
             await mutate(() => true, undefined, { revalidate: true });
             push("/dashboard");
         } catch (err: any) {
@@ -156,8 +156,8 @@ export default function OnboardingPage() {
 
                         {/* Logo */}
                         <div className="flex items-center gap-2">
-                            <KontaIcon className="size-9 sm:w-10 sm:h-10 shadow-lg shadow-primary/50 rounded-lg" />
-                            <KontaTitle className="h-5 sm:h-6" />
+                            <HiKontaIcon className="size-9 sm:w-10 sm:h-10 shadow-lg shadow-primary/50 rounded-lg" />
+                            <HiKontaTitle className="h-5 sm:h-6" />
                         </div>
 
                         {/* Progress */}

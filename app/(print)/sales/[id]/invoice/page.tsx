@@ -260,7 +260,7 @@ export default function InvoicePage({ params }: Props) {
             </p>
             <p className="text-xs text-gray-400">
               Powered by{" "}
-              <span className="font-bold text-gray-600">Konta</span>
+              <span className="font-bold text-gray-600">HiKonta</span>
             </p>
           </div>
         </div>

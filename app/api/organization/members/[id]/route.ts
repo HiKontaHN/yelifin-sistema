@@ -30,6 +30,9 @@ export async function PATCH(
       SELECT id, is_owner FROM org_roles WHERE id = ${role_id} AND org_id = ${orgId}
     `;
     if (!role) return createErrorResponse("Rol no válido para esta organización", 400);
+    if (role.is_owner) {
+      return createErrorResponse("No se puede asignar el rol de dueño a otro miembro", 403);
+    }
 
     // Buscar membresía
     const [member] = await sql`

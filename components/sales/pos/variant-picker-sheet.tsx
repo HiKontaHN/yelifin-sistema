@@ -53,18 +53,21 @@ export function VariantPickerSheet({
         </Button>
       }
     >
-          {/* Opción base */}
-          <VariantOption
-            image={product.image_url}
-            name={`${product.name} (base)`}
-            sku={product.sku}
-            attributes={null}
-            price={product.price}
-            stock={baseStock}
-            isBase
-            onSelect={() => handleSelect(null)}
-            format={format}
-          />
+          {/* Opción base — oculta cuando el stock base ya se convirtió en
+              variante (queda en 0): el producto es solo un "padre" */}
+          {(baseStock === null || Number(baseStock) > 0) && (
+            <VariantOption
+              image={product.image_url}
+              name={`${product.name} (base)`}
+              sku={product.sku}
+              attributes={null}
+              price={product.price}
+              stock={baseStock}
+              isBase
+              onSelect={() => handleSelect(null)}
+              format={format}
+            />
+          )}
 
           {/* Variantes */}
           {product.variants.map((variant) => {

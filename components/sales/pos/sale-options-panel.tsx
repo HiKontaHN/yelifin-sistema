@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Loader2, User, Wallet, FlaskConical, Truck, ArrowLeft, Clock, Star,
+  Loader2, User, Wallet, ShoppingBag, Truck, ArrowLeft, Clock, Star,
 } from "lucide-react";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -224,7 +224,7 @@ export function SaleOptionsPanel({
               onClick={onOpenSupplies}
               type="button"
             >
-              <FlaskConical className="size-3.5 text-primary" />
+              <ShoppingBag className="size-3.5 text-primary" />
               Agregar suministros usados
             </Button>
           )}

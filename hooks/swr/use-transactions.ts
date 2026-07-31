@@ -76,6 +76,8 @@ export function useTransactions(filters?: {
   type?: string;
   search?: string;
   tz_offset?: number;
+  /** false = no consulta el endpoint (p. ej. cuando la vista solo muestra tarjetas) */
+  enabled?: boolean;
 }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -92,7 +94,7 @@ export function useTransactions(filters?: {
   const url = `${KEY}?${params.toString()}`;
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser ? url : null,
+    firebaseUser && filters?.enabled !== false ? url : null,
     (u: string) => authFetch(u),
     {
       revalidateOnFocus:  false,

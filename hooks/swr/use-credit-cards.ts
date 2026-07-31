@@ -4,6 +4,7 @@
 import useSWR from 'swr';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { useHybridSearch, HybridSearchResult } from '@/hooks/use-hybrid-search';
 
 const KEY = '/api/credit-cards';
 
@@ -113,7 +114,7 @@ export function useCreditCard(id: number | null) {
   const authFetch = useAuthFetch();
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser && id ? `${KEY}/${id}` : null,
+    firebaseUser && id ? `${KEY}/${id}?tz_offset=${new Date().getTimezoneOffset()}` : null,
     (url: string) => authFetch(url),
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   );
@@ -152,6 +153,31 @@ export function useCreditCardTransactions(
     error: error?.message ?? null,
     mutate,
   };
+}
+
+/**
+ * Búsqueda de movimientos de una tarjeta: filtra primero el período ya
+ * cargado; si no hay coincidencias, consulta (con debounce y caché) el
+ * endpoint global de movimientos de esa tarjeta en todos los períodos.
+ */
+export function useCreditCardTxnSearch(
+  cardId: number | null,
+  query: string,
+  localTxns: CreditCardTransaction[]
+): HybridSearchResult<CreditCardTransaction> {
+  const authFetch = useAuthFetch();
+
+  return useHybridSearch<CreditCardTransaction>({
+    query,
+    items: localTxns,
+    matchLocal: (t, q) =>
+      (t.description ?? '').toLowerCase().includes(q) ||
+      (t.category ?? '').toLowerCase().includes(q) ||
+      (t.sale_number ?? '').toLowerCase().includes(q),
+    remoteKey: (q) =>
+      cardId ? `/api/credit-card-transactions?card_id=${cardId}&search=${encodeURIComponent(q)}` : null,
+    fetchRemote: async (url) => (await authFetch(url)).data as CreditCardTransaction[],
+  });
 }
 
 export function useCreditCardPeriods(id: number | null) {

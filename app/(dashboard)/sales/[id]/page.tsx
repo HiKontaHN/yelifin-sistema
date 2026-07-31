@@ -21,7 +21,7 @@ import {
   Tag,
   Building2,
   Truck,
-  FlaskConical,
+  ShoppingBag,
   Clock,
   CheckCircle,
   Layers,
@@ -370,7 +370,7 @@ export default function SaleDetailPage({ params }: Props) {
         <Card className="border-orange-200 dark:border-orange-800/40">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400">
-              <FlaskConical className="size-4" />
+              <ShoppingBag className="size-4" />
               Suministros usados
             </CardTitle>
           </CardHeader>
@@ -459,7 +459,7 @@ export default function SaleDetailPage({ params }: Props) {
           {suppliesCost > 0 && (
             <div className="flex justify-between text-orange-600">
               <span className="flex items-center gap-1.5">
-                <FlaskConical className="size-3.5" />
+                <ShoppingBag className="size-3.5" />
                 Costo suministros
               </span>
               <span>-{format(suppliesCost)}</span>

@@ -6,7 +6,7 @@ import { useRequireAuth } from "@/hooks/use-require-auth";
 import { useOnboardingGuard } from "@/hooks/use-onboarding-guard";
 import { usePlanGuard } from "@/hooks/use-plan-guard";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
-import { KontaTitle } from "@/components/shared/konta-title";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import { SWRProvider } from "@/components/providers/swr-provider";
 import { PrivacyModeProvider } from "@/context/privacy-mode-context";
 import {
@@ -19,6 +19,8 @@ import { Separator } from "@/components/ui/separator";
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NavUserMenu } from "@/components/nav-user-menu";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { firebaseUser, loading } = useRequireAuth();
@@ -43,11 +45,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbPage>
-                    <KontaTitle className="h-4" />
+                    <HiKontaTitle className="h-4" />
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeToggle isCollapsed />
+              <NavUserMenu />
+            </div>
           </header>
 
           <main className="flex-1 overflow-auto pb-0 p-4 lg:p-6 h-full">

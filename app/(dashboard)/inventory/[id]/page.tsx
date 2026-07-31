@@ -39,6 +39,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -395,7 +396,22 @@ export default function ProductDetailPage({ params }: Props) {
         {/* Costo promedio */}
         <Card>
           <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1">Costo promedio</p>
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              Costo promedio
+              <InfoTooltip
+                content={
+                  <div className="space-y-1">
+                    <p className="font-semibold">Costo promedio del stock actual</p>
+                    <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
+                    <p className="opacity-80">
+                      Cada compra entra como un lote con su propio costo; el promedio pondera
+                      cada lote por las unidades que le quedan. Por eso cambia cuando compras
+                      a un precio distinto, y puede diferir del último costo.
+                    </p>
+                  </div>
+                }
+              />
+            </p>
             <p className="text-xl font-bold">
               {product.is_service ? "—" : format(product.avg_cost)}
             </p>
@@ -410,7 +426,25 @@ export default function ProductDetailPage({ params }: Props) {
         {/* Margen */}
         <Card>
           <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1">Margen</p>
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              Margen
+              <InfoTooltip
+                content={
+                  <div className="space-y-1">
+                    <p className="font-semibold">Margen sobre el precio de venta</p>
+                    <p>(Precio de venta − Costo promedio) ÷ Precio de venta × 100</p>
+                    {!product.is_service && product.price > 0 && (
+                      <p className="opacity-80">
+                        ({format(product.price)} − {format(product.avg_cost)}) ÷ {format(product.price)} = {margin.toFixed(1)}%
+                      </p>
+                    )}
+                    <p className="opacity-80">
+                      De cada venta a este precio, ese porcentaje queda como ganancia (antes de otros gastos).
+                    </p>
+                  </div>
+                }
+              />
+            </p>
             <div className="flex items-center gap-1.5 mt-1">
               {margin > 20
                 ? <TrendingUp className="size-4 text-green-600 shrink-0" />
@@ -516,13 +550,48 @@ export default function ProductDetailPage({ params }: Props) {
                 <p className="text-lg font-bold mt-0.5">{format(product.sales_stats.total_revenue)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Ganancia total</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  Ganancia total
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1">
+                        <p className="font-semibold">Ganancia acumulada de este producto</p>
+                        <p>Ingresos totales − costo de las unidades vendidas</p>
+                        <p className="opacity-80">
+                          {format(product.sales_stats.total_revenue)} de ingresos menos lo que
+                          te costaron esas unidades = {format(product.sales_stats.total_profit)}
+                        </p>
+                        <p className="opacity-80">
+                          Cada venta usa el costo real del lote del que salió la unidad (FIFO)
+                          y el precio realmente cobrado, con descuentos incluidos.
+                        </p>
+                      </div>
+                    }
+                  />
+                </p>
                 <p className={`text-lg font-bold mt-0.5 ${product.sales_stats.total_profit >= 0 ? "text-green-600" : "text-destructive"}`}>
                   {format(product.sales_stats.total_profit)}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Margen promedio</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  Margen promedio
+                  <InfoTooltip
+                    content={
+                      <div className="space-y-1">
+                        <p className="font-semibold">Margen real según tus ventas</p>
+                        <p>Ganancia total ÷ Ingresos totales × 100</p>
+                        <p className="opacity-80">
+                          {format(product.sales_stats.total_profit)} ÷ {format(product.sales_stats.total_revenue)} = {profitMarginP.toFixed(1)}%
+                        </p>
+                        <p className="opacity-80">
+                          A diferencia del margen sobre precio, este usa lo realmente cobrado
+                          en cada venta (con descuentos incluidos), por eso puede diferir.
+                        </p>
+                      </div>
+                    }
+                  />
+                </p>
                 <p className="text-lg font-bold mt-0.5">
                   <span className={profitMarginP > 20 ? "text-green-600" : profitMarginP > 0 ? "text-amber-600" : "text-destructive"}>
                     {profitMarginP.toFixed(1)}%

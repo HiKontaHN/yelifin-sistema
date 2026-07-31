@@ -531,6 +531,26 @@ export async function requireModule(
   return null;
 }
 
+// ── nullifyKeysDeep ────────────────────────────────────────────────────
+// Pone en null (recursivamente) las claves indicadas de un payload.
+// Se usa para aplicar show_costs / show_profit del rol sin reescribir
+// cada query: el cliente ya oculta las columnas, esto evita que los
+// valores viajen en la respuesta.
+export function nullifyKeysDeep<T>(value: T, keys: ReadonlySet<string>): T {
+  if (Array.isArray(value)) {
+    for (const item of value) nullifyKeysDeep(item, keys);
+  } else if (value !== null && typeof value === "object") {
+    for (const k of Object.keys(value)) {
+      if (keys.has(k)) {
+        (value as Record<string, unknown>)[k] = null;
+      } else {
+        nullifyKeysDeep((value as Record<string, unknown>)[k], keys);
+      }
+    }
+  }
+  return value;
+}
+
 // ── createErrorResponse ────────────────────────────────────────────────
 
 export function createErrorResponse(

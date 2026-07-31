@@ -48,7 +48,11 @@ export async function GET(request: NextRequest) {
       LEFT JOIN accounts a ON a.id = t.account_id
       WHERE cct.org_id = ${orgId}
         ${search ? sql`` : sql`AND cct.occurred_at >= ${startISO}::timestamptz AND cct.occurred_at < ${endISO}::timestamptz`}
-        ${search ? sql`AND cct.description ILIKE ${"%" + search + "%"}` : sql``}
+        ${search ? sql`AND (
+          cct.description ILIKE ${"%" + search + "%"}
+          OR cct.category ILIKE ${"%" + search + "%"}
+          OR s.sale_number ILIKE ${"%" + search + "%"}
+        )` : sql``}
         ${cardId ? sql`AND cct.credit_card_id = ${Number(cardId)}` : sql``}
       ORDER BY cct.occurred_at DESC
       LIMIT ${limit}

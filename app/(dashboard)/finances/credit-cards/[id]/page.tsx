@@ -29,10 +29,12 @@ import {
   useCreditCard,
   useCreditCardTransactions,
   useCreditCardPeriods,
+  useCreditCardTxnSearch,
   useDeleteCCTransaction,
   useCreditCards,
   CreditCardTransaction,
 } from "@/hooks/swr/use-credit-cards";
+import { SearchBar } from "@/components/shared/search-bar";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
@@ -63,6 +65,7 @@ export default function CreditCardDetailPage({
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [editingTxn, setEditingTxn] = useState<CreditCardTransaction | null>(null);
   const [deletingTxn, setDeletingTxn] = useState<CreditCardTransaction | null>(null);
+  const [search, setSearch] = useState("");
 
   const { creditCard, isLoading: loadingCard, mutate: mutateCard } = useCreditCard(cardId);
   const { transactions, totals, isLoading: loadingTxns, mutate: mutateTxns } = useCreditCardTransactions(cardId, {
@@ -76,6 +79,15 @@ export default function CreditCardDetailPage({
   const { format, currency } = useCurrency();
   const { deleteTransaction, isDeleting } = useDeleteCCTransaction();
   const { categories: expenseCategories } = useTransactionCategories("EXPENSE");
+
+  // Busca primero en el período visible; si no hay coincidencias,
+  // consulta todos los períodos de la tarjeta (debounced + cacheado).
+  const {
+    results: visibleTxns,
+    source: searchSource,
+    isSearching,
+  } = useCreditCardTxnSearch(cardId, search, transactions);
+  const isGlobalResult = search.trim() !== "" && searchSource === "remote";
 
   const handlePaySuccess = () => {
     mutateCard();
@@ -277,12 +289,28 @@ export default function CreditCardDetailPage({
 
       {/* Movimientos */}
       <div>
-        <p className="text-sm font-semibold mb-2.5">
-          Movimientos - {MONTH_NAMES[selectedMonth]} {selectedYear}
-        </p>
+        <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+          <p className="text-sm font-semibold">
+            Movimientos - {MONTH_NAMES[selectedMonth]} {selectedYear}
+          </p>
+          {isGlobalResult && visibleTxns.length > 0 && (
+            <Badge variant="secondary" className="text-[10px]">
+              Resultados de todos los períodos
+            </Badge>
+          )}
+        </div>
+
+        <div className="mb-2.5">
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por descripción, categoría o # de venta..."
+          />
+        </div>
+
         <Card className="pt-1 pb-1">
           <CardContent className="p-0">
-            {loadingTxns ? (
+            {loadingTxns || isSearching ? (
               <div className="divide-y">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-3 p-3.5">
@@ -295,14 +323,18 @@ export default function CreditCardDetailPage({
                   </div>
                 ))}
               </div>
-            ) : transactions.length === 0 ? (
+            ) : visibleTxns.length === 0 ? (
               <div className="py-10 flex flex-col items-center justify-center gap-1">
                 <CreditCard className="size-8 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">Sin movimientos en este periodo</p>
+                <p className="text-sm text-muted-foreground">
+                  {search.trim()
+                    ? `Sin resultados para "${search.trim()}" en ningún período`
+                    : "Sin movimientos en este periodo"}
+                </p>
               </div>
             ) : (
               <div className="divide-y">
-                {transactions.map((txn) => (
+                {visibleTxns.map((txn) => (
                   <CreditCardTxnRow
                     key={txn.id}
                     txn={txn}

@@ -239,7 +239,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     if (isNaN(purchaseId)) return createErrorResponse("ID inválido", 400);
 
     const [purchase] = await sql`
-      SELECT id, account_id, status
+      SELECT id, account_id, status, notes
       FROM purchase_batches
       WHERE id = ${purchaseId} AND org_id = ${orgId}
     `;
@@ -248,7 +248,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     if (purchase.status !== "PENDING")
       return createErrorResponse("Solo se pueden cancelar compras pendientes de llegada", 409);
 
-    // Las compras pagadas con tarjeta se guardan con account_id = NULL
+    // Las compras pagadas con tarjeta se guardan con account_id = NULL — igual que
+    // los pendientes de importación Excel sin fuente de pago, que no tienen cargo
+    // que revertir (si el import usó tarjeta, el cargo existe y está vinculado v4.5).
+    const isImported         = (purchase.notes ?? "").startsWith("Importación Excel");
     const isCreditCardFunded = purchase.account_id === null;
 
     // La reversión de cargos a tarjeta depende de credit_card_transactions.purchase_batch_id
@@ -301,7 +304,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
               `;
             }
           } else {
-            ccReversed = false;
+            // Sin cargo vinculado: en imports sin fuente de pago no hay nada
+            // que revertir — solo advertir en compras de tarjeta reales.
+            ccReversed = isImported;
           }
         } else {
           ccReversed = false;

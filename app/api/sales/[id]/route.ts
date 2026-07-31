@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -224,8 +225,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           WHERE sale_id = ${saleId} AND org_id = ${orgId}
         `;
         for (const s of supplies) {
+          const supplyQty = Math.round(Number(s.quantity));
           await sql`
-            UPDATE supplies SET stock = stock + ${s.quantity}
+            UPDATE supplies SET stock = stock + ${supplyQty}
             WHERE id = ${s.supply_id} AND org_id = ${orgId}
           `;
           await sql`
@@ -234,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               quantity, reference_type, reference_id
             ) VALUES (
               ${orgId}, ${userId}, 'IN', ${s.supply_id},
-              ${s.quantity}, 'SALE_CANCELLED', ${saleId}
+              ${supplyQty}, 'SALE_CANCELLED', ${saleId}
             )
           `;
         }
@@ -341,9 +343,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         if (!product || product.is_service || isService) continue;
 
         // Verificar variante si aplica
+        let variantName: string | null = null;
         if (newData.variant_id !== null) {
           const [variant] = await sql`
-            SELECT id FROM product_variants
+            SELECT id, variant_name FROM product_variants
             WHERE id         = ${newData.variant_id}
               AND product_id = ${newData.product_id}
               AND org_id     = ${orgId}
@@ -353,6 +356,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             return createErrorResponse(
               `Variante #${newData.variant_id} no válida para "${product.name}"`, 404
             );
+          variantName = variant.variant_name;
         }
 
         const [batchesSum] = newData.variant_id !== null
@@ -373,7 +377,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
         const available = Number(batchesSum?.available ?? 0);
         const label = newData.variant_id !== null
-          ? `${product.name} (variante #${newData.variant_id})`
+          ? `${product.name} (${variantName ?? `variante #${newData.variant_id}`})`
           : product.name;
 
         if (available < delta) {
@@ -494,54 +498,34 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       try {
         // Ajustar inventario por variante (solo físicos)
         for (const item of processedItems) {
+          if (item.isService) continue;
           if (item.delta > 0) {
-            // Necesita más stock → descontar FIFO por variante
-            const batches = item.variant_id !== null
-              ? await sql`
-                  SELECT id, qty_available FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${item.product_id}
-                    AND variant_id = ${item.variant_id}
-                    AND qty_available > 0
-                  ORDER BY received_at ASC
-                `
-              : await sql`
-                  SELECT id, qty_available FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${item.product_id}
-                    AND variant_id IS NULL
-                    AND qty_available > 0
-                  ORDER BY received_at ASC
-                `;
-
-            let remaining = item.delta;
-            for (const batch of batches) {
-              if (remaining <= 0) break;
-              const take = Math.min(remaining, Number(batch.qty_available));
-              await sql`
-                UPDATE inventory_batches
-                SET qty_available = qty_available - ${take}
-                WHERE id = ${batch.id} AND org_id = ${orgId}
-              `;
-              remaining -= take;
+            // Necesita más stock → descuento FIFO atómico (ver lib/fifo.ts):
+            // bajo concurrencia nunca sobregira el stock.
+            const consumed = await consumeFifo(
+              sql, orgId, item.product_id, item.variant_id, item.delta
+            );
+            if (!consumed) {
+              throw new InsufficientStockError(`Producto #${item.product_id}`);
             }
 
           } else if (item.delta < 0) {
-            // Se redujo cantidad → devolver al último batch de la variante
+            // Se redujo cantidad → devolver al batch más antiguo (FIFO consumió
+            // de ahí primero; mismo criterio que cancel/delete de venta)
             const [lastBatch] = item.variant_id !== null
               ? await sql`
                   SELECT id FROM inventory_batches
                   WHERE org_id     = ${orgId}
                     AND product_id = ${item.product_id}
                     AND variant_id = ${item.variant_id}
-                  ORDER BY received_at DESC LIMIT 1
+                  ORDER BY received_at ASC LIMIT 1
                 `
               : await sql`
                   SELECT id FROM inventory_batches
                   WHERE org_id     = ${orgId}
                     AND product_id = ${item.product_id}
                     AND variant_id IS NULL
-                  ORDER BY received_at DESC LIMIT 1
+                  ORDER BY received_at ASC LIMIT 1
                 `;
 
             if (lastBatch) {
@@ -567,14 +551,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
                 WHERE org_id     = ${orgId}
                   AND product_id = ${productId}
                   AND variant_id = ${variantId}
-                ORDER BY received_at DESC LIMIT 1
+                ORDER BY received_at ASC LIMIT 1
               `
             : await sql`
                 SELECT id FROM inventory_batches
                 WHERE org_id     = ${orgId}
                   AND product_id = ${productId}
                   AND variant_id IS NULL
-                ORDER BY received_at DESC LIMIT 1
+                ORDER BY received_at ASC LIMIT 1
               `;
 
           if (lastBatch) {
@@ -757,6 +741,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         });
       } catch (e) {
         await sql`ROLLBACK`;
+        if (e instanceof InsufficientStockError) {
+          return createErrorResponse(
+            `${e.message}. Otra venta pudo haber consumido el stock al mismo tiempo`,
+            409,
+          );
+        }
         throw e;
       }
     }
@@ -844,8 +834,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
       // 2. Devolver stock de insumos
       for (const s of supplies) {
+        const supplyQty = Math.round(Number(s.quantity));
         await sql`
-          UPDATE supplies SET stock = stock + ${s.quantity}
+          UPDATE supplies SET stock = stock + ${supplyQty}
           WHERE id = ${s.supply_id} AND org_id = ${orgId}
         `;
         await sql`
@@ -854,7 +845,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             quantity, reference_type, reference_id
           ) VALUES (
             ${orgId}, ${userId}, 'IN', ${s.supply_id},
-            ${s.quantity}, 'SALE_CANCELLED', ${saleId}
+            ${supplyQty}, 'SALE_CANCELLED', ${saleId}
           )
         `;
       }

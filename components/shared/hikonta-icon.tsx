@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 
-export function KontaIcon({ className }: { className?: string }) {
+export function HiKontaIcon({ className }: { className?: string }) {
   return (
     <div
       role="img"
-      aria-label="Konta"
+      aria-label="HiKonta"
       className={cn(
         "shrink-0 bg-[url('/icon.svg')] bg-contain bg-center bg-no-repeat",
         className

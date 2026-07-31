@@ -1,11 +1,11 @@
 ---
 name: project-multi-org-migration
-description: Konta está migrando de single-user (user_id) a multi-org (org_id). Reglas de migración en API routes.
+description: HiKonta está migrando de single-user (user_id) a multi-org (org_id). Reglas de migración en API routes.
 metadata:
   type: project
 ---
 
-El proyecto Konta está en proceso de migración de arquitectura single-user a multi-org.
+El proyecto HiKonta está en proceso de migración de arquitectura single-user a multi-org.
 
 **Reglas aplicadas en todos los API routes:**
 

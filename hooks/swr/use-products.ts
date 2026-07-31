@@ -40,9 +40,14 @@ export type UpdateProductInput = Partial<CreateProductInput> & {
 export type CreateVariantInput = {
   variant_name: string;
   sku?: string;
-  attributes?: Record<string, string> | null; 
+  attributes?: Record<string, string> | null;
   price_override?: number | null;
   image_url?: string | null;
+  /**
+   * Solo al crear la PRIMERA variante de un producto con stock base:
+   * convierte ese stock en una variante con este nombre (migra los lotes).
+   */
+  base_conversion?: { variant_name: string; sku?: string };
 };
 
 export type UpdateVariantInput = Partial<CreateVariantInput> & {

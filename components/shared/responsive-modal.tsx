@@ -29,6 +29,9 @@ const HEIGHT_CLASSES: Record<ModalHeight, string> = {
   compact: "max-h-[80dvh] sm:max-h-[80vh]",
 };
 
+// La modal se comporta como bottom sheet por debajo de este ancho (breakpoint sm)
+const SHEET_MEDIA_QUERY = "(max-width: 639px)";
+
 type ResponsiveModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,6 +56,8 @@ type ResponsiveModalProps = {
   /** Si es false, permite cerrar al hacer click fuera (por defecto se previene). */
   preventOutsideClose?: boolean;
   showDragHandle?: boolean;
+  /** Si es false, desactiva el gesto de arrastrar hacia abajo para cerrar (móvil). */
+  dragToClose?: boolean;
   bodyClassName?: string;
   contentClassName?: string;
 };
@@ -75,11 +80,119 @@ export function ResponsiveModal({
   height = "default",
   preventOutsideClose = true,
   showDragHandle = true,
+  dragToClose = true,
   bodyClassName,
   contentClassName,
 }: ResponsiveModalProps) {
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const bodyRef = React.useRef<HTMLElement | null>(null);
+
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  // ── Gesto: arrastrar hacia abajo para cerrar (solo en modo bottom sheet) ──
+  // Usa Pointer Events, así funciona con dedo Y con mouse (DevTools/ventana
+  // angosta). Sigue el puntero y cierra por distancia (>35% de la altura) o
+  // por velocidad. Si el gesto empieza dentro del body con scroll pendiente
+  // hacia arriba (scrollTop > 0), se ignora y el scroll funciona normal.
+  React.useEffect(() => {
+    if (!open || !dragToClose) return;
+    const el = contentRef.current;
+    if (!el) return;
+
+    let startY = 0;
+    let dy = 0;
+    let startedAt = 0;
+    let dragging = false;
+    let allowed = false;
+    let closing = false;
+
+    const isSheet = () => window.matchMedia(SHEET_MEDIA_QUERY).matches;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!isSheet() || closing) { allowed = false; return; }
+      if (e.pointerType === "mouse" && e.button !== 0) { allowed = false; return; }
+      const body = bodyRef.current;
+      const target = e.target as Node;
+      // Permitir el gesto si empieza fuera del área scrolleable
+      // o si esa área está en el tope (nada que scrollear hacia arriba)
+      allowed = !body || !body.contains(target) || body.scrollTop <= 0;
+      startY = e.clientY;
+      startedAt = Date.now();
+      dy = 0;
+      dragging = false;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!allowed || closing) return;
+      dy = e.clientY - startY;
+
+      if (!dragging) {
+        // Umbral para no interferir con taps ni con scroll hacia arriba
+        if (dy > 12) {
+          dragging = true;
+          try { el.setPointerCapture(e.pointerId); } catch { /* no-op */ }
+          el.style.userSelect = "none";
+        } else {
+          return;
+        }
+      }
+
+      if (dy < 0) dy = 0;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+    };
+
+    // En táctil, impedir que el navegador convierta el gesto en scroll:
+    // si el body está en el tope y el dedo va hacia abajo, el scroll no
+    // tiene a dónde ir — se cancela desde el primer move para que los
+    // pointermove sigan llegando.
+    const onTouchMove = (e: TouchEvent) => {
+      if (!allowed || closing || !e.cancelable) return;
+      const delta = e.touches[0].clientY - startY;
+      if (delta > 0) e.preventDefault();
+    };
+
+    const settle = () => {
+      allowed = false;
+      if (!dragging || closing) { dragging = false; return; }
+      el.style.userSelect = "";
+
+      const elapsed = Math.max(Date.now() - startedAt, 1);
+      const velocity = dy / elapsed; // px/ms
+      const shouldClose = dy > el.offsetHeight * 0.35 || (velocity > 0.5 && dy > 60);
+
+      el.style.transition = "transform 0.22s ease-out";
+      if (shouldClose) {
+        closing = true;
+        el.style.transform = "translateY(100%)";
+        window.setTimeout(() => onOpenChangeRef.current(false), 180);
+      } else {
+        el.style.transform = "";
+      }
+      dragging = false;
+      dy = 0;
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove);
+    el.addEventListener("pointerup", settle);
+    el.addEventListener("pointercancel", settle);
+    // passive:false es necesario para poder hacer preventDefault del scroll
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+
+    return () => {
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerup", settle);
+      el.removeEventListener("pointercancel", settle);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [open, dragToClose]);
+
   const bodyProps = {
     ...(as === "form" ? formProps : {}),
+    ref: (node: HTMLElement | null) => { bodyRef.current = node; },
     className: cn("flex-1 overflow-y-auto px-5 py-4 space-y-4", bodyClassName),
     children,
   };
@@ -87,6 +200,7 @@ export function ResponsiveModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        ref={contentRef}
         className={cn(
           "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
           "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
@@ -110,7 +224,7 @@ export function ResponsiveModal({
         }}
       >
         {showDragHandle && (
-          <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
+          <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0" style={{ touchAction: "none" }}>
             <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
           </div>
         )}

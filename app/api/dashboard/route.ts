@@ -1,13 +1,19 @@
 // app/api/dashboard/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const deny = await requireModule(auth.data, 'DASHBOARD', 'canView');
+  if (deny) return deny;
+
+  // Permisos atómicos del rol: si no puede ver costos/ganancias,
+  // esos campos se envían en null (el cliente ya oculta las columnas)
+  const { showCosts, showProfit } = await getModulePermissions(auth.data, 'DASHBOARD');
 
   try {
     const { userId, orgId } = auth.data;
@@ -274,15 +280,15 @@ export async function GET(request: NextRequest) {
         metrics: {
           revenue: revenueThisNum,
           revenue_change: revenueLastNum > 0 ? ((revenueThisNum - revenueLastNum) / revenueLastNum) * 100 : null,
-          profit: profitThisNum,
-          profit_change: profitLastNum > 0 ? ((profitThisNum - profitLastNum) / profitLastNum) * 100 : null,
+          profit: showProfit ? profitThisNum : null,
+          profit_change: showProfit && profitLastNum > 0 ? ((profitThisNum - profitLastNum) / profitLastNum) * 100 : null,
           sales_count: Number(countThis?.count ?? 0),
           customers_total: Number(customersTotal?.count ?? 0),
           customers_new: Number(customersNew?.count ?? 0),
           inventory: {
             total_products: Number(inventoryStats?.total_products ?? 0),
             total_units: Number(inventoryStats?.total_units ?? 0),
-            total_value: Number(inventoryStats?.total_value ?? 0),
+            total_value: showCosts ? Number(inventoryStats?.total_value ?? 0) : null,
             out_of_stock: Number(inventoryStats?.out_of_stock ?? 0),
             low_stock: Number(inventoryStats?.low_stock ?? 0),
           },
@@ -292,16 +298,16 @@ export async function GET(request: NextRequest) {
             usd:   Number(creditCardDebt?.total_usd   ?? 0),
           },
         },
-        sales_chart: salesChart.map((r: any) => ({ date: r.date, revenue: Number(r.revenue), profit: Number(r.profit) })),
+        sales_chart: salesChart.map((r: any) => ({ date: r.date, revenue: Number(r.revenue), profit: showProfit ? Number(r.profit) : null })),
         payment_methods: paymentMethods.map((r: any) => ({ method: String(r.method), amount: Number(r.amount) })),
         top_products: topProducts.map((r: any) => ({
           id: Number(r.id), name: String(r.name), image_url: r.image_url ?? null,
-          units_sold: Number(r.units_sold), revenue: Number(r.revenue), profit: Number(r.profit),
+          units_sold: Number(r.units_sold), revenue: Number(r.revenue), profit: showProfit ? Number(r.profit) : null,
         })),
         recent_sales: recentSales.map((r: any) => ({
           id: Number(r.id), sale_number: String(r.sale_number), total: Number(r.total),
           payment_method: r.payment_method ?? "OTHER", sold_at: String(r.sold_at),
-          customer_name: r.customer_name ?? null, items_count: Number(r.items_count), profit: Number(r.profit),
+          customer_name: r.customer_name ?? null, items_count: Number(r.items_count), profit: showProfit ? Number(r.profit) : null,
         })),
         low_stock: lowStock.map((r: any) => ({
           id: Number(r.id), name: String(r.name), sku: r.sku ?? null,

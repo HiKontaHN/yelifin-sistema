@@ -156,10 +156,16 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     `;
     if (!existing) return createErrorResponse("Producto no encontrado", 404);
 
+    // Contar TODO el historial con FK ON DELETE RESTRICT hacia el producto
+    // (compras pendientes, lotes y eventos incluidos): si falta alguno, el
+    // DELETE físico revienta con 500 en vez de caer al soft-delete.
     const [usage] = await sql`
       SELECT (
-        (SELECT COUNT(*) FROM inventory_movements WHERE product_id = ${productId}) +
-        (SELECT COUNT(*) FROM sale_items          WHERE product_id = ${productId})
+        (SELECT COUNT(*) FROM inventory_movements  WHERE product_id = ${productId}) +
+        (SELECT COUNT(*) FROM sale_items           WHERE product_id = ${productId}) +
+        (SELECT COUNT(*) FROM inventory_batches    WHERE product_id = ${productId}) +
+        (SELECT COUNT(*) FROM purchase_batch_items WHERE product_id = ${productId}) +
+        (SELECT COUNT(*) FROM event_inventory      WHERE product_id = ${productId})
       ) AS total
     `;
 

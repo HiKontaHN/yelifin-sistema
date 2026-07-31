@@ -399,8 +399,9 @@ function EditSaleContent() {
     (acc, i) => acc + i.unit_price * i.quantity,
     0
   );
+  // i.discount es un porcentaje (0-100) por producto, igual que el global
   const itemDiscounts = cart.reduce(
-    (acc, i) => acc + i.discount,
+    (acc, i) => acc + i.unit_price * i.quantity * (i.discount / 100),
     0
   );
 
@@ -437,9 +438,10 @@ function EditSaleContent() {
           variant_id: i.variant_id ?? undefined,
           quantity: i.quantity,
           unit_price: i.unit_price,
+          // El backend espera un monto por línea; convertimos el % a monto
           discount:
             discountType === "per_item"
-              ? i.discount
+              ? i.unit_price * i.quantity * (i.discount / 100)
               : 0,
         })),
         discount: appliedGlobal,
@@ -485,7 +487,9 @@ function EditSaleContent() {
           variant_id: i.variant_id ?? undefined,
           quantity: i.quantity,
           unit_price: i.unit_price,
-          discount: discountType === "per_item" ? i.discount : 0,
+          discount: discountType === "per_item"
+            ? i.unit_price * i.quantity * (i.discount / 100)
+            : 0,
         })),
         discount: appliedGlobal,
         shipping_cost: shippingCost > 0 ? shippingCost : undefined,

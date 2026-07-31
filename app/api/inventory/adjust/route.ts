@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -115,37 +116,13 @@ export async function POST(request: NextRequest) {
         `;
 
       } else {
-        // ── Ajuste negativo: FIFO por variante ──────────────────────
-        const batches = variantId !== null
-          ? await sql`
-              SELECT id, qty_available
-              FROM inventory_batches
-              WHERE product_id   = ${product_id}
-                AND variant_id   = ${variantId}
-                AND org_id       = ${orgId}
-                AND qty_available > 0
-              ORDER BY received_at ASC
-            `
-          : await sql`
-              SELECT id, qty_available
-              FROM inventory_batches
-              WHERE product_id   = ${product_id}
-                AND variant_id IS NULL
-                AND org_id       = ${orgId}
-                AND qty_available > 0
-              ORDER BY received_at ASC
-            `;
-
-        let remaining = quantity;
-        for (const batch of batches) {
-          if (remaining <= 0) break;
-          const deduct = Math.min(remaining, Number(batch.qty_available));
-          remaining -= deduct;
-          await sql`
-            UPDATE inventory_batches
-            SET qty_available = qty_available - ${deduct}
-            WHERE id = ${batch.id} AND org_id = ${orgId}
-          `;
+        // ── Ajuste negativo: FIFO atómico por variante (ver lib/fifo.ts):
+        // bajo concurrencia nunca sobregira el stock.
+        const consumed = await consumeFifo(
+          sql, orgId, Number(product_id), variantId, Number(quantity)
+        );
+        if (!consumed) {
+          throw new InsufficientStockError("el producto");
         }
 
         await sql`
@@ -173,6 +150,12 @@ export async function POST(request: NextRequest) {
 
     } catch (innerError) {
       await sql`ROLLBACK`;
+      if (innerError instanceof InsufficientStockError) {
+        return createErrorResponse(
+          "Stock insuficiente: otro proceso consumió el inventario al mismo tiempo",
+          409
+        );
+      }
       throw innerError;
     }
 

@@ -1,7 +1,7 @@
 // app/api/reports/inventory/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -79,7 +79,13 @@ export async function GET(request: NextRequest) {
       zero_stock_count: zeroStockCount,
     };
 
-    return Response.json({ summary, products, movements });
+    // Permisos atómicos del rol: anular costos/márgenes si no puede verlos
+    const perms = await getModulePermissions(auth.data, 'REPORTS');
+    const payload = { summary, products, movements };
+    if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["avg_cost", "stock_value", "total_stock_value"]));
+    if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["margin_pct"]));
+
+    return Response.json(payload);
   } catch (error) {
     console.error("GET /api/reports/inventory:", error);
     return createErrorResponse("Error al generar reporte de inventario", 500);

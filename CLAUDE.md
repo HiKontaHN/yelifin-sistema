@@ -15,7 +15,7 @@ No test runner is configured.
 
 ## Architecture Overview
 
-**Konta** is a SaaS web app for small-business inventory, sales, and financial management. Stack: Next.js 16 (App Router), React 19, PostgreSQL via Neon serverless, Firebase Auth, Tailwind CSS v4 + shadcn/ui, SWR for data fetching, React Hook Form + Zod for forms.
+**HiKonta** is a SaaS web app for small-business inventory, sales, and financial management. Stack: Next.js 16 (App Router), React 19, PostgreSQL via Neon serverless, Firebase Auth, Tailwind CSS v4 + shadcn/ui, SWR for data fetching, React Hook Form + Zod for forms.
 
 ### Route Groups
 

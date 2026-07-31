@@ -1,7 +1,7 @@
 // app/(dashboard)/purchases/pending/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +20,10 @@ import { useCurrency }   from "@/hooks/swr/use-currency";
 import { ConfirmPurchaseArrivalDialog } from "@/components/products/confirm-purchase-arrival-dialog";
 import { CancelPurchaseDialog } from "@/components/products/cancel-purchase-dialog";
 import { StatCard } from "@/components/reports/report-shell";
+import { SearchBar } from "@/components/shared/search-bar";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+
+const PAGE_SIZE = 6;
 
 export default function PendingPurchasesPage() {
   const { back, push } = useRouter();
@@ -30,12 +34,27 @@ export default function PendingPurchasesPage() {
 
   const [selected, setSelected] = useState<PurchaseWithItems | null>(null);
   const [toCancel, setToCancel] = useState<Purchase | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const handleSuccess = () => {
     mutatePurchases();
     mutateInventory();
     mutateAccounts();
   };
+
+  const filteredPurchases = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return purchases;
+    return purchases.filter((p) =>
+      p.items.some((item) => item.product_name.toLowerCase().includes(q))
+    );
+  }, [purchases, search]);
+
+  useEffect(() => { setPage(1); }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPurchases.length / PAGE_SIZE));
+  const pagePurchases = filteredPurchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const stats = purchases.reduce(
     (acc, p) => {
@@ -50,7 +69,7 @@ export default function PendingPurchasesPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
 
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -101,16 +120,50 @@ export default function PendingPurchasesPage() {
         </div>
       )}
 
-      {/* Lista */}
-      {!isLoading && purchases.map((p) => (
-        <PurchaseCard
-          key={p.id}
-          purchase={p}
-          format={format}
-          onConfirm={() => setSelected(p)}
-          onCancel={() => setToCancel(p)}
+      {/* Buscador */}
+      {!isLoading && purchases.length > 0 && (
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nombre de producto..."
         />
-      ))}
+      )}
+
+      {/* Sin resultados de búsqueda */}
+      {!isLoading && purchases.length > 0 && filteredPurchases.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+          <div className="size-14 rounded-full bg-muted flex items-center justify-center">
+            <Package className="size-7 opacity-40" />
+          </div>
+          <p className="text-sm">Ningún producto coincide con &quot;{search}&quot;</p>
+        </div>
+      )}
+
+      {/* Lista */}
+      {!isLoading && pagePurchases.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {pagePurchases.map((p) => (
+            <PurchaseCard
+              key={p.id}
+              purchase={p}
+              format={format}
+              onConfirm={() => setSelected(p)}
+              onCancel={() => setToCancel(p)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Paginación */}
+      {!isLoading && filteredPurchases.length > 0 && (
+        <PaginationControls
+          page={page}
+          totalPages={totalPages}
+          total={filteredPurchases.length}
+          label="compras"
+          onPageChange={setPage}
+        />
+      )}
 
       {/* Dialog de confirmación */}
       <ConfirmPurchaseArrivalDialog

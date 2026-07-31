@@ -1,7 +1,7 @@
 // app/api/reports/sales/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -124,7 +124,13 @@ export async function GET(request: NextRequest) {
       LIMIT 1000
     `;
 
-    return Response.json({ summary, byDay, byProduct, detail, from, to });
+    // Permisos atómicos del rol: anular costos/ganancias si no puede verlos
+    const perms = await getModulePermissions(auth.data, 'REPORTS');
+    const payload = { summary, byDay, byProduct, detail, from, to };
+    if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["cogs"]));
+    if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["profit", "gross_profit", "margin_pct"]));
+
+    return Response.json(payload);
   } catch (error) {
     console.error("GET /api/reports/sales:", error);
     return createErrorResponse("Error al generar reporte de ventas", 500);

@@ -220,6 +220,9 @@ export default function TransactionsPage() {
     account_id: isAccountFilter ? Number(sourceFilter) : undefined,
     type: accountTypeFilter,
     search: isSearching ? debouncedSearch.trim() : undefined,
+    // Si el filtro es una tarjeta, las transacciones de cuenta no se muestran:
+    // no tiene sentido pedirlas (y sus totales serían de otra fuente).
+    enabled: !isCardFilter,
     ...(isSearching ? {} : periodParams),
   });
 
@@ -241,7 +244,25 @@ export default function TransactionsPage() {
   const monthsForYear = (y: number) =>
     periods.filter((p) => p.year === y).map((p) => p.month).sort((a, b) => b - a);
 
-  const neto = totals.income - totals.expense;
+  // Al filtrar por tarjeta, los tiles se calculan de los movimientos de la
+  // tarjeta (cargos/pagos), no de las transacciones de cuenta.
+  const ccTotals = useMemo(() => {
+    let charges = 0, payments = 0;
+    for (const t of ccTxs) {
+      const amt = t.currency === "USD" && t.amount_local != null
+        ? Number(t.amount_local)
+        : Number(t.amount);
+      if (t.type === "CHARGE") charges += amt;
+      else payments += amt;
+    }
+    return { charges, payments };
+  }, [ccTxs]);
+
+  const displayTotals = isCardFilter
+    ? { income: ccTotals.payments, expense: ccTotals.charges }
+    : { income: totals.income, expense: totals.expense };
+
+  const neto = displayTotals.income - displayTotals.expense;
 
   const periodLabel = isSearching
     ? `Resultados para "${debouncedSearch.trim()}"`
@@ -254,6 +275,12 @@ export default function TransactionsPage() {
     typeFilter, sourceFilter, filterMode,
     selectedMonth, selectedYear, specificDate, debouncedSearch,
   ]);
+
+  // Sincroniza la pestaña del gráfico con el filtro de tipo
+  useEffect(() => {
+    if (typeFilter === "EXPENSE") setAnalyticsTab("expense");
+    else if (typeFilter === "INCOME") setAnalyticsTab("income");
+  }, [typeFilter]);
 
   // ── Merge & filter ─────────────────────────────────────────────────
   const rows = useMemo<Row[]>(() => {
@@ -292,6 +319,9 @@ export default function TransactionsPage() {
     for (const row of rows) {
       if (row._src === "account") {
         const t = row.data;
+        // El pago de tarjeta no es gasto nuevo: el consumo ya está
+        // representado por los cargos CC (evita doble conteo).
+        if (t.reference_type === "CREDIT_CARD_PAYMENT") continue;
         const label = t.category?.trim() || "Sin categoría";
         if (t.type === "EXPENSE") {
           expenseMap.set(label, (expenseMap.get(label) ?? 0) + Number(t.amount));
@@ -300,15 +330,13 @@ export default function TransactionsPage() {
         }
       } else {
         const t = row.data;
+        // Los pagos CC tampoco son ingreso: solo reducen deuda.
+        if (t.type !== "CHARGE") continue;
         const label = t.category?.trim() || "Sin categoría";
         const amt = t.currency === "USD" && t.amount_local != null
           ? Number(t.amount_local)
           : Number(t.amount);
-        if (t.type === "CHARGE") {
-          expenseMap.set(label, (expenseMap.get(label) ?? 0) + amt);
-        } else {
-          incomeMap.set(label, (incomeMap.get(label) ?? 0) + amt);
-        }
+        expenseMap.set(label, (expenseMap.get(label) ?? 0) + amt);
       }
     }
 
@@ -560,8 +588,8 @@ export default function TransactionsPage() {
           {/* Stats */}
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: "Ingresos", value: totals.income, color: "text-green-600", icon: TrendingUp },
-              { label: "Egresos", value: totals.expense, color: "text-destructive", icon: TrendingDown },
+              { label: isCardFilter ? "Pagos a tarjeta" : "Ingresos", value: displayTotals.income, color: "text-green-600", icon: TrendingUp },
+              { label: isCardFilter ? "Cargos a tarjeta" : "Egresos", value: displayTotals.expense, color: "text-destructive", icon: TrendingDown },
               { label: "Neto", value: neto, color: neto >= 0 ? "text-green-600" : "text-destructive", icon: ArrowLeftRight },
             ].map((s, index) => (
               <Card key={s.label} className={index === 2 ? "col-span-2" : ""}>

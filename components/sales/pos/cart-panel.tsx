@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { ShoppingCart, FlaskConical, Minus, Plus, X } from "lucide-react";
+import { ShoppingCart, ShoppingBag, Minus, Plus, X } from "lucide-react";
 import { CartItem } from "@/hooks/swr/use-sales";
 import { CartItemRow } from "./cart-item-row";
 import { SupplyUsed } from "./supplies-used-modal";
@@ -169,7 +169,7 @@ export function CartPanel({
         {suppliesUsed.length > 0 && (
           <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50/50 dark:bg-orange-950/20 dark:border-orange-800/40 p-2.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <FlaskConical className="size-3.5 text-orange-500 shrink-0" />
+              <ShoppingBag className="size-3.5 text-orange-500 shrink-0" />
               <span className="text-xs font-semibold text-orange-700 dark:text-orange-400 flex-1">
                 Suministros
               </span>
@@ -177,46 +177,53 @@ export function CartPanel({
                 {suppliesUsed.length}
               </Badge>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {suppliesUsed.map((s) => (
-                <div key={s.supply_id} className="flex items-center gap-1.5 bg-background rounded-lg px-2 py-1 border text-xs">
-                  <span className="flex-1 truncate font-medium">{s.name}</span>
+                <div key={s.supply_id} className="relative rounded-lg border bg-background p-2 text-xs">
                   <button
-                    className="size-5 rounded flex items-center justify-center hover:bg-muted transition-colors cursor-pointer shrink-0"
-                    onClick={() => onSupplyQtyChange(s.supply_id, Math.max(0.5, s.quantity - 0.5))}
-                  >
-                    <Minus className="size-2.5" />
-                  </button>
-                  <Input
-                    type="number"
-                    value={s.quantity === 0 ? "" : s.quantity}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/^0+(\d)/, "$1");
-                      const n = parseFloat(raw);
-                      if (!isNaN(n) && n > 0) onSupplyQtyChange(s.supply_id, n);
-                    }}
-                    className="h-6 w-12 text-xs text-center px-1"
-                    min="0.01"
-                    step="0.5"
-                  />
-                  <span className="text-[10px] text-muted-foreground w-5 shrink-0 truncate">
-                    {s.unit ?? "ud"}
-                  </span>
-                  <button
-                    className="size-5 rounded flex items-center justify-center hover:bg-muted transition-colors cursor-pointer shrink-0"
-                    onClick={() => onSupplyQtyChange(s.supply_id, s.quantity + 0.5)}
-                  >
-                    <Plus className="size-2.5" />
-                  </button>
-                  <span className="text-[10px] text-muted-foreground w-10 text-right shrink-0">
-                    {format(s.quantity * s.unit_cost)}
-                  </span>
-                  <button
-                    className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer shrink-0"
+                    className="absolute top-1 right-1 size-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                     onClick={() => onSupplyRemove(s.supply_id)}
                   >
-                    <X className="size-3" />
+                    <X className="size-3.5" />
                   </button>
+
+                  <p className="font-medium truncate pr-7">{s.name}</p>
+
+                  <div className="flex items-center justify-between gap-2 mt-1.5">
+                    <span className="text-[10px] font-semibold text-orange-600">
+                      {format(s.quantity * s.unit_cost)}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-0.5 rounded-full border bg-muted/30 p-0.5">
+                        <button
+                          className="size-6 rounded-full flex items-center justify-center hover:bg-muted transition-colors cursor-pointer"
+                          onClick={() => onSupplyQtyChange(s.supply_id, Math.max(1, s.quantity - 1))}
+                        >
+                          <Minus className="size-3.5" />
+                        </button>
+                        <Input
+                          type="number"
+                          value={s.quantity}
+                          onChange={(e) => {
+                            const n = Math.round(parseFloat(e.target.value));
+                            if (!isNaN(n) && n > 0) onSupplyQtyChange(s.supply_id, n);
+                          }}
+                          className="h-6 w-8 border-0 bg-transparent text-xs text-center px-0 shadow-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          min="1"
+                          step="1"
+                        />
+                        <button
+                          className="size-6 rounded-full flex items-center justify-center hover:bg-muted transition-colors cursor-pointer"
+                          onClick={() => onSupplyQtyChange(s.supply_id, s.quantity + 1)}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      </div>
+                      <span className="text-[9px] text-muted-foreground w-5 truncate">
+                        {s.unit ?? "ud"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

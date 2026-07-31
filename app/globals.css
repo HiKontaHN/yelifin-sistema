@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-google-sans-flex: 'Google Sans Flex', 'Google Sans', Inter, Arial, sans-serif;
   --background: #F9FAFB;
   --foreground: #111827;
   --card: #FFFFFF;
@@ -133,5 +134,28 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .font-google-sans-flex {
+    font-family: var(--font-google-sans-flex);
+  }
+
+  .landing-marquee {
+    animation: landing-marquee 26s linear infinite;
+  }
+
+  .landing-marquee:hover {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes landing-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
   }
 }

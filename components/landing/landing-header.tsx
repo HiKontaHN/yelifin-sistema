@@ -1,60 +1,101 @@
-﻿// components/landing/landing-header.tsx
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { ArrowRight, LayoutDashboard, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, LayoutDashboard } from "lucide-react";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { useAuth } from "@/hooks/use-auth";
-import { KontaIcon } from "@/components/shared/konta-icon";
-import { KontaTitle } from "@/components/shared/konta-title";
+
+const links = [
+  { href: "#como-funciona", label: "Como funciona?" },
+  { href: "#precios", label: "Precios" },
+  { href: "#preguntas", label: "Preguntas Frecuentes" },
+  { href: "#contacto", label: "Contactanos" },
+];
 
 export function LandingHeader() {
-  const { firebaseUser, user, loading } = useAuth();
+  const { firebaseUser, loading } = useAuth();
   const isLoggedIn = !!firebaseUser;
-
-  const displayName = user?.user?.display_name ?? firebaseUser?.displayName ?? firebaseUser?.email ?? "";
-  const initials = displayName
-    ? displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
-    : "U";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-2">
-          <KontaIcon className="size-8 sm:w-10 sm:h-10 shadow-lg shadow-primary/50 rounded-lg" />
-          <KontaTitle className="h-5 sm:h-6" />
-        </Link>
+    <header className="fixed inset-x-0 top-0 z-50 bg-white/95 py-3 backdrop-blur">
+      <div className="relative mx-auto flex max-w-7xl items-center justify-center px-4">
+        <nav className="flex h-12 w-full max-w-6xl items-center justify-between rounded-xl bg-[#2A2A2FCC] px-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] sm:h-14 sm:px-4">
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            <HiKontaIcon className="size-8 rounded-lg shadow-lg shadow-blue-500/30 sm:size-9" />
+            <div
+              role="img"
+              aria-label="HiKonta"
+              className="h-5 w-20 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat invert sm:h-6 sm:w-24"
+            />
+          </Link>
 
-        {loading ? (
-          <div className="h-8 w-24 rounded-lg bg-muted animate-pulse" />
-        ) : isLoggedIn ? (
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-              <span className="text-xs font-semibold text-primary">{initials}</span>
-            </div>
+          <div className="hidden items-center gap-7 text-sm font-medium text-white/90 lg:flex">
+            {links.map((link) => (
+              <Link key={link.href} href={link.href} className="transition hover:text-white">
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="h-9 w-28 animate-pulse rounded-lg bg-white/15" />
+          ) : isLoggedIn ? (
             <Link href="/dashboard">
-              <Button size="sm" className="gap-1.5 shadow-md shadow-primary/20 cursor-pointer">
-                <LayoutDashboard className="size-3.5" />
+              <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-4 font-bold text-black hover:bg-[#7ce600]">
+                <LayoutDashboard className="size-4" />
                 <span className="hidden sm:inline">Ir al panel</span>
                 <span className="sm:hidden">Panel</span>
               </Button>
             </Link>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Link href="/login">
-              <Button variant="ghost" size="sm">
-                <span className="hidden sm:inline">Iniciar Sesión</span>
-                <span className="sm:hidden">Entrar</span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link href="/login" className="hidden text-sm font-medium text-white/90 transition hover:text-white md:inline">
+                Iniciar Sesion
+              </Link>
+              <Link href="/register">
+                <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-3 text-sm font-bold text-black hover:bg-[#7ce600] sm:px-4">
+                  <span className="hidden sm:inline">Empieza Gratis</span>
+                  <span className="sm:hidden">Gratis</span>
+                  <ArrowRight className="size-4" />
+                </Button>
+              </Link>
+              <Button
+                aria-label={menuOpen ? "Cerrar menu" : "Abrir menu"}
+                variant="ghost"
+                size="icon"
+                className="size-9 text-white hover:bg-white/10 hover:text-white lg:hidden"
+                onClick={() => setMenuOpen((value) => !value)}
+              >
+                {menuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
               </Button>
-            </Link>
-            <Link href="/register">
-              <Button size="sm" className="gap-2 shadow-lg shadow-primary/30">
-                <span className="hidden sm:inline">Registrarse</span>
-                <span className="sm:hidden">Registro</span>
-                <ArrowRight className="size-3 sm:w-4 sm:h-4" />
-              </Button>
-            </Link>
+            </div>
+          )}
+        </nav>
+
+        {menuOpen && (
+          <div className="absolute left-4 right-4 top-16 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_50px_rgba(15,23,42,0.18)] lg:hidden">
+            <div className="grid gap-1">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <Link
+                href="/login"
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 md:hidden"
+                onClick={() => setMenuOpen(false)}
+              >
+                Iniciar Sesion
+              </Link>
+            </div>
           </div>
         )}
       </div>

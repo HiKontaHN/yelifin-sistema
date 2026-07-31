@@ -17,6 +17,7 @@ export async function GET(
   try {
     const { userId, orgId } = auth.data;
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
 
     const [card] = await sql`
       SELECT
@@ -29,24 +30,40 @@ export async function GET(
 
     if (!card) return createErrorResponse("Tarjeta no encontrada", 404);
 
-    // Compute current billing-cycle start based on statement_closing_day
+    // Compute current billing-cycle start based on statement_closing_day.
+    // All date math is done in the user's local time (tz_offset, same convention
+    // as getUtcBounds): the statement closes at the END of the closing day, so
+    // the current cycle starts the day AFTER the most recent cut.
     const closingDay = card.statement_closing_day as number | null;
-    let cycleStart: Date;
-    const now = new Date();
-    if (!closingDay) {
-      cycleStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (now.getDate() >= closingDay) {
-      cycleStart = new Date(now.getFullYear(), now.getMonth(), closingDay);
-    } else {
-      cycleStart = new Date(now.getFullYear(), now.getMonth() - 1, closingDay);
-    }
+    const offsetMs = Number(searchParams.get("tz_offset") ?? 0) * 60_000;
+    const localNow = new Date(Date.now() - offsetMs);
+    const y = localNow.getUTCFullYear();
+    const m = localNow.getUTCMonth();
+    const daysInMonth = (yy: number, mm: number) => new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
 
+    let cycleStartMs: number;
+    if (!closingDay) {
+      cycleStartMs = Date.UTC(y, m, 1) + offsetMs;
+    } else {
+      // Clamp so a closing day of 29-31 works on shorter months
+      const cutThisMonth = Math.min(closingDay, daysInMonth(y, m));
+      if (localNow.getUTCDate() > cutThisMonth) {
+        cycleStartMs = Date.UTC(y, m, cutThisMonth + 1) + offsetMs;
+      } else {
+        const py = m === 0 ? y - 1 : y;
+        const pm = m === 0 ? 11 : m - 1;
+        const cutPrevMonth = Math.min(closingDay, daysInMonth(py, pm));
+        cycleStartMs = Date.UTC(py, pm, cutPrevMonth + 1) + offsetMs;
+      }
+    }
+    const cycleStart = new Date(cycleStartMs);
+
+    // Local and USD are independent buckets (mirrors balance / balance_usd):
+    // USD charges must NOT leak into the local figure via amount_local.
     const [stmtTotals] = await sql`
       SELECT
         COALESCE(SUM(
-          CASE WHEN type = 'CHARGE'
-            THEN COALESCE(amount_local, CASE WHEN currency != 'USD' THEN amount ELSE 0 END)
-          ELSE 0 END
+          CASE WHEN type = 'CHARGE' AND currency != 'USD' THEN amount ELSE 0 END
         ), 0) AS statement_balance_local,
         COALESCE(SUM(
           CASE WHEN type = 'CHARGE' AND currency = 'USD' THEN amount ELSE 0 END

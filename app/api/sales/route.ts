@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit } from "@/lib/auth";
+import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -359,6 +360,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Validar variante si se envió — debe pertenecer al producto y estar activa
+      let variantName: string | null = null;
       if (variantId !== null) {
         const [variant] = await sql`
           SELECT id, variant_name, price_override
@@ -373,6 +375,7 @@ export async function POST(request: NextRequest) {
             `Variante #${variantId} no encontrada o no pertenece a "${product.name}"`,
             404,
           );
+        variantName = variant.variant_name;
       }
 
       // FIFO: filtrar batches por product_id + variant_id
@@ -406,7 +409,7 @@ export async function POST(request: NextRequest) {
 
       const label =
         variantId !== null
-          ? `${product.name} (variante #${variantId})`
+          ? `${product.name} (${variantName ?? `variante #${variantId}`})`
           : product.name;
 
       if (totalAvailable < item.quantity) {
@@ -533,7 +536,18 @@ export async function POST(request: NextRequest) {
       const saleId = sale.id as number;
 
       // 2. Items + FIFO con variantes
+      // El descuento de lotes es atómico y con guarda (ver lib/fifo.ts):
+      // bajo concurrencia nunca sobregira el stock. El costo real consumido
+      // reemplaza al estimado del pre-chequeo.
       for (const item of processedItems) {
+        if (!item.is_service) {
+          const consumed = await consumeFifo(
+            sql, orgId, item.product_id, item.variant_id, item.quantity
+          );
+          if (!consumed) throw new InsufficientStockError(item.label);
+          item.unit_cost = consumed.totalCost / item.quantity;
+        }
+
         await sql`
           INSERT INTO sale_items (
             org_id, created_by, sale_id, product_id, variant_id,
@@ -547,18 +561,6 @@ export async function POST(request: NextRequest) {
         `;
 
         if (!item.is_service) {
-          let remaining = item.quantity;
-          for (const batch of item.batches) {
-            if (remaining <= 0) break;
-            const take = Math.min(remaining, Number(batch.qty_available));
-            await sql`
-                      UPDATE inventory_batches
-                      SET qty_available = qty_available - ${take}
-                      WHERE id = ${batch.id} AND org_id = ${orgId}
-                    `;
-            remaining -= take;
-          }
-
           await sql`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
@@ -695,6 +697,12 @@ export async function POST(request: NextRequest) {
       );
     } catch (innerError) {
       await sql`ROLLBACK`;
+      if (innerError instanceof InsufficientStockError) {
+        return createErrorResponse(
+          `${innerError.message}. Otra venta pudo haber consumido el stock al mismo tiempo`,
+          409,
+        );
+      }
       throw innerError;
     }
   } catch (error) {

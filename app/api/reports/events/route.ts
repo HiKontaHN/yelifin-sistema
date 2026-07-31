@@ -1,7 +1,7 @@
 // app/api/reports/events/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -100,7 +100,13 @@ export async function GET(request: NextRequest) {
       total_sales:    totalSales,
     };
 
-    return Response.json({ summary, events, from, to });
+    // Permisos atómicos del rol: anular costos/ganancias si no puede verlos
+    const perms = await getModulePermissions(auth.data, 'REPORTS');
+    const payload = { summary, events, from, to };
+    if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["total_cogs"]));
+    if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["gross_profit", "net_profit"]));
+
+    return Response.json(payload);
   } catch (error) {
     console.error("GET /api/reports/events:", error);
     return createErrorResponse("Error al generar reporte de eventos", 500);

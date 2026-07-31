@@ -7,7 +7,7 @@
 
 ## Contexto
 
-Hoy Konta tiene arquitectura **1 usuario = 1 negocio**. Cada tabla usa `user_id` como clave de aislamiento (tenant key). El objetivo es convertir el modelo a **1 organización = N usuarios con roles**, donde una empresa puede tener un dueño, admins, cajeros y empleados de solo lectura.
+Hoy HiKonta tiene arquitectura **1 usuario = 1 negocio**. Cada tabla usa `user_id` como clave de aislamiento (tenant key). El objetivo es convertir el modelo a **1 organización = N usuarios con roles**, donde una empresa puede tener un dueño, admins, cajeros y empleados de solo lectura.
 
 ---
 

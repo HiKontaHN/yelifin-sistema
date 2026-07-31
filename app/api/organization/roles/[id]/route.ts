@@ -32,9 +32,9 @@ export async function PATCH(
     `;
     if (!role) return createErrorResponse("Rol no encontrado", 404);
 
-    // El rol "Dueño" no se puede renombrar
-    if (role.is_owner && name !== undefined) {
-      return createErrorResponse("No se puede renombrar el rol del dueño", 403);
+    // El rol "Dueño" no se puede renombrar ni modificar (tiene bypass total)
+    if (role.is_owner && (name !== undefined || permissions !== undefined)) {
+      return createErrorResponse("El rol del dueño no se puede modificar", 403);
     }
 
     let updatedRole = role;

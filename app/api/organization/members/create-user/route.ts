@@ -1,7 +1,7 @@
 // app/api/organization/members/create-user/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature } from "@/lib/auth";
 import { adminAuth } from "@/lib/firebase-admin";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -13,6 +13,9 @@ export async function POST(request: NextRequest) {
   if (!auth.data.isOwner) {
     return createErrorResponse("Solo el dueño puede crear miembros", 403);
   }
+
+  const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
+  if (denyFeature) return denyFeature;
 
   try {
     const { orgId } = auth.data;
@@ -60,36 +63,47 @@ export async function POST(request: NextRequest) {
       return createErrorResponse(msg, 409);
     }
 
-    // Crear usuario en PostgreSQL
-    const [user] = await sql`
-      INSERT INTO users (firebase_uid, email, display_name, is_active)
-      VALUES (
-        ${fbUser.uid},
-        ${email.trim().toLowerCase()},
-        ${display_name?.trim() || null},
-        TRUE
-      )
-      RETURNING id
-    `;
+    // Crear registros en PostgreSQL — si algo falla, rollback del usuario
+    // de Firebase para no dejarlo huérfano (ej: email ya existente en users
+    // por ser miembro de otra organización)
+    let member;
+    try {
+      const [user] = await sql`
+        INSERT INTO users (firebase_uid, email, display_name, is_active)
+        VALUES (
+          ${fbUser.uid},
+          ${email.trim().toLowerCase()},
+          ${display_name?.trim() || null},
+          TRUE
+        )
+        RETURNING id
+      `;
 
-    // Perfil mínimo — hereda timezone/currency/locale de la org
-    await sql`
-      INSERT INTO user_profile (user_id, timezone, currency, locale, onboarding_completed)
-      VALUES (
-        ${user.id},
-        ${org.timezone ?? "America/Tegucigalpa"},
-        ${org.currency ?? "HNL"},
-        ${org.locale   ?? "es-HN"},
-        TRUE
-      )
-    `;
+      // Perfil mínimo — hereda timezone/currency/locale de la org
+      await sql`
+        INSERT INTO user_profile (user_id, timezone, currency, locale, onboarding_completed)
+        VALUES (
+          ${user.id},
+          ${org.timezone ?? "America/Tegucigalpa"},
+          ${org.currency ?? "HNL"},
+          ${org.locale   ?? "es-HN"},
+          TRUE
+        )
+      `;
 
-    // Agregar como miembro de la org con el rol seleccionado
-    const [member] = await sql`
-      INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
-      VALUES (${orgId}, ${user.id}, ${role_id}, NOW())
-      RETURNING id
-    `;
+      // Agregar como miembro de la org con el rol seleccionado
+      [member] = await sql`
+        INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
+        VALUES (${orgId}, ${user.id}, ${role_id}, NOW())
+        RETURNING id
+      `;
+    } catch (pgError: any) {
+      try { await adminAuth.deleteUser(fbUser.uid); } catch {}
+      if (pgError?.code === "23505") {
+        return createErrorResponse("Ya existe un usuario con ese email", 409);
+      }
+      throw pgError;
+    }
 
     // Devolver el miembro completo
     const [result] = await sql`

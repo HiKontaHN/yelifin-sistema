@@ -220,7 +220,11 @@ function NewSaleContent() {
 
   // ── Cálculos TAX-INCLUSIVE ─────────────────────────────────────────
   const subtotal = cart.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
-  const itemDiscounts = cart.reduce((acc, i) => acc + i.discount, 0);
+  // i.discount es un porcentaje (0-100) por producto, igual que el global
+  const itemDiscounts = cart.reduce(
+    (acc, i) => acc + i.unit_price * i.quantity * (i.discount / 100),
+    0
+  );
   const appliedGlobal = discountType === "global" ? subtotal * (globalDiscount / 100) : 0;
   const appliedPerItem = discountType === "per_item" ? itemDiscounts : 0;
   const totalDiscount = appliedGlobal + appliedPerItem;
@@ -244,7 +248,10 @@ function NewSaleContent() {
           variant_id: i.variant_id ?? undefined,
           quantity: i.quantity,
           unit_price: i.unit_price,
-          discount: discountType === "per_item" ? i.discount : 0,
+          // El backend espera un monto por línea; convertimos el % a monto
+          discount: discountType === "per_item"
+            ? i.unit_price * i.quantity * (i.discount / 100)
+            : 0,
         })),
         discount: appliedGlobal,
         shipping_cost: shippingCost > 0 ? shippingCost : undefined,

@@ -1,7 +1,7 @@
 // app/api/reports/profit/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -19,6 +19,12 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.profit');
   if (denyFeature) return denyFeature;
+
+  // Este reporte es 100% costos/ganancias — requiere el permiso atómico
+  const perms = await getModulePermissions(auth.data, 'REPORTS');
+  if (!perms.showProfit) {
+    return createErrorResponse("Tu rol no tiene permiso para ver ganancias", 403);
+  }
 
   try {
     const { userId, orgId } = auth.data;

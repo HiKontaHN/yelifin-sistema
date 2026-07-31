@@ -1,7 +1,7 @@
 ﻿// app/(dashboard)/inventory/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import {
   Package, Warehouse, AlertTriangle, DollarSign,
   Plus, MoreVertical, Pencil, Trash2, PackagePlus,
   ShoppingCart, SlidersHorizontal, ArrowLeftRight,
-  ChevronDown, Layers, Box, Clock, Download, Upload, X, Eye,
+  ChevronDown, Layers, Box, Clock, Download, Upload, X, Eye, FileSpreadsheet,
 } from "lucide-react";
 import {
   Pagination, PaginationContent, PaginationItem,
@@ -50,6 +50,7 @@ import { EditProductVariantDialog } from "@/components/products/edit-product-var
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { AddInventoryDialog } from "@/components/products/add-inventory-dialog";
 import { AdjustInventoryDialog } from "@/components/products/adjust-inventory-dialog";
+import { ImportExcelModal } from "@/components/inventory/import-excel-modal";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { useAccounts } from "@/hooks/swr/use-accounts";
@@ -518,6 +519,7 @@ export default function InventoryPage() {
 
   // Diálogos de producto
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
@@ -535,7 +537,7 @@ export default function InventoryPage() {
   const [adjustVariant, setAdjustVariant] = useState<{ product: Product; variant: ProductVariant } | null>(null);
 
   const { accounts, mutate: mutateAccounts } = useAccounts();
-  const { creditCards } = useCreditCards();
+  const { creditCards, mutate: mutateCreditCards } = useCreditCards();
   const { format } = useCurrency();
   const { purchases, mutate: mutatePurchases } = usePurchases();
   const { features, subscription } = useMe();
@@ -577,6 +579,7 @@ export default function InventoryPage() {
     mutateInventory();
     mutatePurchases();
     mutateAccounts();
+    mutateCreditCards();
   };
 
   const handleDeleteVariant = async () => {
@@ -719,10 +722,9 @@ export default function InventoryPage() {
                   const isExpanded = expanded.has(item.product_id);
 
                   return (
-                    <>
+                    <Fragment key={item.product_id}>
                       {/* Fila del producto */}
                       <TableRow
-                        key={item.product_id}
                         className={cn(
                           "cursor-pointer select-none",
                           isExpanded && "bg-muted/20"
@@ -783,10 +785,13 @@ export default function InventoryPage() {
                         </TableCell>
                       </TableRow>
 
-                      {/* Acordeón: base + variantes */}
+                      {/* Acordeón: base + variantes (base oculto si su stock
+                          ya se convirtió en variante) */}
                       {hasVariants && isExpanded && (
                         <>
-                          <BaseTableRow item={item} format={format} showCosts={showCosts} />
+                          {Number(item.base_stock) > 0 && (
+                            <BaseTableRow item={item} format={format} showCosts={showCosts} />
+                          )}
                           {item.variants_stock.map((vs) => (
                             <VariantTableRow
                               key={`vs-${vs.variant_id}`}
@@ -804,7 +809,7 @@ export default function InventoryPage() {
                           ))}
                         </>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })
               )}
@@ -924,7 +929,9 @@ export default function InventoryPage() {
 
                       {isExpanded && (
                         <div className="mt-2 space-y-2">
-                          <BaseCard item={item} format={format} showCosts={showCosts} />
+                          {Number(item.base_stock) > 0 && (
+                            <BaseCard item={item} format={format} showCosts={showCosts} />
+                          )}
                           {item.variants_stock.map((vs) => (
                             <VariantCard
                               key={vs.variant_id}
@@ -1012,7 +1019,10 @@ export default function InventoryPage() {
         actions={[
           { label: "Nueva transacción", icon: ArrowLeftRight, onClick: () => setTransactionOpen(true) },
           { label: "Nueva venta", icon: ShoppingCart, onClick: () => push("/sales/new") },
-          ...(canEdit ? [{ label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) }] : []),
+          ...(canEdit ? [
+            { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },
+            { label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) },
+          ] : []),
           { label: "Exportar plantilla", icon: Download, onClick: () => setBatchExportOpen(true) },
           { label: "Cargar lote", icon: Upload, onClick: () => setBatchImportOpen(true) },
         ]}
@@ -1020,6 +1030,14 @@ export default function InventoryPage() {
 
       {/* ── Diálogos de producto ──────────────────────────────────── */}
       <CreateProductDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleSuccess} />
+      <ImportExcelModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        products={products}
+        accounts={accounts}
+        creditCards={creditCards}
+        onSuccess={handleSuccess}
+      />
       <EditProductDialog
         product={editProduct}
         open={!!editProduct}
@@ -1062,6 +1080,7 @@ export default function InventoryPage() {
         basePrice={variantProduct?.price ?? 0}
         baseSku={variantProduct?.sku ?? undefined}
         variantCount={variantProduct?.variants.length ?? 0}
+        baseStock={Number(inventory.find((i) => i.product_id === variantProduct?.id)?.base_stock ?? 0)}
         onSuccess={handleSuccess}
       />
       <EditProductVariantDialog

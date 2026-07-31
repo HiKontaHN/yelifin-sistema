@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, verifyResourceLimit } from "@/lib/auth";
+import { nextProductSkus, isProductSkuAvailable, skuPrefixFromName } from "@/lib/sku";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -125,17 +126,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const finalSku = sku?.trim()
-      || `PRD-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-
-    const [existing] = await sql`
-      SELECT id FROM products
-      WHERE org_id = ${orgId}
-        AND sku    = ${finalSku}
-      LIMIT 1
-    `;
-    if (existing) {
-      return createErrorResponse("Ya existe un producto con este SKU", 409);
+    // SKU: el enviado (verificado) o el siguiente disponible según las
+    // iniciales del nombre (PHK-001, PHK-002, ... rellenando huecos)
+    let finalSku = sku?.trim() || null;
+    if (finalSku) {
+      if (!(await isProductSkuAvailable(sql, orgId, finalSku))) {
+        return createErrorResponse("Ya existe un producto con este SKU", 409);
+      }
+    } else {
+      [finalSku] = await nextProductSkus(sql, orgId, skuPrefixFromName(name), 1);
     }
 
     const [product] = await sql`

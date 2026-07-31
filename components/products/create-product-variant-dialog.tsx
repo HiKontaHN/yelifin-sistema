@@ -24,6 +24,7 @@ import { ProductImageUpload } from "./product-image-upload";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./inventory-section/existing-form";
 import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
 import { localDateToISO } from "@/lib/date-utils";
+import { useDebounce } from "@/hooks/use-debounce";
 
 // ── Schema ─────────────────────────────────────────────────────────────
 
@@ -48,13 +49,16 @@ type Props = {
   basePrice:     number;
   baseSku?:      string;
   variantCount?: number;
+  /** Stock actual del producto base (sin variante). Si es la primera
+   *  variante y hay stock, se pedirá un nombre para convertirlo. */
+  baseStock?:    number;
   onSuccess:     () => void;
 };
 
 // ── Componente ─────────────────────────────────────────────────────────
 
 export function CreateProductVariantDialog({
-  open, onOpenChange, productId, productName, basePrice, baseSku, variantCount = 0, onSuccess,
+  open, onOpenChange, productId, productName, basePrice, baseSku, variantCount = 0, baseStock = 0, onSuccess,
 }: Props) {
   const { firebaseUser }              = useAuth();
   const { createVariant, isCreating } = useCreateVariant(productId);
@@ -67,6 +71,13 @@ export function CreateProductVariantDialog({
   ]);
   const [inventoryOpen,    setInventoryOpen]    = useState(false);
   const [inventoryData,    setInventoryData]    = useState<ExistingFormValue>(defaultExistingForm());
+  const [baseVariantName,  setBaseVariantName]  = useState("");
+  const [baseSkuSuggested, setBaseSkuSuggested] = useState<string | null>(null);
+  const [skuStatus,        setSkuStatus]        = useState<"unknown" | "checking" | "available" | "taken">("unknown");
+
+  // Primera variante de un producto con stock: el stock base se convierte
+  // en una variante con nombre propio (el producto queda como "padre").
+  const needsBaseConversion = variantCount === 0 && Number(baseStock) > 0;
 
   const {
     register, handleSubmit, reset, watch,
@@ -79,13 +90,66 @@ export function CreateProductVariantDialog({
   const priceOverrideValue = watch("price_override");
   const hasCustomPrice     = priceOverrideValue !== "" && priceOverrideValue !== undefined;
 
-  // Auto-rellenar SKU al abrir
+  // Auto-rellenar SKU al abrir con sugerencias verificadas del servidor.
+  // Con conversión de base: el stock actual toma la primera (-01) y la
+  // variante nueva la segunda (-02).
   useEffect(() => {
-    if (open && baseSku) {
-      const seq = String(variantCount + 1).padStart(3, "0");
-      reset((prev) => ({ ...prev, sku: `${baseSku}-${seq}` }));
+    if (!open || !productId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await firebaseUser?.getIdToken();
+        const res = await fetch(
+          `/api/products/${productId}/variants/suggest-sku?count=2`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        const suggestions: string[] = json.data?.suggestions ?? [];
+        if (cancelled || suggestions.length === 0) return;
+        setBaseSkuSuggested(needsBaseConversion ? suggestions[0] : null);
+        const suggested = needsBaseConversion
+          ? (suggestions[1] ?? suggestions[0])
+          : suggestions[0];
+        reset((prev) => ({ ...prev, sku: suggested }));
+      } catch {
+        // Fallback local si el endpoint falla
+        if (!cancelled && baseSku) {
+          const seq = String(variantCount + 1).padStart(2, "0");
+          reset((prev) => ({ ...prev, sku: `${baseSku}-${seq}` }));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, productId, needsBaseConversion]);
+
+  // Verificación en vivo de disponibilidad del SKU escrito
+  const skuValue = watch("sku");
+  const debouncedSku = useDebounce(skuValue?.trim() ?? "", 400);
+  useEffect(() => {
+    if (!open || !productId || !debouncedSku) {
+      setSkuStatus("unknown");
+      return;
     }
-  }, [open, baseSku, variantCount, reset]);
+    let cancelled = false;
+    setSkuStatus("checking");
+    (async () => {
+      try {
+        const token = await firebaseUser?.getIdToken();
+        const res = await fetch(
+          `/api/products/${productId}/variants/suggest-sku?check=${encodeURIComponent(debouncedSku)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const json = await res.json();
+        if (!cancelled) setSkuStatus(json.data?.available ? "available" : "taken");
+      } catch {
+        if (!cancelled) setSkuStatus("unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSku, open, productId]);
 
   // ── Atributos dinámicos ────────────────────────────────────────────
 
@@ -129,6 +193,16 @@ export function CreateProductVariantDialog({
       return;
     }
 
+    if (needsBaseConversion && !baseVariantName.trim()) {
+      toast.error("Indica el nombre de la variante que representa el stock actual");
+      return;
+    }
+
+    if (skuStatus === "taken") {
+      toast.error("El SKU ya está ocupado, elige otro");
+      return;
+    }
+
     try {
       let image_url: string | null = null;
       if (imageFile) {
@@ -150,6 +224,14 @@ export function CreateProductVariantDialog({
                           : null,
         attributes:     attributesObj,
         image_url,
+        ...(needsBaseConversion
+          ? {
+              base_conversion: {
+                variant_name: baseVariantName.trim(),
+                sku: baseSkuSuggested ?? undefined,
+              },
+            }
+          : {}),
       });
 
       // Registrar inventario inicial si se configuró
@@ -198,6 +280,9 @@ export function CreateProductVariantDialog({
     setIsUploadingImage(false);
     setInventoryOpen(false);
     setInventoryData(defaultExistingForm());
+    setBaseVariantName("");
+    setBaseSkuSuggested(null);
+    setSkuStatus("unknown");
     onOpenChange(false);
   };
 
@@ -249,6 +334,39 @@ export function CreateProductVariantDialog({
         </>
       }
     >
+            {/* Conversión del stock base en variante */}
+            {needsBaseConversion && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800/40 p-4 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="size-7 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                    <Boxes className="size-4 text-amber-600" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                      Este producto ya tiene {baseStock} unidad{Number(baseStock) !== 1 ? "es" : ""} en stock
+                    </p>
+                    <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                      Ese stock se convertirá en una variante propia, para que todas las
+                      presentaciones aparezcan juntas al vender. ¿Qué variante representa
+                      el stock actual?
+                    </p>
+                  </div>
+                </div>
+                <Input
+                  value={baseVariantName}
+                  onChange={(e) => setBaseVariantName(e.target.value)}
+                  placeholder="Ej: Blanco / Original / Talla única"
+                  disabled={isLoading}
+                  className="h-11 text-base bg-background"
+                />
+                {baseSkuSuggested && (
+                  <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                    SKU asignado: <span className="font-mono font-medium">{baseSkuSuggested}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Imagen */}
             <div className="space-y-2">
               <FieldLabel icon={<ImageIcon className="size-3.5" />} label="Imagen" optional />
@@ -280,6 +398,12 @@ export function CreateProductVariantDialog({
               />
               {errors.sku && (
                 <p className="text-xs text-destructive">{errors.sku.message}</p>
+              )}
+              {!errors.sku && skuStatus === "taken" && (
+                <p className="text-xs text-destructive">Este SKU ya está ocupado</p>
+              )}
+              {!errors.sku && skuStatus === "available" && (
+                <p className="text-xs text-green-600">SKU disponible</p>
               )}
             </div>
 

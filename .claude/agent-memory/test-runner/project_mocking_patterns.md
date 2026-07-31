@@ -1,5 +1,5 @@
 ---
-name: Mocking patterns for API route tests in Konta
+name: Mocking patterns for API route tests in HiKonta
 description: How to mock Neon sql, Firebase Auth, and verifyAuth for unit testing API route handlers
 type: project
 ---

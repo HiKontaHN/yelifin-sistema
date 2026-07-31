@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -61,7 +61,7 @@ async function generatePDF(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...C_GRAY_SEC);
-    doc.text(`Konta SaaS  ·  Snapshot al ${today}`, MARGIN, 16);
+    doc.text(`HiKonta SaaS  ·  Snapshot al ${today}`, MARGIN, 16);
     doc.text(`Pág. ${pageNum}`, PAGE_W - MARGIN, 16, { align: "right" });
     doc.setDrawColor(...C_PRIMARY);
     doc.setLineWidth(0.4);
@@ -75,7 +75,7 @@ async function generatePDF(
     doc.line(MARGIN, pY - 2, PAGE_W - MARGIN, pY - 2);
     doc.setFontSize(7);
     doc.setTextColor(130, 130, 130);
-    doc.text(`Generado el ${today} · Konta SaaS`, MARGIN, pY);
+    doc.text(`Generado el ${today} · HiKonta SaaS`, MARGIN, pY);
     doc.text("Confidencial — solo para uso interno", PAGE_W - MARGIN, pY, { align: "right" });
     doc.setTextColor(0, 0, 0);
   }
@@ -279,6 +279,12 @@ export async function POST(request: NextRequest) {
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.inventory');
   if (denyFeature) return denyFeature;
+
+  // El documento exportado incluye costos y márgenes — requiere ambos permisos
+  const perms = await getModulePermissions(auth.data, 'REPORTS');
+  if (!perms.showCosts || !perms.showProfit) {
+    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y márgenes)", 403);
+  }
 
   try {
     const { userId, orgId } = auth.data;

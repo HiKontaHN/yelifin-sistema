@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -24,6 +24,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { ProductImageUpload } from "./product-image-upload";
 import { InventorySection, InventorySectionValue } from "./inventory-section";
 import { localDateToISO } from "@/lib/date-utils";
+import { useDebounce } from "@/hooks/use-debounce";
 
 const schema = z.object({
   name:        z.string().min(1, "El nombre es requerido"),
@@ -70,9 +71,66 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   const nameValue    = watch("name");
   const isService    = watch("is_service") ?? false;
 
-  const suggestedSku = nameValue
-    ? nameValue.split(" ").map((w) => w[0]?.toUpperCase() ?? "").join("").slice(0, 4) + "-001"
-    : "";
+  const [suggestedSku, setSuggestedSku] = useState("");
+  const [skuStatus,    setSkuStatus]    = useState<"unknown" | "checking" | "available" | "taken">("unknown");
+
+  // Sugerencia verificada por el servidor a partir del nombre
+  // (PHK-001, PHK-002, ... rellenando huecos)
+  const debouncedName = useDebounce(nameValue?.trim() ?? "", 400);
+  useEffect(() => {
+    if (!open || !debouncedName) {
+      setSuggestedSku("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await firebaseUser?.getIdToken();
+        const res = await fetch(
+          `/api/products/suggest-sku?name=${encodeURIComponent(debouncedName)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (!cancelled) setSuggestedSku(json.data?.suggestions?.[0] ?? "");
+      } catch {
+        // Fallback local si el endpoint falla
+        if (!cancelled) {
+          const prefix = debouncedName.split(/\s+/).map((w: string) => w[0]?.toUpperCase() ?? "").join("").slice(0, 4);
+          setSuggestedSku(prefix ? `${prefix}-001` : "");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedName, open]);
+
+  // Verificación en vivo de disponibilidad del SKU escrito
+  const skuValue = watch("sku");
+  const debouncedSku = useDebounce(skuValue?.trim() ?? "", 400);
+  useEffect(() => {
+    if (!open || !debouncedSku) {
+      setSkuStatus("unknown");
+      return;
+    }
+    let cancelled = false;
+    setSkuStatus("checking");
+    (async () => {
+      try {
+        const token = await firebaseUser?.getIdToken();
+        const res = await fetch(
+          `/api/products/suggest-sku?check=${encodeURIComponent(debouncedSku)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const json = await res.json();
+        if (!cancelled) setSkuStatus(json.data?.available ? "available" : "taken");
+      } catch {
+        if (!cancelled) setSkuStatus("unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSku, open]);
 
   const uploadImage = async (file: File): Promise<string> => {
     const path       = `products/${firebaseUser!.uid}/${Date.now()}.webp`;
@@ -88,6 +146,10 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     }
     if (!data.is_service && inventory?.mode === "purchase" && !inventory.data.account_id) {
       toast.error("Selecciona una cuenta para la compra");
+      return;
+    }
+    if (skuStatus === "taken") {
+      toast.error("El SKU ya está ocupado, elige otro");
       return;
     }
 
@@ -159,6 +221,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     setImageFile(null);
     setInventory(null);
     setIsUploadingImage(false);
+    setSuggestedSku("");
+    setSkuStatus("unknown");
     onOpenChange(false);
   };
 
@@ -272,6 +336,12 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                 className="h-11 text-base font-mono"
               />
               {errors.sku && <p className="text-xs text-destructive">{errors.sku.message}</p>}
+              {!errors.sku && skuStatus === "taken" && (
+                <p className="text-xs text-destructive">Este SKU ya está ocupado</p>
+              )}
+              {!errors.sku && skuStatus === "available" && (
+                <p className="text-xs text-green-600">SKU disponible</p>
+              )}
               {suggestedSku && (
                 <p className="text-xs text-muted-foreground">
                   Sugerido:{" "}

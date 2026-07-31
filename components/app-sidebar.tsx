@@ -2,26 +2,23 @@
 "use client"
 
 import {
-  BarChart3, Box, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
-  Home, ShoppingCart, Users, Warehouse, Settings,
-  LogOut, User, Building2, Crown, Receipt,
+  BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
+  Home, ShoppingCart, Users, Package, PackageOpen, Settings,
+  User, Building2, Receipt,
   Shield, Tags, Wallet, ArrowLeftRight, UserCog,
 } from "lucide-react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { signOut } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { usePathname } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useMe }   from "@/hooks/swr/use-me"
 import type { OrgModule } from "@/types"
-import { toast } from "sonner"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { KontaIcon } from "@/components/shared/konta-icon"
-import { KontaTitle } from "@/components/shared/konta-title"
+import { HiKontaIcon } from "@/components/shared/hikonta-icon"
+import { HiKontaTitle } from "@/components/shared/hikonta-title"
 
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
+  Sidebar, SidebarContent, SidebarGroup,
   SidebarGroupContent, SidebarGroupLabel, SidebarHeader,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
@@ -30,15 +27,8 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ThemeToggle }   from "@/components/theme-toggle"
-import { PrivacyToggle } from "@/components/privacy-toggle"
 
 // ── Plan-specific nav (finanzas plan: flat finance items) ────────────────
 const financesOnlyNav = [
@@ -50,14 +40,14 @@ const financesOnlyNav = [
 // ── Nav config ──────────────────────────────────────────────────────────
 // `feature` opcional: el ítem/submenú solo se muestra si el plan la incluye.
 type NavItemDef = {
-  title: string; url: string; icon: any; module?: OrgModule; feature?: string;
+  title: string; url: string; icon: any; activeIcon?: any; module?: OrgModule; feature?: string;
   submenu?: Array<{ title: string; url: string; feature?: string }>;
 };
 
 const mainNav: NavItemDef[] = [
   { title: "Dashboard",    url: "/dashboard",  icon: Home, module: "DASHBOARD" as OrgModule },
   {
-    title: "Inventario", url: "/inventory", icon: Warehouse, module: "INVENTORY",
+    title: "Inventario", url: "/inventory", icon: Package, activeIcon: PackageOpen, module: "INVENTORY",
     submenu: [
       { title: "Productos",    url: "/inventory" },
       { title: "Movimientos",  url: "/inventory/movements" },
@@ -81,7 +71,7 @@ const mainNav: NavItemDef[] = [
     ],
   },
   { title: "Eventos",     url: "/events",   icon: Calendar,  module: "EVENTS" },
-  { title: "Suministros", url: "/supplies", icon: Box,        module: "INVENTORY" },
+  { title: "Suministros", url: "/supplies", icon: ShoppingBag, module: "INVENTORY" },
 ]
 
 const secondaryNav: NavItemDef[] = [
@@ -131,17 +121,19 @@ function CollapsedItem({
   closeOnMobile: () => void;
   pathname: string;
 }) {
+  const active = isActive(item.url)
+  const Icon = active && item.activeIcon ? item.activeIcon : item.icon
   return (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarMenuButton
             asChild
-            isActive={isActive(item.url)}
+            isActive={active}
             className="justify-center"
           >
             <Link href={item.submenu ? item.submenu[0].url : item.url} onClick={closeOnMobile}>
-              <item.icon className="size-4" />
+              <Icon className="size-4" />
             </Link>
           </SidebarMenuButton>
         </TooltipTrigger>
@@ -185,17 +177,19 @@ function ExpandedItem({
   closeOnMobile: () => void;
   pathname: string;
 }) {
+  const active = isActive(item.url)
+  const Icon = active && item.activeIcon ? item.activeIcon : item.icon
   return (
     <SidebarMenuItem>
       {item.submenu ? (
-        <Collapsible defaultOpen={isActive(item.url)} className="group/collapsible">
+        <Collapsible defaultOpen={active} className="group/collapsible">
           <CollapsibleTrigger asChild>
             <SidebarMenuButton
-              isActive={isActive(item.url)}
+              isActive={active}
               className="group/navbtn h-11 hover:rounded-xl data-[active=true]:rounded-xl"
             >
               <span className={navIconCls}>
-                <item.icon className="size-4 shrink-0" />
+                <Icon className="size-4 shrink-0" />
               </span>
               <span>{item.title}</span>
               <span className={cn(navIconCls, "ml-auto")}>
@@ -218,12 +212,12 @@ function ExpandedItem({
       ) : (
         <SidebarMenuButton
           asChild
-          isActive={isActive(item.url)}
+          isActive={active}
           className="group/navbtn h-11 hover:rounded-xl data-[active=true]:rounded-xl"
         >
           <Link href={item.url} onClick={closeOnMobile}>
             <span className={navIconCls}>
-              <item.icon className="size-4 shrink-0" />
+              <Icon className="size-4 shrink-0" />
             </span>
             <span>{item.title}</span>
           </Link>
@@ -236,11 +230,10 @@ function ExpandedItem({
 // ── Component ───────────────────────────────────────────────────────────
 export function AppSidebar() {
   const pathname = usePathname()
-  const { push } = useRouter()
-  const { user, firebaseUser }  = useAuth()
+  const { user }  = useAuth()
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar()
 
-  const { isOwner, org, getModulePermissions, isLoading: meIsLoading } = useMe()
+  const { isOwner, getModulePermissions, isLoading: meIsLoading } = useMe()
   const isAdmin      = user?.subscription?.plan?.slug === "admin"
   const planSlug     = user?.subscription?.plan?.slug ?? null
   const isFinanzas   = planSlug === "finanzas"
@@ -252,30 +245,6 @@ export function AppSidebar() {
     if (url === "/dashboard") return pathname === url || pathname === "/"
     return pathname.startsWith(url)
   }
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth)
-      document.cookie = "token=; Max-Age=0; path=/"
-      toast.success("Sesión cerrada exitosamente")
-      closeOnMobile()
-      push("/")
-    } catch {
-      toast.error("Error al cerrar sesión")
-    }
-  }
-
-  const displayName =
-    user?.profile?.business_name      ||
-    org?.name                         ||
-    firebaseUser?.displayName         ||
-    firebaseUser?.email?.split("@")[0] ||
-    "Usuario"
-
-  const getUserInitials = () =>
-    displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
-
-
 
   const canViewModule = (module?: OrgModule) => {
     if (!module || meIsLoading) return true
@@ -320,8 +289,8 @@ export function AppSidebar() {
               onClick={closeOnMobile}
               className="flex items-center gap-2"
             >
-              <KontaIcon className="size-8" />
-              {!isCollapsed && <KontaTitle className="h-5" />}
+              <HiKontaIcon className="size-8" />
+              {!isCollapsed && <HiKontaTitle className="h-5" />}
             </Link>
 
             <button
@@ -392,79 +361,6 @@ export function AppSidebar() {
           </SidebarGroup>
 
         </SidebarContent>
-
-        {/* ── Footer ── */}
-        <SidebarFooter className="border-t border-sidebar-border p-3 gap-1">
-          <PrivacyToggle isCollapsed={isCollapsed} />
-          <ThemeToggle isCollapsed={isCollapsed} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={`flex w-full items-center rounded-lg p-2 hover:bg-sidebar-accent transition-colors ${isCollapsed ? "justify-center" : "gap-3"}`}>
-                <Avatar className="size-8 shrink-0">
-                  <AvatarImage
-                    src={org?.logo_url ?? user?.profile?.business_logo_url ?? undefined}
-                    alt={displayName}
-                    className="object-cover"
-                  />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                    {getUserInitials()}
-                  </AvatarFallback>
-                </Avatar>
-                {!isCollapsed && (
-                  <>
-                    <div className="flex flex-1 flex-col items-start text-sm min-w-0">
-                      <span className="font-medium text-sidebar-foreground truncate w-full">{displayName}</span>
-                      <span className="text-xs text-muted-foreground truncate w-full">{firebaseUser?.email}</span>
-                    </div>
-                    <ChevronDown className="size-4 text-muted-foreground shrink-0" />
-                  </>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent
-              side={isCollapsed ? "right" : "top"}
-              align={isCollapsed ? "start" : "end"}
-              className="w-56"
-            >
-              <div className="px-2 py-2 border-b mb-1">
-                <p className="text-sm font-medium truncate">{displayName}</p>
-                <p className="text-xs text-muted-foreground truncate">{firebaseUser?.email}</p>
-                {isAdmin ? (
-                  <span className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-emerald-600">
-                    <Shield className="size-3" /> Admin
-                  </span>
-                ) : (
-                  user?.subscription?.plan?.name && (
-                    <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-primary font-medium">
-                      <Crown className="size-3" /> Plan {user.subscription.plan.name}
-                    </span>
-                  )
-                )}
-              </div>
-
-              <DropdownMenuItem asChild>
-                <Link href="/settings/profile" onClick={closeOnMobile} className="flex items-center cursor-pointer">
-                  <User className="mr-2 size-4" /> Mi Perfil
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/organization" onClick={closeOnMobile} className="flex items-center cursor-pointer">
-                  <Building2 className="mr-2 size-4" /> Mi Negocio
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/billing" onClick={closeOnMobile} className="flex items-center cursor-pointer">
-                  <Receipt className="mr-2 size-4" /> Suscripción
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
-                <LogOut className="mr-2 size-4" /> Cerrar Sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarFooter>
 
       </Sidebar>
     </TooltipProvider>

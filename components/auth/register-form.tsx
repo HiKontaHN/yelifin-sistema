@@ -78,7 +78,7 @@ export function RegisterForm() {
       }
 
       toast.success(
-        "¡Bienvenido a Konta! Revisa tu correo para verificar tu cuenta.",
+        "¡Bienvenido a HiKonta! Revisa tu correo para verificar tu cuenta.",
         { duration: 5000 }
       );
 
@@ -111,7 +111,7 @@ export function RegisterForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <div className="space-y-2">
         <Label htmlFor="name">Nombre completo</Label>
         <Input
@@ -120,6 +120,7 @@ export function RegisterForm() {
           autoComplete="name"
           {...register("name")}
           disabled={isLoading}
+          className="h-12 rounded-xl border-slate-200 bg-white text-base"
         />
         {errors.name && (
           <p className="text-sm text-destructive">{errors.name.message}</p>
@@ -135,6 +136,7 @@ export function RegisterForm() {
           autoComplete="email"
           {...register("email")}
           disabled={isLoading}
+          className="h-12 rounded-xl border-slate-200 bg-white text-base"
         />
         {errors.email && (
           <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -149,6 +151,7 @@ export function RegisterForm() {
           autoComplete="organization"
           {...register("business_name")}
           disabled={isLoading}
+          className="h-12 rounded-xl border-slate-200 bg-white text-base"
         />
         {errors.business_name && (
           <p className="text-sm text-destructive">
@@ -167,11 +170,12 @@ export function RegisterForm() {
             autoComplete="new-password"
             {...register("password")}
             disabled={isLoading}
+            className="h-12 rounded-xl border-slate-200 bg-white pr-10 text-base"
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             tabIndex={-1}
           >
             {showPassword ? (
@@ -196,13 +200,14 @@ export function RegisterForm() {
             autoComplete="new-password"
             {...register("confirmPassword")}
             disabled={isLoading}
+            className="h-12 rounded-xl border-slate-200 bg-white pr-10 text-base"
           />
           <button
             type="button"
             onClick={() =>
               setShowConfirmPassword(!showConfirmPassword)
             }
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             tabIndex={-1}
           >
             {showConfirmPassword ? (
@@ -219,7 +224,7 @@ export function RegisterForm() {
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button type="submit" className="h-12 w-full rounded-xl bg-[#8cff00] font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
         {isLoading ? (
           <>
             <Loader2 className="mr-2 size-4 animate-spin" />
