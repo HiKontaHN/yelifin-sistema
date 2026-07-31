@@ -1,5 +1,5 @@
 ---
-name: Test setup – Jest + ts-jest for Konta
+name: Test setup – Jest + ts-jest for HiKonta
 description: Jest test infrastructure installed; how to run, mock, and structure tests in this Next.js App Router project
 type: project
 ---

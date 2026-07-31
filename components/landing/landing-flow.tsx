@@ -29,7 +29,7 @@ export function LandingFlow() {
             ¿Cómo funciona?
           </span>
           <h2 className="mt-4 text-3xl font-normal text-black sm:text-4xl">
-            Tu día con Konta se verá así
+            Tu día con HiKonta se verá así
           </h2>
         </div>
 

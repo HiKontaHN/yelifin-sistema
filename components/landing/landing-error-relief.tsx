@@ -1,4 +1,4 @@
-import { KontaIcon } from "@/components/shared/konta-icon";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 
 const doubts = [
   "¿Ya me pagó?",
@@ -39,8 +39,8 @@ export function LandingErrorRelief() {
             <div className="text-center">
               <div className="flex items-center justify-center gap-3 text-4xl font-normal leading-none text-zinc-900 sm:text-5xl">
                 <span>Con</span>
-                <KontaIcon className="size-12 rounded-full sm:size-14" />
-                <span className="font-semibold">konta</span>
+                <HiKontaIcon className="size-12 rounded-full sm:size-14" />
+                <span className="font-semibold">hikonta</span>
               </div>
               <div className="mt-2 text-4xl font-extrabold leading-none text-[#0068ff] sm:text-5xl">
                 evita errores.

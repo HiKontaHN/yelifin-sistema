@@ -14,8 +14,8 @@ import { useMe }   from "@/hooks/swr/use-me"
 import type { OrgModule } from "@/types"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { KontaIcon } from "@/components/shared/konta-icon"
-import { KontaTitle } from "@/components/shared/konta-title"
+import { HiKontaIcon } from "@/components/shared/hikonta-icon"
+import { HiKontaTitle } from "@/components/shared/hikonta-title"
 
 import {
   Sidebar, SidebarContent, SidebarGroup,
@@ -289,8 +289,8 @@ export function AppSidebar() {
               onClick={closeOnMobile}
               className="flex items-center gap-2"
             >
-              <KontaIcon className="size-8" />
-              {!isCollapsed && <KontaTitle className="h-5" />}
+              <HiKontaIcon className="size-8" />
+              {!isCollapsed && <HiKontaTitle className="h-5" />}
             </Link>
 
             <button

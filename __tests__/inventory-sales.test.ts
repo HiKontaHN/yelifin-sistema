@@ -75,7 +75,7 @@ function makeAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     roleName: "Dueño",
     isOwner: true,
     firebaseUid: "uid-test",
-    email: "test@konta.app",
+    email: "test@hikonta.app",
     displayName: "Test User",
     emailVerified: true,
     isActive: true,

@@ -78,7 +78,7 @@ export function RegisterForm() {
       }
 
       toast.success(
-        "¡Bienvenido a Konta! Revisa tu correo para verificar tu cuenta.",
+        "¡Bienvenido a HiKonta! Revisa tu correo para verificar tu cuenta.",
         { duration: 5000 }
       );
 

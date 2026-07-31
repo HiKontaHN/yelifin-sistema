@@ -1,11 +1,11 @@
 ﻿// app/(legal)/privacy/page.tsx
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { KontaTitle } from "@/components/shared/konta-title";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 
 export const metadata = {
-  title: "Política de Privacidad — Konta",
-  description: "Política de privacidad y tratamiento de datos personales de Konta.",
+  title: "Política de Privacidad — HiKonta",
+  description: "Política de privacidad y tratamiento de datos personales de HiKonta.",
 };
 
 export default function PrivacyPage() {
@@ -20,7 +20,7 @@ export default function PrivacyPage() {
             <ArrowLeft className="size-4" />
             Volver al inicio
           </Link>
-          <KontaTitle className="h-5" />
+          <HiKontaTitle className="h-5" />
         </div>
       </header>
 
@@ -35,12 +35,12 @@ export default function PrivacyPage() {
         <section className="space-y-4 text-sm leading-relaxed md:text-base">
 
           <p>
-            Esta Política de Privacidad explica cómo Konta recopila, utiliza, almacena y protege la información asociada a tu cuenta y al uso de la plataforma Konta.
+            Esta Política de Privacidad explica cómo HiKonta recopila, utiliza, almacena y protege la información asociada a tu cuenta y al uso de la plataforma HiKonta.
           </p>
 
           <h2 className="text-lg font-semibold mt-6">1. Quiénes Somos</h2>
           <p>
-            Konta opera la plataforma Konta, un sistema de gestión empresarial en la nube para emprendedores y pequeños negocios, disponible en hikonta.com.
+            HiKonta opera la plataforma HiKonta, un sistema de gestión empresarial en la nube para emprendedores y pequeños negocios, disponible en hihikonta.com.
           </p>
 
           <h2 className="text-lg font-semibold mt-6">2. Información que Recopilamos</h2>

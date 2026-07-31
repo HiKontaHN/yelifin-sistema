@@ -8,8 +8,8 @@ import { setTokenCookie } from '@/lib/token-cookie';
 import { useAuth } from '@/hooks/use-auth';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
 import { Button } from '@/components/ui/button';
-import { KontaIcon } from '@/components/shared/konta-icon';
-import { KontaTitle } from '@/components/shared/konta-title';
+import { HiKontaIcon } from '@/components/shared/hikonta-icon';
+import { HiKontaTitle } from '@/components/shared/hikonta-title';
 import { Mail, LogOut, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -88,8 +88,8 @@ export default function VerifyEmailPage() {
         <div className="bg-background rounded-2xl border shadow-sm p-8 space-y-6">
 
           <div className="flex items-center gap-2">
-            <KontaIcon className="size-10 shadow-lg shadow-primary/50 rounded-lg" />
-            <KontaTitle className="h-6" />
+            <HiKontaIcon className="size-10 shadow-lg shadow-primary/50 rounded-lg" />
+            <HiKontaTitle className="h-6" />
           </div>
 
           <div className="space-y-3">

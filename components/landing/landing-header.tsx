@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, LayoutDashboard, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { KontaIcon } from "@/components/shared/konta-icon";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
@@ -24,10 +24,10 @@ export function LandingHeader() {
       <div className="relative mx-auto flex max-w-7xl items-center justify-center px-4">
         <nav className="flex h-12 w-full max-w-6xl items-center justify-between rounded-xl bg-[#2A2A2FCC] px-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] sm:h-14 sm:px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            <KontaIcon className="size-8 rounded-lg shadow-lg shadow-blue-500/30 sm:size-9" />
+            <HiKontaIcon className="size-8 rounded-lg shadow-lg shadow-blue-500/30 sm:size-9" />
             <div
               role="img"
-              aria-label="Konta"
+              aria-label="HiKonta"
               className="h-5 w-20 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat invert sm:h-6 sm:w-24"
             />
           </Link>

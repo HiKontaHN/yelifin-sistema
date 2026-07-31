@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Sparkles, WalletCards } from "lucide-react";
 import { RegisterForm } from "@/components/auth/register-form";
-import { KontaIcon } from "@/components/shared/konta-icon";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { useRedirectIfAuthenticated } from "@/hooks/use-redirect-if-authenticated";
@@ -28,10 +28,10 @@ export default function RegisterPage() {
         <section className="flex items-center justify-center px-5 py-24 sm:px-8 lg:py-12">
           <div className="w-full max-w-md">
             <Link href="/" className="mb-9 flex items-center gap-2">
-              <KontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
+              <HiKontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
               <div
                 role="img"
-                aria-label="Konta"
+                aria-label="HiKonta"
                 className="h-6 w-24 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat"
               />
             </Link>
@@ -70,7 +70,7 @@ function AuthRegisterPanel() {
       <div className="relative flex h-full min-h-screen flex-col justify-center px-12 py-16">
         <div className="max-w-xl">
           <h2 className="text-5xl font-normal leading-tight text-black">
-            Bienvenido a <span className="rounded-md bg-[#0068ff] px-2 pb-1 text-white">Konta</span>
+            Bienvenido a <span className="rounded-md bg-[#0068ff] px-2 pb-1 text-white">HiKonta</span>
           </h2>
           <p className="mt-5 max-w-lg text-lg leading-8 text-slate-700">
             La herramienta para emprendedores que venden por redes sociales y quieren menos desorden, menos errores y mejores decisiones.
@@ -101,8 +101,8 @@ function AuthRegisterPanel() {
 
         <div className="absolute bottom-[-6%] right-[-12%] h-[55%] w-[78%]">
           <Image
-            src="/landing/hero%20konta.png"
-            alt="Dashboard de Konta"
+            src="/landing/hero%20hikonta.png"
+            alt="Dashboard de HiKonta"
             fill
             sizes="55vw"
             className="object-contain object-right-bottom opacity-95 drop-shadow-2xl"

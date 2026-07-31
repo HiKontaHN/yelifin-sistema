@@ -19,7 +19,7 @@ export function LandingPricing() {
             Empieza simple. Crece cuando lo necesites.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-            Konta esta pensado para emprendedores que quieren ordenar su negocio sin complicarse con herramientas enormes.
+            HiKonta esta pensado para emprendedores que quieren ordenar su negocio sin complicarse con herramientas enormes.
           </p>
         </div>
 

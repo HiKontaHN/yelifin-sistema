@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
-import { KontaIcon } from "@/components/shared/konta-icon";
+import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { useRedirectIfAuthenticated } from "@/hooks/use-redirect-if-authenticated";
@@ -28,10 +28,10 @@ export default function LoginPage() {
         <section className="flex items-center justify-center px-5 py-24 sm:px-8 lg:py-12">
           <div className="w-full max-w-md">
             <Link href="/" className="mb-10 flex items-center gap-2">
-              <KontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
+              <HiKontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
               <div
                 role="img"
-                aria-label="Konta"
+                aria-label="HiKonta"
                 className="h-6 w-24 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat"
               />
             </Link>
@@ -104,8 +104,8 @@ function AuthVisualPanel({
 
         <div className="absolute bottom-[-6%] right-[-12%] h-[55%] w-[78%]">
           <Image
-            src="/landing/hero%20konta.png"
-            alt="Dashboard de Konta"
+            src="/landing/hero%20hikonta.png"
+            alt="Dashboard de HiKonta"
             fill
             sizes="55vw"
             className="object-contain object-right-bottom opacity-95 drop-shadow-2xl"

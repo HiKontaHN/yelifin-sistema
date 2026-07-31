@@ -101,14 +101,14 @@ export async function POST(request: NextRequest) {
     `;
 
     // Actualizar la cookie de sesión que cachea el proxy (mismo formato
-    // que konta_session en proxy.ts) para que la navegación al dashboard
+    // que hikonta_session en proxy.ts) para que la navegación al dashboard
     // no repita el fetch de sesión.
     const res = NextResponse.json(
       { message: "Onboarding completado", data: { currency } },
       { status: 201 }
     );
     res.cookies.set(
-      "konta_session",
+      "hikonta_session",
       `1|${auth.data.subscription.planSlug ?? ""}|${auth.data.firebaseUid}`,
       {
         httpOnly: true,

@@ -13,8 +13,8 @@ import { setTokenCookie } from '@/lib/token-cookie';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { KontaIcon } from '@/components/shared/konta-icon';
-import { KontaTitle } from '@/components/shared/konta-title';
+import { HiKontaIcon } from '@/components/shared/hikonta-icon';
+import { HiKontaTitle } from '@/components/shared/hikonta-title';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
 import { CheckCircle2, XCircle, KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react';
 
@@ -43,8 +43,8 @@ function ActionCard({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-md">
         <div className="bg-background rounded-2xl border shadow-sm p-8 space-y-6">
           <div className="flex items-center gap-2">
-            <KontaIcon className="size-10 shadow-lg shadow-primary/50 rounded-lg" />
-            <KontaTitle className="h-6" />
+            <HiKontaIcon className="size-10 shadow-lg shadow-primary/50 rounded-lg" />
+            <HiKontaTitle className="h-6" />
           </div>
           {children}
         </div>
@@ -170,7 +170,7 @@ function AuthActionHandler() {
           </div>
           <h1 className="text-2xl font-bold">¡Email verificado!</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Tu cuenta ha sido activada correctamente. Ya puedes continuar usando Konta.
+            Tu cuenta ha sido activada correctamente. Ya puedes continuar usando HiKonta.
           </p>
         </div>
         <Button className="w-full" onClick={() => push(auth.currentUser ? '/verify-email' : '/login')}>

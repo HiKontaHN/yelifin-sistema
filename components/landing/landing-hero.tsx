@@ -45,8 +45,8 @@ export function LandingHero() {
         <div className="relative z-10 mt-8 min-h-90 lg:absolute lg:bottom-0 lg:right-[-4%] lg:top-16 lg:mt-0 lg:h-[82%] lg:w-[62%]">
           <div className="absolute left-0 top-16 h-60 w-60 rounded-full bg-sky-100 blur-3xl lg:left-8" />
           <Image
-            src="/landing/hero%20konta.png"
-            alt="Dashboard de Konta en telefono y computadora"
+            src="/landing/hero%20hikonta.png"
+            alt="Dashboard de HiKonta en telefono y computadora"
             fill
             priority
             sizes="(min-width: 1024px) 62vw, 100vw"

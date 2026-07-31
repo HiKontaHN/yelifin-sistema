@@ -156,7 +156,7 @@ function enforcePlanRules(
 // ligadas al uid del token para no arrastrar datos de otro usuario.
 // El POST /api/onboarding también setea esta cookie al completar.
 
-const SESSION_COOKIE = "konta_session";
+const SESSION_COOKIE = "hikonta_session";
 const SESSION_TTL = 600; // 10 minutos
 
 type Session = { onboarding_completed: boolean; plan_slug: string | null };

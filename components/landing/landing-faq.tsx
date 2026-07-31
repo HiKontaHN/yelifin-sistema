@@ -3,7 +3,7 @@ import { Mail, MessageCircle, Plus } from "lucide-react";
 
 const questions = [
   {
-    q: "Necesito saber de contabilidad para usar Konta?",
+    q: "Necesito saber de contabilidad para usar HiKonta?",
     a: "No. La experiencia esta pensada para registrar operaciones del dia a dia con lenguaje sencillo.",
   },
   {
@@ -26,9 +26,9 @@ export function LandingFaq() {
             Respuestas rapidas para que puedas decidir sin vueltas.
           </p>
           <div id="contacto" className="mt-8 grid gap-3 text-sm">
-            <Link href="mailto:hikonta.app@gmail.com" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
+            <Link href="mailto:hihikonta.app@gmail.com" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
               <Mail className="size-5 text-[#0068ff]" />
-              hikonta.app@gmail.com
+              hihikonta.app@gmail.com
             </Link>
             <Link href="/register" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
               <MessageCircle className="size-5 text-[#0068ff]" />

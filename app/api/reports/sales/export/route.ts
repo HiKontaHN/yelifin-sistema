@@ -209,7 +209,7 @@ function buildDashboardSheet(
   let r = 1;
 
   // Título principal (filas 1-2)
-  setCell(ws, 0, r, cell("REPORTE DE VENTAS — KONTA", { bold: true, sz: 16, fg: COLORS.primaryDark, bg: COLORS.white }));
+  setCell(ws, 0, r, cell("REPORTE DE VENTAS — HIKONTA", { bold: true, sz: 16, fg: COLORS.primaryDark, bg: COLORS.white }));
   merge(ws, 0, r - 1, 9, r - 1);
   r++;
 
@@ -655,7 +655,7 @@ async function generateExcel(
   const periodLabel = `${fmtDate(from)} — ${fmtDate(to)}`;
 
   const wb = XLSX.utils.book_new();
-  (wb as any).Props = { Title: "Reporte de Ventas — Konta", Author: "Konta SaaS" };
+  (wb as any).Props = { Title: "Reporte de Ventas — HiKonta", Author: "HiKonta SaaS" };
 
   const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel);
   const wsGrafico    = await buildChartSheet(byDay, byProduct, symbol);
@@ -718,7 +718,7 @@ async function generatePDF(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...C_GRAY_SEC);
-    doc.text(`Konta SaaS  ·  ${periodLabel}`, MARGIN, 16);
+    doc.text(`HiKonta SaaS  ·  ${periodLabel}`, MARGIN, 16);
     doc.text(`Pág. ${pageNum}`, PAGE_W - MARGIN, 16, { align: "right" });
 
     doc.setDrawColor(...C_PRIMARY);
@@ -736,7 +736,7 @@ async function generatePDF(
     doc.setFontSize(7);
     doc.setTextColor(130, 130, 130);
     doc.text(
-      `Generado el ${new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })} · Konta SaaS`,
+      `Generado el ${new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })} · HiKonta SaaS`,
       MARGIN, pY
     );
     doc.text("Confidencial — solo para uso interno", PAGE_W - MARGIN, pY, { align: "right" });

@@ -230,7 +230,7 @@ export default function ReceiptPage({ params }: Props) {
           <div className="text-center pb-5 px-4">
             <p className="text-xs font-semibold">¡Gracias por su compra!</p>
             <p className="text-[10px] text-gray-400 mt-3">
-              Powered by <span className="font-bold text-gray-600">Konta</span>
+              Powered by <span className="font-bold text-gray-600">HiKonta</span>
             </p>
           </div>
 

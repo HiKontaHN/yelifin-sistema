@@ -69,7 +69,8 @@
       "Bash(curl -s http://localhost:3000/inventory)",
       "Bash(pnpm --version)",
       "Bash(curl *)",
-      "Bash(./node_modules/.bin/tsc --noEmit)"
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(npx --no-install eslint .)"
     ]
   }
 }
