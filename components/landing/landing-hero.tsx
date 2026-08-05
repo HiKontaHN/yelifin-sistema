@@ -10,7 +10,7 @@ export function LandingHero() {
         <div className="relative z-20 max-w-2xl pt-6 lg:w-[58%] lg:pt-28">
           <h2 className="max-w-3xl text-4xl font-normal leading-[1.06] tracking-normal text-black min-[390px]:text-5xl sm:text-6xl lg:text-7xl">
             Hacemos que administrar tu negocio sea{" "}
-            <span className="inline-block rounded-md bg-[#0068ff] px-2 pb-1 text-white">
+            <span className="inline-block rounded-md bg-[#0068ff] px-2 pb-1 text-white pt-2">
               más facil
             </span>
           </h2>
