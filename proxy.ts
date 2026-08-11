@@ -1,5 +1,6 @@
 // proxy.ts
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, getClientIP } from "@/lib/rate-limit";
 
 const PUBLIC_PATHS = ["", "/login", "/register", "/forgot-password"];
 const AUTH_ONLY_PATHS = ["/verify-email", "/onboarding"];
@@ -204,9 +205,30 @@ async function fetchSession(
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // ── Rate limit global para toda la API ─────────────────────────────
+  // Protección base anti-abuso/DoS por IP para /api/*. Endpoints sensibles
+  // (login, register) aplican además su propio límite más estricto dentro
+  // del route handler. In-memory por instancia — ver lib/rate-limit.ts.
+  if (pathname.startsWith("/api")) {
+    const { allowed, retryAfterSec } = rateLimit(
+      `api:${getClientIP(request)}`,
+      300,
+      60 * 1000, // 300 solicitudes por minuto por IP
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Demasiadas solicitudes. Intenta de nuevo en unos segundos." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(retryAfterSec) },
+        },
+      );
+    }
+    return NextResponse.next();
+  }
+
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api") ||
     pathname.startsWith("/auth/action") ||
     pathname.includes(".")
   ) {
