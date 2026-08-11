@@ -563,17 +563,6 @@ export default function InventoryPage() {
 
   const hasFilters = search || stockFilter !== "in_stock";
 
-    const stock = Number(item.stock);
-    const matchesStock =
-      stockFilter === "all"      ? true :
-      stockFilter === "in_stock" ? stock > 0 || item.is_service :
-      stockFilter === "out"      ? stock == 0 && !item.is_service :
-      stockFilter === "low"      ? stock > 0 && stock < 10 :
-      stockFilter === "ok"       ? stock >= 10 || item.is_service :
-      stockFilter === "services" ? item.is_service :
-      true;
-
-    return matchesSearch && matchesStock;
   const handleSuccess = () => {
     mutateProducts();
     mutateInventory();

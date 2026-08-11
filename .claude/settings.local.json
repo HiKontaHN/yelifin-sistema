@@ -36,7 +36,6 @@
       "Bash(node *)",
       "Bash(npx react-doctor@latest --format json)",
       "Bash(npx react-doctor@latest)",
-      "PowerShell(cd \"C:\\Users\\DEVSLS\\Documents\\GitHub\\yelifin-sistema\"; npx react-doctor@latest . --verbose 2>&1 | Out-String | Select-String -Pattern \"design-no-three-period-ellipsis\" -Context 50 | Out-String | Select-Object -First 1 | ForEach-Object { $_.ToString().Substring(0, [Math]::Min(4000, $_.ToString().Length)) })",
       "PowerShell(cd \"C:\\Users\\DEVSLS\\Documents\\GitHub\\yelifin-sistema\"; npx react-doctor@latest 2>&1 | Out-String | ForEach-Object { $_ -split '\\n' } | Select-String \"Architecture|bold|ellipsis|palette|State|×\\d+|issues$\" | Select-Object -First 30 | Out-String)",
       "Bash(npx next *)",
       "Bash(node_modules\\.bin\\next lint *)",
@@ -70,7 +69,9 @@
       "Bash(pnpm --version)",
       "Bash(curl *)",
       "Bash(./node_modules/.bin/tsc --noEmit)",
-      "Bash(npx --no-install eslint .)"
+      "Bash(npx --no-install eslint .)",
+      "Skill(update-config)",
+      "PowerShell(npx react-doctor@latest *)"
     ]
   }
 }
