@@ -62,7 +62,7 @@ export function PosProductGrid({ products, cart, onAdd, search }: Props) {
               <div className="absolute bottom-1.5 left-1.5">
                 {
                   product.is_service ? (
-                    <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200text-xs">
+                    <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
                       Servicio
                     </Badge>
                   ) : (

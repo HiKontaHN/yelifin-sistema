@@ -41,21 +41,21 @@ const CURRENCY_NAMES: Record<string, string> = {
 type VariantKey = "base" | string;
 
 type LineItem = {
-  key:         string; // id interno para React key
+  key: string; // id interno para React key
   variant_key: VariantKey;
-  quantity:    string;
-  unit_cost:   string; // en la moneda seleccionada (USD o HNL)
+  quantity: string;
+  unit_cost: string; // en la moneda seleccionada (USD o HNL)
 };
 
 // ── Schema — solo campos de cabecera ──────────────────────────────────
 
 const schema = z.object({
-  account_id:    z.coerce.number().optional(),
-  currency:      z.enum(["USD", "HNL"]),
+  account_id: z.coerce.number().optional(),
+  currency: z.enum(["USD", "HNL"]),
   exchange_rate: z.coerce.number().min(1, "La tasa debe ser mayor a 0"),
-  shipping:      z.coerce.number().min(0).default(0),
-  notes:         z.string().optional(),
-  purchased_at:  z.string().optional(),
+  shipping: z.coerce.number().min(0).default(0),
+  notes: z.string().optional(),
+  purchased_at: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -67,18 +67,18 @@ function uid() {
 // ── Props ──────────────────────────────────────────────────────────────
 
 type Props = {
-  product:      Product | null;
-  open:         boolean;
+  product: Product | null;
+  open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess:    () => void;
+  onSuccess: () => void;
 };
 
 // ── Componente ─────────────────────────────────────────────────────────
 
 export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: Props) {
   const { createPurchase, isCreating } = useCreatePurchase();
-  const { accounts }                   = useAccounts();
-  const { creditCards }                = useCreditCards();
+  const { accounts } = useAccounts();
+  const { creditCards } = useCreditCards();
   const { format, symbol, currency: businessCurrency } = useCurrency();
 
   const [paymentMode, setPaymentMode] = useState<"account" | "credit_card">("account");
@@ -95,26 +95,26 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      currency:      "USD",
+      currency: "USD",
       exchange_rate: TASA_DEFAULT,
-      shipping:      0,
+      shipping: 0,
     },
   });
 
-  const currency     = useWatch({ control, name: "currency" });
+  const currency = useWatch({ control, name: "currency" });
   const exchangeRate = useWatch({ control, name: "exchange_rate" });
-  const shipping     = useWatch({ control, name: "shipping" });
+  const shipping = useWatch({ control, name: "shipping" });
 
-  const rate  = Number(exchangeRate) || TASA_DEFAULT;
-  const ship  = Number(shipping)     || 0;
+  const rate = Number(exchangeRate) || TASA_DEFAULT;
+  const ship = Number(shipping) || 0;
   const isUSD = currency === "USD";
 
-  const totalUnits      = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+  const totalUnits = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
   const shippingPerUnit = totalUnits > 0 ? ship / totalUnits : 0;
 
   const totalCost = items.reduce((acc, i) => {
-    const qty     = Number(i.quantity)  || 0;
-    const cost    = Number(i.unit_cost) || 0;
+    const qty = Number(i.quantity) || 0;
+    const cost = Number(i.unit_cost) || 0;
     const costHnl = isUSD ? cost * rate : cost;
     return acc + (costHnl + shippingPerUnit) * qty;
   }, 0);
@@ -127,10 +127,10 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       setCreditCardId(null);
       setShippingAccountId(null);
       reset({
-        currency:      "USD",
+        currency: "USD",
         exchange_rate: TASA_DEFAULT,
-        shipping:      0,
-        purchased_at:  toLocalDateInput(new Date()),
+        shipping: 0,
+        purchased_at: toLocalDateInput(new Date()),
       });
     }
   }, [open, reset]);
@@ -174,18 +174,18 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       await createPurchase({
         ...(isCreditCard ? { credit_card_id: creditCardId! } : { account_id: data.account_id! }),
         ...(shippingAccountId && data.shipping > 0 ? { shipping_account_id: shippingAccountId } : {}),
-        currency:      data.currency,
+        currency: data.currency,
         exchange_rate: data.exchange_rate,
-        shipping:      data.shipping,
-        notes:         data.notes,
-        status:        isPending ? "PENDING" : "COMPLETED",
-        purchased_at:  data.purchased_at
+        shipping: data.shipping,
+        notes: data.notes,
+        status: isPending ? "PENDING" : "COMPLETED",
+        purchased_at: data.purchased_at
           ? localDateToISO(data.purchased_at)
           : new Date().toISOString(),
         items: items.map((item) => ({
-          product_id:    product.id,
-          variant_id:    item.variant_key === "base" ? undefined : Number(item.variant_key),
-          quantity:      Number(item.quantity),
+          product_id: product.id,
+          variant_id: item.variant_key === "base" ? undefined : Number(item.variant_key),
+          quantity: Number(item.quantity),
           unit_cost_usd: Number(item.unit_cost),
         })),
       });
@@ -218,9 +218,9 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
 
   if (!product) return null;
 
-  const hasVariants   = product.variants.length > 0;
-  const maxItems      = product.variants.length + 1; // base + cada variante
-  const canAddMore    = !hasVariants ? false : items.length < maxItems;
+  const hasVariants = product.variants.length > 0;
+  const maxItems = product.variants.length + 1; // base + cada variante
+  const canAddMore = !hasVariants ? false : items.length < maxItems;
 
   return (
     <ResponsiveModal
@@ -421,13 +421,13 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
 
             {/* Filas */}
             {items.map((item) => {
-              const qty       = Number(item.quantity)  || 0;
-              const cost      = Number(item.unit_cost) || 0;
-              const costHnl   = isUSD ? cost * rate : cost;
+              const qty = Number(item.quantity) || 0;
+              const cost = Number(item.unit_cost) || 0;
+              const costHnl = isUSD ? cost * rate : cost;
               const unitFinal = costHnl + shippingPerUnit;
               const salePrice = getVariantPrice(item.variant_key);
-              const margin    = salePrice - unitFinal;
-              const used      = usedVariantKeys(item.key);
+              const margin = salePrice - unitFinal;
+              const used = usedVariantKeys(item.key);
 
               return (
                 <div key={item.key} className="space-y-1">
@@ -642,9 +642,9 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
               {items
                 .filter((i) => Number(i.quantity) > 0 && Number(i.unit_cost) > 0)
                 .map((item) => {
-                  const qty       = Number(item.quantity);
-                  const cost      = Number(item.unit_cost);
-                  const costHnl   = isUSD ? cost * rate : cost;
+                  const qty = Number(item.quantity);
+                  const cost = Number(item.unit_cost);
+                  const costHnl = isUSD ? cost * rate : cost;
                   const unitFinal = costHnl + shippingPerUnit;
                   return (
                     <div key={item.key} className="flex justify-between text-xs text-muted-foreground">

@@ -12,4 +12,6 @@ Running `npx eslint .` tries to install ESLint v10 from npm but then fails becau
 
 **Pre-existing tsc error:** `app/(dashboard)/admin/users/[id]/page.tsx:149` — `Type 'string | null' is not assignable to type 'string'` (user.currency / user.timezone fields). This exists in the codebase before our test work.
 
+**XLSX package note:** `xlsx@^0.18.5` is in `dependencies` (not devDependencies). It ships its own type declarations; no `@types/xlsx` is needed. `XLSX.SSF.parse_date_code` is available at runtime. The `!dataValidations` property is not part of the SheetJS public type surface — cast to `any[]` is intentional and correct.
+
 **How to apply:** Do not attempt `npm run lint` as a quality gate — it will always fail until ESLint is properly installed. Use `npx tsc --noEmit` as the primary static analysis gate instead.

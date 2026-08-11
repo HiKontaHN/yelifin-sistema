@@ -87,7 +87,9 @@ export function ProductCard({ product, onEdit, onDelete, onAddInventory }: Props
             <div className="flex items-center justify-between mt-2">
               <p className="text-base font-bold text-primary">{formatCurrency(product.price)}</p>
               <div className="flex gap-1.5">
-                <ActionBtn icon={PackagePlus} label="Stock"  onClick={() => onAddInventory(product)} />
+                {!product.is_service && (
+                  <ActionBtn icon={PackagePlus} label="Stock"  onClick={() => onAddInventory(product)} />
+                )}
                 <ActionBtn icon={Pencil}     label="Editar"  onClick={() => onEdit(product)} />
                 <ActionBtn icon={Trash2}     label="Borrar"  onClick={() => onDelete(product)} destructive />
               </div>

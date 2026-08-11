@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { adminStorage } from "@/lib/firebase-admin";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 const MAX_BYTES   = 2 * 1024 * 1024; // 2 MB
 const ALLOWED     = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -18,6 +19,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId } = auth.data;
+
+    // 20 subidas por usuario cada hora — evita abuso de storage/egress.
+    const { allowed, retryAfterSec } = rateLimit(`upload:${userId}`, 20, 60 * 60 * 1000);
+    if (!allowed) {
+      return createErrorResponse(
+        "Demasiadas subidas. Intenta de nuevo más tarde.",
+        429
+      );
+    }
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
