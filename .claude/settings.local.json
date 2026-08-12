@@ -71,7 +71,9 @@
       "Bash(./node_modules/.bin/tsc --noEmit)",
       "Bash(npx --no-install eslint .)",
       "Skill(update-config)",
-      "PowerShell(npx react-doctor@latest *)"
+      "PowerShell(npx react-doctor@latest *)",
+      "Bash(grep -E '\\\\.\\(ts|tsx\\)$')",
+      "Bash(xargs wc -l)"
     ]
   }
 }
