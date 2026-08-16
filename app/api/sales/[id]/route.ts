@@ -1,7 +1,7 @@
 // app/api/sales/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -74,15 +74,56 @@ export async function GET(request: NextRequest, { params }: Params) {
       WHERE ss.sale_id = ${saleId} AND ss.org_id = ${orgId}
     `;
 
-    return Response.json({
-      data: {
-        ...sale,
-        items,
-        supplies,
-        next_id: neighbors?.newer_id ?? null,
-        prev_id: neighbors?.older_id ?? null,
-      },
+    // ── Ganancia — calculada en el servidor (misma fórmula que el frontend
+    // usaba antes) para poder ocultarla vía show_profit sin depender de que
+    // el cliente reciba el costo real de cada item.
+    const productsCost  = items.reduce((acc, i) => acc + Number(i.unit_cost) * Number(i.quantity), 0);
+    const suppliesCost  = supplies.reduce((acc, s) => acc + Number(s.line_total), 0);
+    const taxAmount     = Number(sale.tax ?? 0);
+    const taxableBase   = Number(sale.subtotal) - Number(sale.discount ?? 0);
+    const netBase        = taxableBase - taxAmount;
+    const netProfit      = netBase - productsCost - suppliesCost;
+    const marginPct      = netBase > 0 ? (netProfit / netBase) * 100 : 0;
+
+    const itemsWithProfit = items.map((i) => {
+      const itemCost   = Number(i.unit_cost) * Number(i.quantity);
+      const itemProfit = Number(i.line_total) - itemCost;
+      const itemMargin = Number(i.line_total) > 0 ? (itemProfit / Number(i.line_total)) * 100 : 0;
+      return { ...i, item_profit: itemProfit, item_margin: itemMargin };
     });
+
+    const payload = {
+      ...sale,
+      items:          itemsWithProfit,
+      supplies,
+      next_id:        neighbors?.newer_id ?? null,
+      prev_id:        neighbors?.older_id ?? null,
+      products_cost:  productsCost as number | null,
+      supplies_cost:  suppliesCost as number | null,
+      net_profit:     netProfit as number | null,
+      margin_pct:     marginPct as number | null,
+    };
+
+    const perms = await getModulePermissions(auth.data, 'SALES');
+
+    // El costo (unitario y de suministros) solo viaja si el rol tiene
+    // show_costs; la ganancia (por item y total) solo si tiene show_profit.
+    // Se filtran por separado porque `unit_cost` significa lo mismo en
+    // ambos arreglos, pero `line_total` de suministros es costo mientras
+    // que el de `items` es venta — no se pueden anular con la misma clave.
+    if (!perms.showCosts) {
+      nullifyKeysDeep(payload.items, new Set(["unit_cost"]));
+      nullifyKeysDeep(payload.supplies, new Set(["unit_cost", "line_total"]));
+      payload.products_cost = null;
+      payload.supplies_cost = null;
+    }
+    if (!perms.showProfit) {
+      nullifyKeysDeep(payload.items, new Set(["item_profit", "item_margin"]));
+      payload.net_profit = null;
+      payload.margin_pct = null;
+    }
+
+    return Response.json({ data: payload });
   } catch (error) {
     console.error("GET /api/sales/[id]:", error);
     return createErrorResponse("Error al obtener venta", 500);

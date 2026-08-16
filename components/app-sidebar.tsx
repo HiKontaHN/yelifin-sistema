@@ -99,12 +99,13 @@ const adminNav = [
 
 const settingsNavBase = [
   { title: "Mi Perfil",   url: "/settings/profile",       icon: User },
+]
+
+// Solo el propietario de la organización puede ver estas secciones.
+const settingsNavOwner = [
   { title: "Mi Negocio",  url: "/settings/organization",  icon: Building2 },
   { title: "Categorías",  url: "/settings/categories",    icon: Tags },
   { title: "Suscripción", url: "/settings/billing",       icon: Receipt },
-]
-
-const settingsNavOwner = [
   { title: "Equipo",      url: "/settings/members",       icon: Users },
   { title: "Roles",       url: "/settings/roles",         icon: UserCog },
 ]

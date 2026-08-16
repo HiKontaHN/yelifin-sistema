@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { useConfirmPurchaseArrival, Purchase } from "@/hooks/swr/use-purchases";
 import { useCurrency } from "@/hooks/swr/use-currency";
 
-type Account = { id: number; name: string; balance: number };
+type Account = { id: number; name: string; balance: number | null };
 
 type Props = {
   purchase:     Purchase | null;
@@ -39,8 +39,8 @@ export function ConfirmPurchaseArrivalDialog({
 
   useEffect(() => {
     if (open && purchase) {
-      const hadShipping = Number(purchase.shipping) > 0;
-      setNewShipping(hadShipping ? String(purchase.shipping) : "");
+      const hadShipping = Number(purchase.shipping ?? 0) > 0;
+      setNewShipping(hadShipping ? String(purchase.shipping ?? 0) : "");
       setShippingAccountId("stored");
       setWantsShipping(hadShipping);
     }
@@ -48,12 +48,12 @@ export function ConfirmPurchaseArrivalDialog({
 
   if (!purchase) return null;
 
-  const originalShipping = Number(purchase.shipping);
+  const originalShipping = Number(purchase.shipping ?? 0);
   const parsedShipping   = (!wantsShipping && originalShipping === 0)
     ? 0
     : newShipping === "" ? 0 : Math.max(0, Number(newShipping));
   const shippingDelta    = parsedShipping - originalShipping;
-  const newTotal         = Number(purchase.total) + shippingDelta;
+  const newTotal         = Number(purchase.total ?? 0) + shippingDelta;
   const hasAdjustment    = shippingDelta !== 0;
 
   // Qué cuenta se muestra en el resumen del ajuste
@@ -121,7 +121,7 @@ export function ConfirmPurchaseArrivalDialog({
           <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal productos</span>
-              <span>{format(Number(purchase.subtotal) - originalShipping)}</span>
+              <span>{format(Number(purchase.subtotal ?? 0) - originalShipping)}</span>
             </div>
             {originalShipping > 0 && (
               <div className="flex justify-between text-muted-foreground">
@@ -137,7 +137,7 @@ export function ConfirmPurchaseArrivalDialog({
             <Separator />
             <div className="flex justify-between font-semibold">
               <span>Total pagado</span>
-              <span>{format(Number(purchase.total))}</span>
+              <span>{format(Number(purchase.total ?? 0))}</span>
             </div>
           </div>
 
@@ -254,9 +254,11 @@ export function ConfirmPurchaseArrivalDialog({
                     <SelectItem key={a.id} value={String(a.id)}>
                       <div className="flex items-center justify-between gap-8 w-full">
                         <span>{a.name}</span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {format(Number(a.balance))}
-                        </span>
+                        {a.balance !== null && (
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {format(Number(a.balance))}
+                          </span>
+                        )}
                       </div>
                     </SelectItem>
                   ))}

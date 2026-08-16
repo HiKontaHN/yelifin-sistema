@@ -1,7 +1,7 @@
 // app/api/products/[id]/detail/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -219,19 +219,32 @@ export async function GET(request: NextRequest, { params }: Params) {
     `;
 
     // ── Compose response ─────────────────────────────────────────────
-    const data = {
+    const avgCostNum = Number(costRow?.avg_cost ?? 0);
+    const calcMargin = (price: number, cost: number) =>
+      price > 0 ? ((price - cost) / price) * 100 : 0;
+
+    const data: any = {
       ...product,
       total_stock:      Number(stockRow.total_stock),
-      avg_cost:         Number(costRow?.avg_cost ?? 0),
-      last_cost:        Number(lastCostRow?.last_cost ?? 0),
-      variants:         variants.map((v) => ({ ...v, stock: Number(v.stock), avg_cost: Number(v.avg_cost) })),
+      avg_cost:         avgCostNum as number | null,
+      last_cost:        Number(lastCostRow?.last_cost ?? 0) as number | null,
+      margin_pct:       calcMargin(Number(product.price), avgCostNum) as number | null,
+      variants:         variants.map((v) => {
+        const avgCost = Number(v.avg_cost);
+        return {
+          ...v,
+          stock:      Number(v.stock),
+          avg_cost:   avgCost as number | null,
+          margin_pct: calcMargin(Number(v.price_override ?? product.price), avgCost) as number | null,
+        };
+      }),
       batches:          batches.map((b) => ({ ...b })),
       sales_stats: {
         total_units_sold: Number(salesStats.total_units_sold),
         total_revenue:    Number(salesStats.total_revenue),
-        total_profit:     Number(salesStats.total_profit),
+        total_profit:     Number(salesStats.total_profit) as number | null,
         avg_unit_price:   Number(salesStats.avg_unit_price),
-        avg_unit_cost:    Number(salesStats.avg_unit_cost),
+        avg_unit_cost:    Number(salesStats.avg_unit_cost) as number | null,
         sales_count:      Number(salesStats.sales_count),
         last_sold_at:     salesStats.last_sold_at ?? null,
       },
@@ -252,6 +265,26 @@ export async function GET(request: NextRequest, { params }: Params) {
         variant_name: b.variant_name ?? null,
       })),
     };
+
+    // El costo (promedio, último, por lote, historial de compras) y el
+    // margen/ganancia se filtran según show_costs / show_profit del rol.
+    // Se usa el módulo INVENTORY (no PRODUCTS) porque esta es la vista de
+    // detalle a la que se llega desde /inventory — el mismo criterio que ya
+    // usa la lista de inventario para ocultar su columna de costo.
+    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+
+    if (!perms.showCosts) {
+      nullifyKeysDeep(data, new Set([
+        "avg_cost", "last_cost", "unit_cost", "unit_cost_usd", "avg_unit_cost",
+      ]));
+      // El gráfico de evolución de precio de entrada se basa 100% en costo:
+      // se vacía el arreglo en vez de anular cada campo, así el frontend
+      // (que solo dibuja el gráfico si hay más de un punto) lo oculta solo.
+      data.cost_history = [];
+    }
+    if (!perms.showProfit) {
+      nullifyKeysDeep(data, new Set(["total_profit", "margin_pct"]));
+    }
 
     return Response.json({ data });
   } catch (error) {

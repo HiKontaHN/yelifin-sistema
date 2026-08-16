@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Fab } from "@/components/ui/fab";
+import { OwnerGuard } from "@/components/shared/owner-guard";
 import {
   useTransactionCategories,
   useCreateCategory,
@@ -69,6 +70,14 @@ const TYPE_CONFIG = {
 };
 
 export default function CategoriesPage() {
+  return (
+    <OwnerGuard>
+      <CategoriesPageContent />
+    </OwnerGuard>
+  );
+}
+
+function CategoriesPageContent() {
   const { categories, isLoading, mutate } = useTransactionCategories();
   const { create } = useCreateCategory();
   const { update } = useUpdateCategory();

@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { computeEventStatus } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -73,9 +74,7 @@ export async function GET(request: NextRequest) {
       const totalCogs       = totalSales - totalTax - totalProfit;
       const totalInvestment = totalCogs + totalExpenses;
 
-      const status =
-        now < start  ? "PLANNED" :
-        now <= end   ? "ACTIVE"  : "COMPLETED";
+      const status = computeEventStatus(start, end, now);
 
       return {
         id:             e.id,

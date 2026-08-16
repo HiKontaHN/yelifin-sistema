@@ -53,7 +53,7 @@ type Props = {
   open:          boolean;
   onOpenChange:  (v: boolean) => void;
   transaction:   Transaction;
-  accounts:      { id: number; name: string; balance: number }[];
+  accounts:      { id: number; name: string; balance: number | null }[];
   onSuccess?:    () => void;
 };
 

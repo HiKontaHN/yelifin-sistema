@@ -37,9 +37,9 @@ export type Purchase = {
   shipping_account_name: string | null;
   currency: string;
   exchange_rate: number;
-  subtotal: number;
-  shipping: number;
-  total: number;
+  subtotal: number | null; // null sin show_costs
+  shipping: number | null; // null sin show_costs
+  total: number | null;    // null sin show_costs
   status: 'PENDING' | 'COMPLETED';
   is_paid: boolean;
   purchased_at: string;
@@ -53,8 +53,8 @@ export type PurchaseItemDetail = {
   product_name: string;
   variant_name: string | null;
   quantity: number;
-  unit_cost: number;
-  unit_cost_usd: number;
+  unit_cost: number | null;     // null sin show_costs
+  unit_cost_usd: number | null; // null sin show_costs
 };
 
 export type PurchaseWithItems = Purchase & {

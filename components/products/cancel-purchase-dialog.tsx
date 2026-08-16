@@ -36,7 +36,9 @@ export function CancelPurchaseDialog({ purchase, open, onOpenChange, onSuccess }
       title="¿Cancelar esta compra?"
       description={
         purchase
-          ? `Se cancelará el pedido de ${purchase.items_count} producto${purchase.items_count !== 1 ? "s" : ""} por ${format(Number(purchase.total))} y se devolverá el dinero a la cuenta o tarjeta de origen. Esta acción no se puede deshacer.`
+          ? `Se cancelará el pedido de ${purchase.items_count} producto${purchase.items_count !== 1 ? "s" : ""}${
+              purchase.total !== null ? ` por ${format(Number(purchase.total))}` : ""
+            } y se devolverá el dinero a la cuenta o tarjeta de origen. Esta acción no se puede deshacer.`
           : undefined
       }
       confirmLabel="Cancelar compra"

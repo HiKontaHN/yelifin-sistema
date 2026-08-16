@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { useMe, useUpdateProfile, useUploadLogo } from "@/hooks/swr/use-me";
 import { useUpdateOrganization } from "@/hooks/swr/use-organization";
+import { OwnerGuard } from "@/components/shared/owner-guard";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
@@ -53,6 +54,14 @@ const CURRENCIES = [
 ];
 
 export default function OrganizationSettingsPage() {
+  return (
+    <OwnerGuard>
+      <OrganizationSettingsContent />
+    </OwnerGuard>
+  );
+}
+
+function OrganizationSettingsContent() {
   const { back } = useRouter();
   const { user, org, isOwner, isLoading, mutate } = useMe();
   const { updateProfile, isSaving: isSavingProfile }    = useUpdateProfile();

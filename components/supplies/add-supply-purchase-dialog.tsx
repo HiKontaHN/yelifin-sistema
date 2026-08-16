@@ -148,9 +148,11 @@ export function AddSupplyPurchaseDialog({
                   <SelectItem key={a.id} value={String(a.id)}>
                     <div className="flex items-center justify-between gap-4 w-full">
                       <span>{a.name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {formatCurrency(Number(a.balance))}
-                      </span>
+                      {a.balance !== null && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {formatCurrency(Number(a.balance))}
+                        </span>
+                      )}
                     </div>
                   </SelectItem>
                 ))}

@@ -39,6 +39,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -51,14 +52,15 @@ type ProductVariantDetail = {
   image_url: string | null;
   is_active: boolean;
   stock: number;
-  avg_cost: number;
+  avg_cost: number | null;   // null sin show_costs
+  margin_pct: number | null; // null sin show_profit
 };
 
 type BatchRow = {
   id: number;
   qty_in: number;
   qty_available: number;
-  unit_cost: number;
+  unit_cost: number | null; // null sin show_costs
   received_at: string;
   variant_id: number | null;
   variant_name: string | null;
@@ -79,8 +81,8 @@ type MovementRow = {
 type PurchaseHistoryRow = {
   purchased_at: string;
   supplier_name: string | null;
-  unit_cost: number;
-  unit_cost_usd: number | null;
+  unit_cost: number | null;     // null sin show_costs
+  unit_cost_usd: number | null; // null sin show_costs
   quantity: number;
   currency: string;
   variant_name: string | null;
@@ -107,21 +109,23 @@ type ProductDetail = {
   is_service: boolean;
   created_at: string;
   total_stock: number;
-  avg_cost: number;
-  last_cost: number;
+  avg_cost: number | null;   // null sin show_costs
+  last_cost: number | null;  // null sin show_costs
+  margin_pct: number | null; // null sin show_profit
   variants: ProductVariantDetail[];
   batches: BatchRow[];
   sales_stats: {
     total_units_sold: number;
     total_revenue: number;
-    total_profit: number;
+    total_profit: number | null;   // null sin show_profit
     avg_unit_price: number;
-    avg_unit_cost: number;
+    avg_unit_cost: number | null;  // null sin show_costs
     sales_count: number;
     last_sold_at: string | null;
   };
   purchase_history: PurchaseHistoryRow[];
   movements: MovementRow[];
+  // vacío (nunca > 1) sin show_costs — el backend no envía puntos del gráfico
   cost_history: CostHistoryRow[];
 };
 
@@ -160,11 +164,6 @@ function useProductDetail(id: number | null) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-function calcMargin(price: number, cost: number): number {
-  if (price <= 0) return 0;
-  return ((price - cost) / price) * 100;
-}
 
 function MarginBadge({ margin }: { margin: number }) {
   if (margin > 20)
@@ -295,6 +294,7 @@ export default function ProductDetailPage({ params }: Props) {
   const { format }         = useCurrency();
   const tz                 = useTimezone();
   const { push }           = useRouter();
+  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
 
   if (isLoading) return <ProductDetailSkeleton />;
 
@@ -310,11 +310,13 @@ export default function ProductDetailPage({ params }: Props) {
     );
   }
 
-  const margin        = calcMargin(product.price, product.avg_cost);
+  // Costo/margen/ganancia vienen ya calculados y filtrados por el backend
+  // según show_costs / show_profit del rol (pueden llegar en null).
+  const margin        = Number(product.margin_pct ?? 0);
   const hasVariants   = product.variants.length > 0;
   const hasSales      = product.sales_stats.sales_count > 0;
   const profitMarginP = product.sales_stats.total_revenue > 0
-    ? (product.sales_stats.total_profit / product.sales_stats.total_revenue) * 100
+    ? (Number(product.sales_stats.total_profit ?? 0) / product.sales_stats.total_revenue) * 100
     : 0;
 
   const dateOpts: Intl.DateTimeFormatOptions = {
@@ -394,75 +396,79 @@ export default function ProductDetailPage({ params }: Props) {
         </Card>
 
         {/* Costo promedio */}
-        <Card>
-          <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-              Costo promedio
-              <InfoTooltip
-                content={
-                  <div className="space-y-1">
-                    <p className="font-semibold">Costo promedio del stock actual</p>
-                    <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
-                    <p className="opacity-80">
-                      Cada compra entra como un lote con su propio costo; el promedio pondera
-                      cada lote por las unidades que le quedan. Por eso cambia cuando compras
-                      a un precio distinto, y puede diferir del último costo.
-                    </p>
-                  </div>
-                }
-              />
-            </p>
-            <p className="text-xl font-bold">
-              {product.is_service ? "—" : format(product.avg_cost)}
-            </p>
-            {!product.is_service && product.last_cost > 0 && product.last_cost !== product.avg_cost && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                último: {format(product.last_cost)}
+        {showCosts && (
+          <Card>
+            <CardContent className="pl-3">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                Costo promedio
+                <InfoTooltip
+                  content={
+                    <div className="space-y-1">
+                      <p className="font-semibold">Costo promedio del stock actual</p>
+                      <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
+                      <p className="opacity-80">
+                        Cada compra entra como un lote con su propio costo; el promedio pondera
+                        cada lote por las unidades que le quedan. Por eso cambia cuando compras
+                        a un precio distinto, y puede diferir del último costo.
+                      </p>
+                    </div>
+                  }
+                />
               </p>
-            )}
-          </CardContent>
-        </Card>
+              <p className="text-xl font-bold">
+                {product.is_service ? "—" : format(Number(product.avg_cost ?? 0))}
+              </p>
+              {!product.is_service && Number(product.last_cost ?? 0) > 0 && product.last_cost !== product.avg_cost && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  último: {format(Number(product.last_cost ?? 0))}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Margen */}
-        <Card>
-          <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-              Margen
-              <InfoTooltip
-                content={
-                  <div className="space-y-1">
-                    <p className="font-semibold">Margen sobre el precio de venta</p>
-                    <p>(Precio de venta − Costo promedio) ÷ Precio de venta × 100</p>
-                    {!product.is_service && product.price > 0 && (
+        {showProfit && (
+          <Card>
+            <CardContent className="pl-3">
+              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                Margen
+                <InfoTooltip
+                  content={
+                    <div className="space-y-1">
+                      <p className="font-semibold">Margen sobre el precio de venta</p>
+                      <p>(Precio de venta − Costo promedio) ÷ Precio de venta × 100</p>
+                      {!product.is_service && product.price > 0 && showCosts && (
+                        <p className="opacity-80">
+                          ({format(product.price)} − {format(Number(product.avg_cost ?? 0))}) ÷ {format(product.price)} = {margin.toFixed(1)}%
+                        </p>
+                      )}
                       <p className="opacity-80">
-                        ({format(product.price)} − {format(product.avg_cost)}) ÷ {format(product.price)} = {margin.toFixed(1)}%
+                        De cada venta a este precio, ese porcentaje queda como ganancia (antes de otros gastos).
                       </p>
-                    )}
-                    <p className="opacity-80">
-                      De cada venta a este precio, ese porcentaje queda como ganancia (antes de otros gastos).
-                    </p>
-                  </div>
+                    </div>
+                  }
+                />
+              </p>
+              <div className="flex items-center gap-1.5 mt-1">
+                {margin > 20
+                  ? <TrendingUp className="size-4 text-green-600 shrink-0" />
+                  : margin > 0
+                  ? <Minus className="size-4 text-amber-600 shrink-0" />
+                  : <TrendingDown className="size-4 text-destructive shrink-0" />
                 }
-              />
-            </p>
-            <div className="flex items-center gap-1.5 mt-1">
-              {margin > 20
-                ? <TrendingUp className="size-4 text-green-600 shrink-0" />
-                : margin > 0
-                ? <Minus className="size-4 text-amber-600 shrink-0" />
-                : <TrendingDown className="size-4 text-destructive shrink-0" />
-              }
-              <span className={`text-xl font-bold ${
-                margin > 20 ? "text-green-600" : margin > 0 ? "text-amber-600" : "text-destructive"
-              }`}>
-                {product.is_service ? "—" : `${margin.toFixed(1)}%`}
-              </span>
-            </div>
-            {!product.is_service && (
-              <p className="text-xs text-muted-foreground mt-0.5">sobre precio</p>
-            )}
-          </CardContent>
-        </Card>
+                <span className={`text-xl font-bold ${
+                  margin > 20 ? "text-green-600" : margin > 0 ? "text-amber-600" : "text-destructive"
+                }`}>
+                  {product.is_service ? "—" : `${margin.toFixed(1)}%`}
+                </span>
+              </div>
+              {!product.is_service && (
+                <p className="text-xs text-muted-foreground mt-0.5">sobre precio</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Variantes */}
@@ -482,14 +488,12 @@ export default function ProductDetailPage({ params }: Props) {
                   <TableHead>SKU</TableHead>
                   <TableHead>Precio</TableHead>
                   <TableHead>Stock</TableHead>
-                  <TableHead>Costo prom.</TableHead>
-                  <TableHead>Margen</TableHead>
+                  {showCosts && <TableHead>Costo prom.</TableHead>}
+                  {showProfit && <TableHead>Margen</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {product.variants.map((v) => {
-                  const vPrice  = v.price_override ?? product.price;
-                  const vMargin = calcMargin(vPrice, v.avg_cost);
                   return (
                     <TableRow key={v.id}>
                       <TableCell className="font-medium">
@@ -517,10 +521,14 @@ export default function ProductDetailPage({ params }: Props) {
                       <TableCell>
                         <span className={v.stock === 0 ? "text-destructive font-medium" : ""}>{v.stock}</span>
                       </TableCell>
-                      <TableCell>{v.stock > 0 ? format(v.avg_cost) : "—"}</TableCell>
-                      <TableCell>
-                        {v.stock > 0 ? <MarginBadge margin={vMargin} /> : "—"}
-                      </TableCell>
+                      {showCosts && (
+                        <TableCell>{v.stock > 0 ? format(Number(v.avg_cost ?? 0)) : "—"}</TableCell>
+                      )}
+                      {showProfit && (
+                        <TableCell>
+                          {v.stock > 0 ? <MarginBadge margin={Number(v.margin_pct ?? 0)} /> : "—"}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -530,7 +538,9 @@ export default function ProductDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Análisis de rentabilidad */}
+      {/* Análisis de rentabilidad — oculto por completo sin costos y
+          ganancias, ya que mezcla ingresos con ganancia/margen */}
+      {showCosts && showProfit && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -559,7 +569,7 @@ export default function ProductDetailPage({ params }: Props) {
                         <p>Ingresos totales − costo de las unidades vendidas</p>
                         <p className="opacity-80">
                           {format(product.sales_stats.total_revenue)} de ingresos menos lo que
-                          te costaron esas unidades = {format(product.sales_stats.total_profit)}
+                          te costaron esas unidades = {format(Number(product.sales_stats.total_profit ?? 0))}
                         </p>
                         <p className="opacity-80">
                           Cada venta usa el costo real del lote del que salió la unidad (FIFO)
@@ -569,8 +579,8 @@ export default function ProductDetailPage({ params }: Props) {
                     }
                   />
                 </p>
-                <p className={`text-lg font-bold mt-0.5 ${product.sales_stats.total_profit >= 0 ? "text-green-600" : "text-destructive"}`}>
-                  {format(product.sales_stats.total_profit)}
+                <p className={`text-lg font-bold mt-0.5 ${Number(product.sales_stats.total_profit ?? 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
+                  {format(Number(product.sales_stats.total_profit ?? 0))}
                 </p>
               </div>
               <div>
@@ -582,7 +592,7 @@ export default function ProductDetailPage({ params }: Props) {
                         <p className="font-semibold">Margen real según tus ventas</p>
                         <p>Ganancia total ÷ Ingresos totales × 100</p>
                         <p className="opacity-80">
-                          {format(product.sales_stats.total_profit)} ÷ {format(product.sales_stats.total_revenue)} = {profitMarginP.toFixed(1)}%
+                          {format(Number(product.sales_stats.total_profit ?? 0))} ÷ {format(product.sales_stats.total_revenue)} = {profitMarginP.toFixed(1)}%
                         </p>
                         <p className="opacity-80">
                           A diferencia del margen sobre precio, este usa lo realmente cobrado
@@ -620,6 +630,7 @@ export default function ProductDetailPage({ params }: Props) {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Batches FIFO */}
       {!product.is_service && (
@@ -640,7 +651,7 @@ export default function ProductDetailPage({ params }: Props) {
                     <TableRow>
                       <TableHead>Fecha</TableHead>
                       {hasVariants && <TableHead>Variante</TableHead>}
-                      <TableHead>Costo unitario</TableHead>
+                      {showCosts && <TableHead>Costo unitario</TableHead>}
                       <TableHead className="text-right">Compradas</TableHead>
                       <TableHead className="text-right">Disponibles</TableHead>
                     </TableRow>
@@ -656,7 +667,9 @@ export default function ProductDetailPage({ params }: Props) {
                             {b.variant_name ?? "Base"}
                           </TableCell>
                         )}
-                        <TableCell className="text-sm">{format(Number(b.unit_cost))}</TableCell>
+                        {showCosts && (
+                          <TableCell className="text-sm">{format(Number(b.unit_cost ?? 0))}</TableCell>
+                        )}
                         <TableCell className="text-right text-sm">{b.qty_in}</TableCell>
                         <TableCell className="text-right text-sm">
                           <span className={b.qty_available === 0 ? "text-muted-foreground" : "font-medium"}>
@@ -673,8 +686,10 @@ export default function ProductDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Gráfico de evolución del precio de entrada */}
-      {product.cost_history.length > 1 && (
+      {/* Gráfico de evolución del precio de entrada — 100% costo; el backend
+          ya manda cost_history vacío sin show_costs, showCosts es solo
+          defensa adicional */}
+      {showCosts && product.cost_history.length > 1 && (
         <Card>
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-lg font-bold tracking-tight flex items-center gap-2">
@@ -707,8 +722,8 @@ export default function ProductDetailPage({ params }: Props) {
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Proveedor</TableHead>
-                  <TableHead>Costo USD</TableHead>
-                  <TableHead>Costo local</TableHead>
+                  {showCosts && <TableHead>Costo USD</TableHead>}
+                  {showCosts && <TableHead>Costo local</TableHead>}
                   <TableHead className="text-right">Cantidad</TableHead>
                 </TableRow>
               </TableHeader>
@@ -721,13 +736,17 @@ export default function ProductDetailPage({ params }: Props) {
                     <TableCell className="text-sm">
                       {ph.supplier_name ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {ph.unit_cost_usd != null && ph.unit_cost_usd > 0
-                        ? `$${ph.unit_cost_usd.toFixed(4)}`
-                        : <span className="text-muted-foreground">—</span>
-                      }
-                    </TableCell>
-                    <TableCell className="text-sm">{format(ph.unit_cost)}</TableCell>
+                    {showCosts && (
+                      <TableCell className="text-sm">
+                        {ph.unit_cost_usd != null && ph.unit_cost_usd > 0
+                          ? `$${ph.unit_cost_usd.toFixed(4)}`
+                          : <span className="text-muted-foreground">—</span>
+                        }
+                      </TableCell>
+                    )}
+                    {showCosts && (
+                      <TableCell className="text-sm">{format(Number(ph.unit_cost ?? 0))}</TableCell>
+                    )}
                     <TableCell className="text-right text-sm">{ph.quantity}</TableCell>
                   </TableRow>
                 ))}

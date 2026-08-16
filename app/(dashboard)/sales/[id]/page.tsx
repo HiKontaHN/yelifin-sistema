@@ -35,6 +35,7 @@ import {
 import { useSale, usePatchSale } from "@/hooks/swr/use-sales";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 type Props = { params: Promise<{ id: string }> };
@@ -49,6 +50,7 @@ export default function SaleDetailPage({ params }: Props) {
   const { refresh, push }   = useRouter();
   const { format }          = useCurrency();
   const tz                  = useTimezone();
+  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("SALES");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen,  setCancelOpen]  = useState(false);
@@ -68,24 +70,19 @@ export default function SaleDetailPage({ params }: Props) {
 
   const taxRate        = getTaxRate(sale.tax_rate);
   const taxAmount      = Number(sale.tax ?? 0);
-  const productsCost   = sale.items.reduce(
-    (acc, i) => acc + Number(i.unit_cost) * i.quantity,
-    0,
-  );
-  const suppliesCost   = (sale.supplies ?? []).reduce(
-    (acc, s) => acc + Number(s.line_total),
-    0,
-  );
   const shippingAmount = Number(sale.shipping_cost ?? 0);
 
   const isPending   = sale.status === "PENDING";
   const isCompleted = sale.status === "COMPLETED";
 
-  // TAX-INCLUSIVE: el ISV está dentro del precio, no es ganancia del vendedor
-  const taxableBase = Number(sale.subtotal) - Number(sale.discount ?? 0);
-  const totalProfit = taxableBase - taxAmount - productsCost - suppliesCost;
-  const netBase     = taxableBase - taxAmount; // lo que realmente queda después del ISV
-  const margin      = netBase > 0 ? (totalProfit / netBase) * 100 : 0;
+  // Costo y ganancia vienen calculados y filtrados por el backend según
+  // show_costs / show_profit del rol (pueden llegar en null). Los ?? 0 son
+  // solo para que el render no truene — las tarjetas que los muestran ya
+  // están condicionadas a showCosts/showProfit más abajo.
+  const productsCost = Number(sale.products_cost ?? 0);
+  const suppliesCost = Number(sale.supplies_cost ?? 0);
+  const totalProfit  = Number(sale.net_profit ?? 0);
+  const margin       = Number(sale.margin_pct ?? 0);
 
   const profitLabel = isPending ? "Ganancia estimada" : "Ganancia neta";
 
@@ -263,7 +260,7 @@ export default function SaleDetailPage({ params }: Props) {
       </div>
 
       {/* Resumen financiero */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${showProfit ? "grid-cols-2" : "grid-cols-1"}`}>
         <Card>
           <CardContent className="pl-3.5 text-center">
             <p className="text-xs text-muted-foreground">Total cobrado</p>
@@ -283,24 +280,26 @@ export default function SaleDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        <Card className={isPending
-          ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20"
-          : "border-green-200 bg-green-50 dark:bg-green-950/20"}
-        >
-          <CardContent className="pl-3.5 text-center">
-            <p className="text-xs text-muted-foreground">{profitLabel}</p>
-            <p className={`text-lg md:text-xl font-bold mt-0.5 ${
-              isPending ? "text-amber-700" : "text-green-600"
-            }`}>
-              {format(totalProfit)}
-            </p>
-            <p className={`text-xs ${
-              isPending ? "text-amber-700" : "text-green-600"
-            }`}>
-              {margin.toFixed(1)}% margen
-            </p>
-          </CardContent>
-        </Card>
+        {showProfit && (
+          <Card className={isPending
+            ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20"
+            : "border-green-200 bg-green-50 dark:bg-green-950/20"}
+          >
+            <CardContent className="pl-3.5 text-center">
+              <p className="text-xs text-muted-foreground">{profitLabel}</p>
+              <p className={`text-lg md:text-xl font-bold mt-0.5 ${
+                isPending ? "text-amber-700" : "text-green-600"
+              }`}>
+                {format(totalProfit)}
+              </p>
+              <p className={`text-xs ${
+                isPending ? "text-amber-700" : "text-green-600"
+              }`}>
+                {margin.toFixed(1)}% margen
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Productos vendidos */}
@@ -313,12 +312,6 @@ export default function SaleDetailPage({ params }: Props) {
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {sale.items.map((item) => {
-            const itemCost   = Number(item.unit_cost) * item.quantity;
-            const itemProfit = Number(item.line_total) - itemCost;
-            const itemMargin = Number(item.line_total) > 0
-              ? (itemProfit / Number(item.line_total)) * 100
-              : 0;
-
             return (
               <div key={item.id} className="flex gap-3 p-3 rounded-lg border">
                 <div className="relative size-12 rounded-lg overflow-hidden bg-muted shrink-0 flex items-center justify-center">
@@ -345,19 +338,25 @@ export default function SaleDetailPage({ params }: Props) {
                     <span>
                       {item.quantity} × {format(Number(item.unit_price))}
                     </span>
-                    <span>Costo: {format(Number(item.unit_cost))}/u</span>
+                    {showCosts && item.unit_cost !== null && (
+                      <span>Costo: {format(Number(item.unit_cost))}/u</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-bold text-sm">
                     {format(Number(item.line_total))}
                   </p>
-                  <p className="text-xs text-green-600 font-medium">
-                    +{format(itemProfit)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {itemMargin.toFixed(1)}%
-                  </p>
+                  {showProfit && item.item_profit !== null && (
+                    <>
+                      <p className="text-xs text-green-600 font-medium">
+                        +{format(item.item_profit)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {Number(item.item_margin ?? 0).toFixed(1)}%
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -403,7 +402,9 @@ export default function SaleDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Desglose de totales */}
+      {/* Desglose de totales — oculto por completo sin costos y ganancias,
+          ya que mezcla costo (show_costs) y ganancia neta (show_profit) */}
+      {showCosts && showProfit && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -479,6 +480,7 @@ export default function SaleDetailPage({ params }: Props) {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Notas */}
       {sale.notes && (

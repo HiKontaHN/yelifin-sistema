@@ -237,13 +237,15 @@ function BaseTableRow({
       <TableCell>{getStockBadge(Number(item.base_stock))}</TableCell>
       {showCosts && (
         <TableCell className="text-sm">
-          {Number(item.base_stock) > 0 ? format(item.base_avg_unit_cost) : "—"}
+          {Number(item.base_stock) > 0 ? format(Number(item.base_avg_unit_cost ?? 0)) : "—"}
         </TableCell>
       )}
       <TableCell className="text-sm">{format(item.price)}</TableCell>
-      <TableCell className="text-right text-sm font-medium">
-        {Number(item.base_stock) > 0 ? format(item.base_total_value) : "—"}
-      </TableCell>
+      {showCosts && (
+        <TableCell className="text-right text-sm font-medium">
+          {Number(item.base_stock) > 0 ? format(Number(item.base_total_value ?? 0)) : "—"}
+        </TableCell>
+      )}
       <TableCell />
     </TableRow>
   );
@@ -309,7 +311,7 @@ function VariantTableRow({
       <TableCell>{getStockBadge(Number(variantStock.stock))}</TableCell>
       {showCosts && (
         <TableCell className="text-sm">
-          {Number(variantStock.stock) > 0 ? format(variantStock.avg_unit_cost) : "—"}
+          {Number(variantStock.stock) > 0 ? format(Number(variantStock.avg_unit_cost ?? 0)) : "—"}
         </TableCell>
       )}
       <TableCell className="text-sm">
@@ -320,9 +322,11 @@ function VariantTableRow({
             : "—"
         }
       </TableCell>
-      <TableCell className="text-right text-sm font-medium">
-        {Number(variantStock.stock) > 0 ? format(variantStock.total_value) : "—"}
-      </TableCell>
+      {showCosts && (
+        <TableCell className="text-right text-sm font-medium">
+          {Number(variantStock.stock) > 0 ? format(Number(variantStock.total_value ?? 0)) : "—"}
+        </TableCell>
+      )}
       <TableCell>
         {pv && product && (
           <VariantActionsMenu
@@ -368,12 +372,12 @@ function BaseCard({
           </div>
         </div>
       </div>
-      <div className={`grid gap-2 px-3 pb-2.5 text-center border-t ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
+      <div className={`grid gap-2 px-3 pb-2.5 text-center border-t ${showCosts ? "grid-cols-3" : "grid-cols-1"}`}>
         {showCosts && (
           <div className="pt-2">
             <p className="text-xs text-muted-foreground">Costo prom.</p>
             <p className="text-sm font-medium">
-              {Number(item.base_stock) > 0 ? format(item.base_avg_unit_cost) : "—"}
+              {Number(item.base_stock) > 0 ? format(Number(item.base_avg_unit_cost ?? 0)) : "—"}
             </p>
           </div>
         )}
@@ -381,12 +385,14 @@ function BaseCard({
           <p className="text-xs text-muted-foreground">Precio venta</p>
           <p className="text-sm font-medium">{format(item.price)}</p>
         </div>
-        <div className="pt-2">
-          <p className="text-xs text-muted-foreground">Valor total</p>
-          <p className="text-sm font-bold text-primary">
-            {Number(item.base_stock) > 0 ? format(item.base_total_value) : "—"}
-          </p>
-        </div>
+        {showCosts && (
+          <div className="pt-2">
+            <p className="text-xs text-muted-foreground">Valor total</p>
+            <p className="text-sm font-bold text-primary">
+              {Number(item.base_stock) > 0 ? format(Number(item.base_total_value ?? 0)) : "—"}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -468,12 +474,12 @@ function VariantCard({
           </div>
         </div>
       </div>
-      <div className={`grid gap-2 px-3 pb-2.5 text-center border-t ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
+      <div className={`grid gap-2 px-3 pb-2.5 text-center border-t ${showCosts ? "grid-cols-3" : "grid-cols-1"}`}>
         {showCosts && (
           <div className="pt-2">
             <p className="text-xs text-muted-foreground">Costo prom.</p>
             <p className="text-sm font-medium">
-              {Number(variantStock.stock) > 0 ? format(variantStock.avg_unit_cost) : "—"}
+              {Number(variantStock.stock) > 0 ? format(Number(variantStock.avg_unit_cost ?? 0)) : "—"}
             </p>
           </div>
         )}
@@ -481,12 +487,14 @@ function VariantCard({
           <p className="text-xs text-muted-foreground">Precio venta</p>
           <p className="text-sm font-medium">{format(salePrice)}</p>
         </div>
-        <div className="pt-2">
-          <p className="text-xs text-muted-foreground">Valor total</p>
-          <p className="text-sm font-bold text-primary">
-            {Number(variantStock.stock) > 0 ? format(variantStock.total_value) : "—"}
-          </p>
-        </div>
+        {showCosts && (
+          <div className="pt-2">
+            <p className="text-xs text-muted-foreground">Valor total</p>
+            <p className="text-sm font-bold text-primary">
+              {Number(variantStock.stock) > 0 ? format(Number(variantStock.total_value ?? 0)) : "—"}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -605,7 +613,7 @@ export default function InventoryPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { title: "Unidades", value: stats.total_stock, sub: `${stats.total_products} productos`, icon: Warehouse },
-          { title: "Valor", value: format(stats.total_value), sub: "costo adquisición", icon: DollarSign, hiddenWhenNoCosts: true },
+          { title: "Valor", value: format(Number(stats.total_value ?? 0)), sub: "costo adquisición", icon: DollarSign, hiddenWhenNoCosts: true },
           { title: "Stock bajo", value: stats.low_stock, sub: "menos de 10 uds", icon: AlertTriangle, cls: "text-yellow-600" },
           { title: "Agotados", value: stats.out_of_stock, sub: "sin stock", icon: Package, cls: "text-destructive" },
         ].filter((s) => !(s as any).hiddenWhenNoCosts || showCosts).map((stat) => (
@@ -684,7 +692,7 @@ export default function InventoryPage() {
                 <TableHead>Stock</TableHead>
                 {showCosts && <TableHead>Costo prom.</TableHead>}
                 <TableHead>Precio venta</TableHead>
-                <TableHead className="text-right">Valor total</TableHead>
+                {showCosts && <TableHead className="text-right">Valor total</TableHead>}
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -693,14 +701,14 @@ export default function InventoryPage() {
                 /* skeleton - index key ok */
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: showCosts ? 7 : 6 }).map((_, j) => (
+                    {Array.from({ length: showCosts ? 7 : 5 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : inventory.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={showCosts ? 7 : 6} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={showCosts ? 7 : 5} className="text-center py-12 text-muted-foreground">
                     {hasFilters ? "No se encontraron productos" : "Agrega productos para visualizarlos aquí"}
                   </TableCell>
                 </TableRow>
@@ -753,11 +761,13 @@ export default function InventoryPage() {
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {getStockBadge(Number(item.stock), item.is_service)}
                         </TableCell>
-                        {showCosts && <TableCell>{item.is_service ? "—" : format(item.avg_unit_cost)}</TableCell>}
+                        {showCosts && <TableCell>{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</TableCell>}
                         <TableCell>{format(item.price)}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {item.is_service ? format(item.price) : format(item.total_value)}
-                        </TableCell>
+                        {showCosts && (
+                          <TableCell className="text-right font-medium">
+                            {item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}
+                          </TableCell>
+                        )}
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <ProductActionsMenu
                             item={item}
@@ -880,23 +890,25 @@ export default function InventoryPage() {
                   </div>
 
                   {/* Resumen general del producto */}
-                  <div className={`grid gap-2 mt-3 pt-3 border-t text-center ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className={`grid gap-2 mt-3 pt-3 border-t text-center ${showCosts ? "grid-cols-3" : "grid-cols-1"}`}>
                     {showCosts && (
                       <div>
                         <p className="text-xs text-muted-foreground">Costo prom.</p>
-                        <p className="text-sm font-medium">{item.is_service ? "—" : format(item.avg_unit_cost)}</p>
+                        <p className="text-sm font-medium">{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</p>
                       </div>
                     )}
                     <div>
                       <p className="text-xs text-muted-foreground">Precio venta</p>
                       <p className="text-sm font-medium">{format(item.price)}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Valor total</p>
-                      <p className="text-sm font-bold text-primary">
-                        {item.is_service ? format(item.price) : format(item.total_value)}
-                      </p>
-                    </div>
+                    {showCosts && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Valor total</p>
+                        <p className="text-sm font-bold text-primary">
+                          {item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Acordeón de variantes */}

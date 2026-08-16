@@ -1,7 +1,7 @@
 // app/api/sales/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -172,6 +172,8 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.max(1, Math.ceil(count / limit));
 
+    const perms = await getModulePermissions(auth.data, 'SALES');
+
     // ── Data paginada ─────────────────────────────────────────────────
     const sales = await sql`
       SELECT
@@ -214,6 +216,11 @@ export async function GET(request: NextRequest) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
+    // El detalle de ganancia por venta y el total agregado solo viajan si el
+    // rol tiene permiso de show_profit — evita que se vea inspeccionando la
+    // respuesta de red aunque el frontend oculte la columna.
+    if (!perms.showProfit) nullifyKeysDeep(sales, new Set(["net_profit"]));
+
     return Response.json({
       data:       sales,
       total:      count,
@@ -222,7 +229,7 @@ export async function GET(request: NextRequest) {
       limit,
       stats: {
         total_revenue:   Number(statsRow.total_revenue),
-        total_profit:    Number(statsRow.total_profit),
+        total_profit:    perms.showProfit ? Number(statsRow.total_profit) : null,
         pending_count:   statsRow.pending_count,
         completed_count: statsRow.completed_count,
       },

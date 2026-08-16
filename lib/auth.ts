@@ -256,6 +256,43 @@ export async function verifyModuleAccess(
   }
 }
 
+// ── verifyAnyModuleAccess ───────────────────────────────────────────────
+// Igual que verifyModuleAccess, pero concede acceso si CUALQUIERA de los
+// módulos indicados otorga el permiso. Pensado para recursos compartidos
+// entre módulos: ej. las cuentas se seleccionan al registrar una venta,
+// una compra de inventario o un gasto de evento, aunque el rol no tenga
+// acceso al módulo FINANZAS.
+
+export async function verifyAnyModuleAccess(
+  auth: AuthUser,
+  modules: OrgModule[],
+  permission: keyof ModulePermissions
+): Promise<boolean> {
+  if (auth.isOwner) return true;
+
+  try {
+    const rows = await sql`
+      SELECT can_view, can_edit, can_delete, show_costs, show_profit
+      FROM org_role_permissions
+      WHERE role_id = ${auth.roleId} AND module = ANY(${modules})
+    `;
+
+    const column: Record<keyof ModulePermissions, string> = {
+      canView: "can_view",
+      canEdit: "can_edit",
+      canDelete: "can_delete",
+      showCosts: "show_costs",
+      showProfit: "show_profit",
+    };
+    const col = column[permission];
+
+    return rows.some((r) => r[col] === true);
+  } catch (error) {
+    console.error("Error en verifyAnyModuleAccess:", error);
+    return false;
+  }
+}
+
 // ── getModulePermissions ───────────────────────────────────────────────
 // Devuelve todos los permisos de un módulo para un usuario.
 // Útil en endpoints que necesitan condicionar qué datos retornan

@@ -11,7 +11,9 @@ export type Account = {
   id: number;
   name: string;
   type: 'CASH' | 'BANK' | 'WALLET' | 'OTHER';
-  balance: number;
+  // null cuando el rol puede seleccionar la cuenta (SALES/INVENTORY/EVENTS)
+  // pero no tiene acceso a FINANZAS — el backend oculta el saldo real.
+  balance: number | null;
   is_active: boolean;
   created_at: string;
 };

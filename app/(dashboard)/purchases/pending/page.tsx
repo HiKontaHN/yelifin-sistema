@@ -17,6 +17,7 @@ import { usePendingPurchases, PurchaseWithItems, Purchase } from "@/hooks/swr/us
 import { useAccounts }   from "@/hooks/swr/use-accounts";
 import { useInventory }  from "@/hooks/swr/use-inventory";
 import { useCurrency }   from "@/hooks/swr/use-currency";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmPurchaseArrivalDialog } from "@/components/products/confirm-purchase-arrival-dialog";
 import { CancelPurchaseDialog } from "@/components/products/cancel-purchase-dialog";
 import { StatCard } from "@/components/reports/report-shell";
@@ -31,6 +32,7 @@ export default function PendingPurchasesPage() {
   const { mutate: mutateInventory }  = useInventory();
   const { accounts, mutate: mutateAccounts } = useAccounts();
   const { format } = useCurrency();
+  const { show_costs: showCosts, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY");
 
   const [selected, setSelected] = useState<PurchaseWithItems | null>(null);
   const [toCancel, setToCancel] = useState<Purchase | null>(null);
@@ -58,7 +60,7 @@ export default function PendingPurchasesPage() {
 
   const stats = purchases.reduce(
     (acc, p) => {
-      acc.totalMoney += Number(p.total);
+      acc.totalMoney += Number(p.total ?? 0);
       p.items.forEach((item) => {
         acc.productKeys.add(`${item.product_id}-${item.variant_name ?? ""}`);
         acc.totalUnits += Number(item.quantity);
@@ -96,14 +98,14 @@ export default function PendingPurchasesPage() {
 
       {/* Stats */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        <div className={`grid gap-3 ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
+          {(showCosts ? [1, 2, 3] : [1, 2]).map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
       ) : purchases.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className={`grid gap-3 ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
           <StatCard label="Productos pendientes" value={String(stats.productKeys.size)} />
           <StatCard label="Unidades totales" value={stats.totalUnits.toLocaleString("es-HN")} />
-          <StatCard label="Inversión" value={format(stats.totalMoney)} />
+          {showCosts && <StatCard label="Inversión" value={format(stats.totalMoney)} />}
         </div>
       )}
 
@@ -147,6 +149,9 @@ export default function PendingPurchasesPage() {
               key={p.id}
               purchase={p}
               format={format}
+              showCosts={showCosts}
+              canEdit={canEdit}
+              canDelete={canDelete}
               onConfirm={() => setSelected(p)}
               onCancel={() => setToCancel(p)}
             />
@@ -190,11 +195,17 @@ export default function PendingPurchasesPage() {
 function PurchaseCard({
   purchase: p,
   format,
+  showCosts,
+  canEdit,
+  canDelete,
   onConfirm,
   onCancel,
 }: {
   purchase: PurchaseWithItems;
   format: (v: number) => string;
+  showCosts: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -219,10 +230,12 @@ function PurchaseCard({
               <p className="text-xs text-muted-foreground">Pendiente de llegada</p>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-base font-bold">{format(Number(p.total))}</p>
-            <p className="text-xs text-muted-foreground">{p.currency}</p>
-          </div>
+          {showCosts && (
+            <div className="text-right shrink-0">
+              <p className="text-base font-bold">{format(Number(p.total ?? 0))}</p>
+              <p className="text-xs text-muted-foreground">{p.currency}</p>
+            </div>
+          )}
         </div>
 
         {/* Detalles */}
@@ -237,10 +250,10 @@ function PurchaseCard({
               <span className="truncate">{p.account_name}</span>
             </div>
           )}
-          {Number(p.shipping) > 0 && (
+          {showCosts && Number(p.shipping ?? 0) > 0 && (
             <div className="flex items-center gap-1.5">
               <Truck className="size-3 shrink-0" />
-              <span>Envío: {format(Number(p.shipping))}</span>
+              <span>Envío: {format(Number(p.shipping ?? 0))}</span>
             </div>
           )}
           {p.notes && (
@@ -269,8 +282,12 @@ function PurchaseCard({
                   </div>
                   <div className="shrink-0 text-right text-muted-foreground">
                     <span className="font-mono">{item.quantity}</span>
-                    <span className="mx-1 opacity-50">×</span>
-                    <span>{format(Number(item.unit_cost))}</span>
+                    {showCosts && (
+                      <>
+                        <span className="mx-1 opacity-50">×</span>
+                        <span>{format(Number(item.unit_cost ?? 0))}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -284,20 +301,32 @@ function PurchaseCard({
         </div>
 
         {/* Acciones */}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-            onClick={onCancel}
-          >
-            <XCircle className="size-4" />
-            Cancelar
-          </Button>
-          <Button className="flex-1 gap-2" onClick={onConfirm}>
-            <PackageCheck className="size-4" />
-            Confirmar llegada
-          </Button>
-        </div>
+        {(canDelete || canEdit) && (
+          <div className="flex gap-2">
+            {canDelete && (
+              <Button
+                variant="outline"
+                className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                onClick={onCancel}
+              >
+                <XCircle className="size-4" />
+                Cancelar
+              </Button>
+            )}
+            {canEdit && (
+              showCosts ? (
+                <Button className="flex-1 gap-2" onClick={onConfirm}>
+                  <PackageCheck className="size-4" />
+                  Confirmar llegada
+                </Button>
+              ) : (
+                <p className="flex-1 self-center text-xs text-muted-foreground text-center">
+                  Necesitas permiso de costos para confirmar la llegada
+                </p>
+              )
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

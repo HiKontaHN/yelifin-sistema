@@ -14,8 +14,8 @@ export type VariantStock = {
   price_override: number | null;
   image_url:     string | null;
   stock:         number;
-  avg_unit_cost: number;
-  total_value:   number;
+  avg_unit_cost: number | null; // null sin show_costs
+  total_value:   number | null; // null sin show_costs
   is_service:    boolean;
 };
 
@@ -28,12 +28,12 @@ export type InventoryItem = {
   is_service:       boolean;
   // Stock total (base + variantes)
   stock:            number;
-  avg_unit_cost:    number;
-  total_value:      number;
+  avg_unit_cost:    number | null; // null sin show_costs
+  total_value:      number | null; // null sin show_costs
   // Stock y costos solo del producto base
   base_stock:       number;
-  base_avg_unit_cost: number;
-  base_total_value: number;
+  base_avg_unit_cost: number | null; // null sin show_costs
+  base_total_value: number | null;   // null sin show_costs
   // Desglose por variante
   variants_stock:   VariantStock[];
 };
@@ -42,7 +42,7 @@ export type InventoryStats = {
   total_products: number;
   total_physical: number;
   total_stock:    number;
-  total_value:    number;
+  total_value:    number | null; // null sin show_costs
   low_stock:      number;
   out_of_stock:   number;
 };

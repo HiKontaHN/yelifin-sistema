@@ -1,7 +1,7 @@
 // app/api/purchases/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -342,7 +342,19 @@ export async function GET(request: NextRequest) {
       ORDER BY pb.purchased_at DESC
     `;
 
-    return Response.json({ data: purchases, total: purchases.length });
+    const payload = { data: purchases, total: purchases.length };
+
+    // Toda esta respuesta es información de costo (lo que costó adquirir el
+    // inventario) — sin show_costs se anula subtotal/shipping/total del lote
+    // y unit_cost/unit_cost_usd de cada item.
+    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+    if (!perms.showCosts) {
+      nullifyKeysDeep(payload, new Set([
+        "subtotal", "shipping", "total", "unit_cost", "unit_cost_usd",
+      ]));
+    }
+
+    return Response.json(payload);
   } catch (error) {
     console.error("GET /api/purchases:", error);
     return createErrorResponse("Error al obtener compras", 500);

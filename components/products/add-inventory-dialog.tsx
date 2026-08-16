@@ -309,9 +309,11 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                   <SelectItem key={a.id} value={String(a.id)}>
                     <div className="flex items-center justify-between gap-8 w-full">
                       <span>{a.name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {format(Number(a.balance))}
-                      </span>
+                      {a.balance !== null && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {format(Number(a.balance))}
+                        </span>
+                      )}
                     </div>
                   </SelectItem>
                 ))}
@@ -616,9 +618,11 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                     <SelectItem key={a.id} value={String(a.id)}>
                       <div className="flex items-center justify-between gap-8 w-full">
                         <span>{a.name}</span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {format(Number(a.balance))}
-                        </span>
+                        {a.balance !== null && (
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {format(Number(a.balance))}
+                          </span>
+                        )}
                       </div>
                     </SelectItem>
                   ))}

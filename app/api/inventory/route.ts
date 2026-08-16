@@ -1,7 +1,7 @@
 // app/api/inventory/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    return Response.json({
+    const payload = {
       data:       inventory,
       total:      count,
       page,
@@ -171,11 +171,23 @@ export async function GET(request: NextRequest) {
         total_products: statsRow.total_products,
         total_physical: statsRow.total_physical,
         total_stock:    Number(statsRow.total_stock),
-        total_value:    Number(statsRow.total_value),
+        total_value:    Number(statsRow.total_value) as number | null,
         low_stock:      statsRow.low_stock,
         out_of_stock:   statsRow.out_of_stock,
       },
-    });
+    };
+
+    // Costo promedio y valor total (agregado, por producto y por variante)
+    // solo viajan si el rol tiene show_costs — el frontend ya oculta estas
+    // columnas, esto evita que el dato real viaje igual en la respuesta.
+    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+    if (!perms.showCosts) {
+      nullifyKeysDeep(payload, new Set([
+        "avg_unit_cost", "total_value", "base_avg_unit_cost", "base_total_value",
+      ]));
+    }
+
+    return Response.json(payload);
 
   } catch (error) {
     console.error("GET /api/inventory:", error);

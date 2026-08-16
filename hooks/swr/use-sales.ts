@@ -71,12 +71,17 @@ export type Sale = {
   sold_at:        string;
   notes:          string | null;
   items_count:    number;
-  net_profit:     number;
+  // null cuando el rol no tiene show_profit — el backend oculta la ganancia.
+  net_profit:     number | null;
 };
 
 export type SaleDetail = Sale & {
   next_id: number | null;
   prev_id: number | null;
+  // null cuando el rol no tiene show_costs / show_profit respectivamente.
+  products_cost: number | null;
+  supplies_cost: number | null;
+  margin_pct:    number | null;
   items: {
     id:           number;
     product_id:   number;
@@ -85,16 +90,18 @@ export type SaleDetail = Sale & {
     image_url:    string | null;
     quantity:     number;
     unit_price:   number;
-    unit_cost:    number;
+    unit_cost:    number | null; // null sin show_costs
     line_total:   number;
+    item_profit:  number | null; // null sin show_profit
+    item_margin:  number | null; // null sin show_profit
   }[];
   supplies: {
     id:          number;
     supply_id:   number;
     supply_name: string;
     quantity:    number;
-    unit_cost:   number;
-    line_total:  number;
+    unit_cost:   number | null; // null sin show_costs
+    line_total:  number | null; // null sin show_costs
   }[];
 };
 
@@ -114,7 +121,7 @@ export type SalesFilters = {
 
 export type SalesStats = {
   total_revenue:   number;
-  total_profit:    number;
+  total_profit:    number | null; // null sin show_profit
   pending_count:   number;
   completed_count: number;
 };

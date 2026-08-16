@@ -1,7 +1,7 @@
 ﻿// app/(dashboard)/events/[id]/page.tsx
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,17 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, Calendar, MapPin, TrendingUp,
   TrendingDown, DollarSign, ShoppingCart,
-  Banknote, CreditCard, ArrowLeftRight, HelpCircle, Tag, Pencil,
+  Banknote, CreditCard, ArrowLeftRight, HelpCircle, Tag, Pencil, Receipt,
 } from "lucide-react";
 import { useCurrency }       from "@/hooks/swr/use-currency";
 import { useEvent }          from "@/hooks/swr/use-events";
-import { Fab }               from "@/components/ui/fab";
+import { Fab, FabAction }    from "@/components/ui/fab";
 import { EditEventDialog }   from "@/components/events/edit-event-dialog";
+import { AddExpenseDialog }  from "@/components/events/add-expense-dialog";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+
+const SALES_PAGE_SIZE = 8;
 
 // ── Utils ──────────────────────────────────────────────────────────────
 const formatDate = (d: string) =>
@@ -51,8 +55,24 @@ export default function EventDetailPage({ params }: Props) {
   const { back, push } = useRouter();
   const { format }   = useCurrency();
   const { event, isLoading, mutate } = useEvent(Number(id));
-  const { show_profit: showProfit } = useModulePermissions("EVENTS");
+  const { show_profit: showProfit, can_edit: canEdit } = useModulePermissions("EVENTS");
+  const { can_edit: salesCanEdit } = useModulePermissions("SALES");
   const [editOpen, setEditOpen] = useState(false);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [salesPage, setSalesPage] = useState(1);
+
+  // Más recientes primero, paginado para no hacer scroll infinito dentro
+  // de la card cuando el evento tiene muchas ventas.
+  const sortedSales = useMemo(
+    () => [...(event?.sales ?? [])].reverse(),
+    [event?.sales]
+  );
+  const totalSalesPages = Math.max(1, Math.ceil(sortedSales.length / SALES_PAGE_SIZE));
+  const effectiveSalesPage = Math.min(salesPage, totalSalesPages);
+  const pagedSales = sortedSales.slice(
+    (effectiveSalesPage - 1) * SALES_PAGE_SIZE,
+    effectiveSalesPage * SALES_PAGE_SIZE
+  );
 
   if (isLoading) return <EventDetailSkeleton />;
 
@@ -210,61 +230,7 @@ export default function EventDetailPage({ params }: Props) {
         </CardContent>
       </Card>
 
-      {/* ── Ventas ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ShoppingCart className="size-4" />
-            Ventas del evento
-            <Badge variant="secondary" className="ml-auto">{summary.sales_count}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-2">
-          {event.sales.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              Aún no hay ventas registradas para este evento.{" "}
-              <Link href={`/sales/new?event_id=${event.id}`} className="text-primary underline underline-offset-2">
-                Registrar primera venta
-              </Link>
-            </p>
-          ) : (
-            event.sales.map((sale) => {
-              const PayIcon = PAYMENT_CONFIG[sale.payment_method]?.icon ?? HelpCircle;
-              return (
-                <Link
-                  key={sale.id}
-                  href={`/sales/${sale.id}`}
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="font-mono text-sm font-semibold">{sale.sale_number}</span>
-                      {sale.tax_rate > 0 && (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
-                          ISV {sale.tax_rate}%
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {sale.customer_name ?? "Anónimo"} · {formatDate(sale.sold_at)}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold">{format(sale.total)}</p>
-                    {showProfit && <p className="text-xs text-green-600">+{format(sale.profit ?? 0)}</p>}
-                  </div>
-                  <Badge variant="outline" className="shrink-0 gap-1 text-xs">
-                    <PayIcon className="size-3" />
-                    {sale.items_count} prod.
-                  </Badge>
-                </Link>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Gastos adicionales ── */}
+ {/* ── Gastos adicionales ── */}
       {showProfit && event.expenses.length > 0 && (
         <Card className="border-red-200 dark:border-red-800/40">
           <CardHeader>
@@ -292,6 +258,68 @@ export default function EventDetailPage({ params }: Props) {
           </CardContent>
         </Card>
       )}
+      {/* ── Ventas ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShoppingCart className="size-4" />
+            Ventas del evento
+            <Badge variant="secondary" className="ml-auto">{summary.sales_count}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-2">
+          {event.sales.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Aún no hay ventas registradas para este evento.{" "}
+              <Link href={`/sales/new?event_id=${event.id}`} className="text-primary underline underline-offset-2">
+                Registrar primera venta
+              </Link>
+            </p>
+          ) : (
+            <>
+              {pagedSales.map((sale) => {
+                const PayIcon = PAYMENT_CONFIG[sale.payment_method]?.icon ?? HelpCircle;
+                return (
+                  <Link
+                    key={sale.id}
+                    href={`/sales/${sale.id}`}
+                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-mono text-sm font-semibold">{sale.sale_number}</span>
+                        {sale.tax_rate > 0 && (
+                          <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
+                            ISV {sale.tax_rate}%
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {sale.customer_name ?? "Anónimo"} · {formatDate(sale.sold_at)}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold">{format(sale.total)}</p>
+                      {showProfit && <p className="text-xs text-green-600">+{format(sale.profit ?? 0)}</p>}
+                    </div>
+                    <Badge variant="outline" className="shrink-0 gap-1 text-xs">
+                      <PayIcon className="size-3" />
+                      {sale.items_count} prod.
+                    </Badge>
+                  </Link>
+                );
+              })}
+              <PaginationControls
+                page={effectiveSalesPage}
+                totalPages={totalSalesPages}
+                total={sortedSales.length}
+                label="ventas"
+                onPageChange={setSalesPage}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Notas ── */}
       {event.notes && (
@@ -303,26 +331,39 @@ export default function EventDetailPage({ params }: Props) {
         </Card>
       )}
 
-      <Fab
-        actions={[
-          ...(event.status !== "COMPLETED" ? [{
-            label: "Nueva venta",
-            icon: ShoppingCart,
+      {(() => {
+        const fabActions: FabAction[] = [
+          ...(event.status !== "COMPLETED" && salesCanEdit ? [{
+            label:   "Nueva venta",
+            icon:    ShoppingCart,
             onClick: () => push(`/sales/new?event_id=${event.id}`),
           }] : []),
-          {
-            label: "Editar evento",
-            icon: Pencil,
+          ...(canEdit ? [{
+            label:   "Agregar gasto",
+            icon:    Receipt,
+            onClick: () => setExpenseOpen(true),
+          }] : []),
+          ...(canEdit ? [{
+            label:   "Editar evento",
+            icon:    Pencil,
             onClick: () => setEditOpen(true),
-          },
-        ]}
-      />
+          }] : []),
+        ];
+        return fabActions.length > 0 ? <Fab actions={fabActions} /> : null;
+      })()}
 
       <EditEventDialog
         event={event}
         open={editOpen}
         onOpenChange={setEditOpen}
         onSuccess={() => { setEditOpen(false); mutate(); }}
+      />
+
+      <AddExpenseDialog
+        event={event}
+        open={expenseOpen}
+        onOpenChange={setExpenseOpen}
+        onSuccess={() => { setExpenseOpen(false); mutate(); }}
       />
 
     </div>

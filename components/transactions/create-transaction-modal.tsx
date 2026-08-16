@@ -42,7 +42,7 @@ const TYPE_CONFIG: Record<TxType, { label: string; icon: React.ElementType }> = 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  accounts: { id: number; name: string; balance: number }[];
+  accounts: { id: number; name: string; balance: number | null }[];
   creditCards?: CreditCardType[];
   onSuccess?: () => void;
   defaultType?: TxType;

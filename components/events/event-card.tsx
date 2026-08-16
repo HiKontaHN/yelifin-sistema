@@ -2,7 +2,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Event, EventStatus } from "@/hooks/swr/use-events";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { cn } from "@/lib/utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (iso: string) =>
@@ -55,19 +56,22 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
     event.starts_at.split("T")[0] === event.ends_at.split("T")[0];
 
   return (
-    <Card className="flex flex-col overflow-hidden">
+    <Card
+      onClick={() => onView(event)}
+      className={cn(
+        "flex flex-col overflow-hidden cursor-pointer",
+        "transition-colors hover:border-primary/30"
+      )}
+    >
 
       {/* ── Header ── */}
       <div className="p-4 pb-3 flex items-start justify-between gap-2">
-        <div
-          className="min-w-0 flex-1 cursor-pointer"
-          onClick={() => onView(event)}
-        >
+        <div className="min-w-0 flex-1">
           <Badge className={`text-[11px] gap-1 mb-1.5 ${cfg.badge}`} variant="outline">
             <StatusIcon className="size-3" />
             {cfg.label}
           </Badge>
-          <p className="font-semibold text-base truncate hover:text-primary transition-colors">
+          <p className="font-semibold text-base truncate">
             {event.name}
           </p>
 
@@ -87,14 +91,19 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
           </p>
         </div>
 
-        {/* Actions menu */}
+        {/* Actions menu — su propio gesto, no dispara la navegación de la card */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              onClick={(e) => e.stopPropagation()}
+            >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onView(event)}>
               <Eye className="size-4 mr-2" /> Ver detalle
             </DropdownMenuItem>
@@ -162,22 +171,13 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
         )}
       </div>
 
-      {/* ── Action buttons ── */}
-      <div className="px-4 pb-4 grid grid-cols-3 gap-2 mt-auto">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={() => onView(event)}
-        >
-          <Eye className="size-3.5" />
-          Detalle
-        </Button>
+      {/* ── Action buttons — gesto propio, no navegan al detalle ── */}
+      <div className="px-4 pb-4 grid grid-cols-2 gap-2 mt-auto">
         <Button
           variant="outline"
           size="sm"
           className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
-          onClick={() => onAddExpense(event)}
+          onClick={(e) => { e.stopPropagation(); onAddExpense(event); }}
         >
           <Receipt className="size-3.5" />
           Gasto
@@ -185,7 +185,7 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
         <Button
           size="sm"
           className="gap-1.5"
-          onClick={() => push(`/sales/new?event_id=${event.id}`)}
+          onClick={(e) => { e.stopPropagation(); push(`/sales/new?event_id=${event.id}`); }}
         >
           <ShoppingCart className="size-3.5" />
           Venta

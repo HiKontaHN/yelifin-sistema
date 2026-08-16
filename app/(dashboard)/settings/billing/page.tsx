@@ -10,8 +10,17 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useMe } from "@/hooks/swr/use-me";
+import { OwnerGuard } from "@/components/shared/owner-guard";
 
 export default function BillingSettingsPage() {
+  return (
+    <OwnerGuard>
+      <BillingSettingsContent />
+    </OwnerGuard>
+  );
+}
+
+function BillingSettingsContent() {
   const { push } = useRouter();
   const { subscription, isTrial, hasActiveSubscription, isLoading } = useMe();
 

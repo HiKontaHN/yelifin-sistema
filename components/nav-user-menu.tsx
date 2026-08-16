@@ -19,7 +19,7 @@ import { Settings, LogOut, Shield, Crown, Eye, EyeOff } from "lucide-react";
 export function NavUserMenu() {
   const { push } = useRouter();
   const { user, firebaseUser } = useAuth();
-  const { org } = useMe();
+  const { org, isOwner } = useMe();
   const { isPrivate, toggle: togglePrivacy } = usePrivacyMode();
 
   const isAdmin = user?.subscription?.plan?.slug === "admin";
@@ -76,12 +76,18 @@ export function NavUserMenu() {
             </span>
           ) : (
             user?.subscription?.plan?.name && (
-              <Link
-                href="/settings/billing"
-                className="inline-flex items-center gap-1 mt-1.5 text-xs text-primary font-medium hover:underline"
-              >
-                <Crown className="size-3" /> Plan {user.subscription.plan.name}
-              </Link>
+              isOwner ? (
+                <Link
+                  href="/settings/billing"
+                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-primary font-medium hover:underline"
+                >
+                  <Crown className="size-3" /> Plan {user.subscription.plan.name}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-muted-foreground font-medium">
+                  <Crown className="size-3" /> Plan {user.subscription.plan.name}
+                </span>
+              )
             )
           )}
         </div>
