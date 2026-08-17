@@ -38,7 +38,7 @@ export function LandingHero() {
 
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
             <CheckCircle2 className="size-4 text-sky-500" />
-            Prueba el plan Premium por 30 dias. Plan gratuito disponible.
+            Prueba el plan Premium por 30 dias. Plan gratuito disponible. 
           </div>
         </div>
 
