@@ -3,16 +3,16 @@ import { Mail, MessageCircle, Plus } from "lucide-react";
 
 const questions = [
   {
-    q: "Necesito saber de contabilidad para usar HiKonta?",
-    a: "No. La experiencia esta pensada para registrar operaciones del dia a dia con lenguaje sencillo.",
+    q: "¿Necesito saber de contabilidad para usar HiKonta?",
+    a: "No. La experiencia está pensada para registrar operaciones del día a día con lenguaje sencillo.",
   },
   {
-    q: "Puedo usarlo desde mi telefono?",
-    a: "Si. La landing y la aplicacion estan pensadas para funcionar desde telefono, tablet o computadora.",
+    q: "¿Puedo usarlo desde mi teléfono?",
+    a: "Sí. La landing y la aplicación están pensadas para funcionar desde teléfono, tablet o computadora.",
   },
   {
-    q: "Que pasa si estoy empezando?",
-    a: "Puedes iniciar con el plan gratuito y subir cuando tu negocio necesite mas capacidad.",
+    q: "¿Qué pasa si estoy empezando?",
+    a: "Puedes iniciar con el plan gratuito y subir cuando tu negocio necesite más capacidad.",
   },
 ];
 
@@ -23,16 +23,16 @@ export function LandingFaq() {
         <div>
           <h2 className="text-3xl font-normal text-black sm:text-4xl">Preguntas frecuentes</h2>
           <p className="mt-4 text-slate-600">
-            Respuestas rapidas para que puedas decidir sin vueltas.
+            Respuestas rápidas para que puedas decidir sin vueltas.
           </p>
           <div id="contacto" className="mt-8 grid gap-3 text-sm">
-            <Link href="mailto:hihikonta.app@gmail.com" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
+            <Link href="mailto:hikonta.app@gmail.com" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
               <Mail className="size-5 text-[#0068ff]" />
-              hihikonta.app@gmail.com
+              hikonta.app@gmail.com
             </Link>
             <Link href="/register" className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50">
               <MessageCircle className="size-5 text-[#0068ff]" />
-              Contactanos para empezar
+              Contáctanos para empezar
             </Link>
           </div>
         </div>

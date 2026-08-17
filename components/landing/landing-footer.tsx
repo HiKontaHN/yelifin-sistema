@@ -15,9 +15,9 @@ export function LandingFooter() {
         </Link>
         <p className="text-sm text-white/60">© 2026 HiKonta. Sistema de gestión para emprendedores.</p>
         <div className="flex flex-wrap gap-5 text-sm text-white/70">
-          <Link href="/login" className="hover:text-white">Iniciar Sesion</Link>
+          <Link href="/login" className="hover:text-white">Iniciar Sesión</Link>
           <Link href="/register" className="hover:text-white">Registrarse</Link>
-          <Link href="/terms" className="hover:text-white">Terminos</Link>
+          <Link href="/terms" className="hover:text-white">Términos</Link>
           <Link href="/privacy" className="hover:text-white">Privacidad</Link>
         </div>
       </div>

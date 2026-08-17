@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 const benefits = [
   "Inventario, ventas y finanzas conectados",
   "Clientes, eventos, reportes y suministros",
-  "Prueba Premium por 30 dias",
+  "Prueba Premium por 30 días",
   "Plan gratuito disponible",
-  "Acceso desde telefono o computadora",
+  "Acceso desde teléfono o computadora",
 ];
 
 export function LandingPricing() {
@@ -19,7 +19,7 @@ export function LandingPricing() {
             Empieza simple. Crece cuando lo necesites.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-            HiKonta esta pensado para emprendedores que quieren ordenar su negocio sin complicarse con herramientas enormes.
+            HiKonta está pensado para emprendedores que quieren ordenar su negocio sin complicarse con herramientas enormes.
           </p>
         </div>
 
@@ -32,7 +32,7 @@ export function LandingPricing() {
                 <span className="pb-2 text-slate-500">USD / mes</span>
               </div>
             </div>
-            <span className="rounded-full bg-[#8cff00] px-3 py-1 text-normal font-bold text-black">30 dias gratis</span>
+            <span className="rounded-full bg-[#8cff00] px-3 py-1 text-normal font-bold text-black">30 días gratis</span>
           </div>
 
           <div className="mt-7 grid gap-3">
@@ -50,7 +50,7 @@ export function LandingPricing() {
               <ArrowRight className="size-4" />
             </Button>
           </Link>
-          <p className="mt-3 text-center text-xs text-slate-500">Sin tarjeta de credito para comenzar.</p>
+          <p className="mt-3 text-center text-xs text-slate-500">Sin tarjeta de crédito para comenzar.</p>
         </div>
       </div>
     </section>

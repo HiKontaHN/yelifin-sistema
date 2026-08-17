@@ -8,10 +8,10 @@ import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
-  { href: "#como-funciona", label: "Como funciona?" },
+  { href: "#como-funciona", label: "¿Cómo funciona?" },
   { href: "#precios", label: "Precios" },
   { href: "#preguntas", label: "Preguntas Frecuentes" },
-  { href: "#contacto", label: "Contactanos" },
+  { href: "#contacto", label: "Contáctanos" },
 ];
 
 export function LandingHeader() {
@@ -53,7 +53,7 @@ export function LandingHeader() {
           ) : (
             <div className="flex items-center gap-2">
               <Link href="/login" className="hidden text-sm font-medium text-white/90 transition hover:text-white md:inline">
-                Iniciar Sesion
+                Iniciar Sesión
               </Link>
               <Link href="/register">
                 <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-3 text-sm font-bold text-black hover:bg-[#7ce600] sm:px-4">
@@ -63,7 +63,7 @@ export function LandingHeader() {
                 </Button>
               </Link>
               <Button
-                aria-label={menuOpen ? "Cerrar menu" : "Abrir menu"}
+                aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
                 variant="ghost"
                 size="icon"
                 className="size-9 text-white hover:bg-white/10 hover:text-white lg:hidden"
@@ -93,7 +93,7 @@ export function LandingHeader() {
                 className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 md:hidden"
                 onClick={() => setMenuOpen(false)}
               >
-                Iniciar Sesion
+                Iniciar Sesión
               </Link>
             </div>
           </div>
