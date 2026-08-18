@@ -1,10 +1,16 @@
 # Partner Dashboard — Panel para Incubadoras/Aceleradoras
 
-> **Estado:** Exploración futura. No implementado.
-> **Última revisión:** 17 de agosto de 2026
+> **Estado:** En construcción — scaffold funcionando localmente con datos reales, sin desplegar.
+> **Última revisión:** 18 de agosto de 2026
 > **Origen:** Spec recibida en stack ajeno (NestJS + TypeORM + SQL Server, sobre "CRM-TVC").
 > Este documento traduce esa idea a la arquitectura real de HiKonta (Next.js + Postgres/Neon,
 > multi-org — ver [`multi-org-architecture.md`](./multi-org-architecture.md)).
+>
+> **Código:** repo separado `hikonta-partners` (carpeta hermana de `yelifin-sistema`), no vive en
+> este repo. Se conecta directo a esta misma base de datos de Neon (mismo `DATABASE_URL`) y al
+> mismo proyecto de Firebase — ver el `README.md` de ese repo para el detalle. Los scripts SQL en
+> `database/partners/` de **este** repo siguen siendo la fuente de verdad del schema; el repo
+> `hikonta-partners` no trae sus propias migraciones.
 
 ---
 
@@ -50,11 +56,12 @@ Los scripts de esta feature viven en `database/partners/` (numerados, uno por pa
 
 | # | Script | Estado |
 |---|--------|--------|
-| 01 | `01-migrate-subscription-payments.sql` | ✅ escrito — migra `subscription_payments` a `org_id`/`org_subscription_id` |
-| 02 | `02-partners-infrastructure.sql` | ✅ escrito — crea `partners` + `partner_organizations` (con `share_financials`) + `paid_by_partner_id` en `subscription_payments` |
-| 03 | *(pendiente)* `verifyPartner()` + rutas `app/api/partner/*` | código, no SQL |
+| 01 | `01-migrate-subscription-payments.sql` | ✅ ejecutado en Neon — migra `subscription_payments` a `org_id`/`org_subscription_id` |
+| 02 | `02-partners-infrastructure.sql` | ✅ ejecutado en Neon — crea `partners` + `partner_organizations` (con `share_financials`) + `paid_by_partner_id` en `subscription_payments` |
+| 03 | `03-seed-test-data.sql` | ✅ ejecutado — **solo dev**, vincula el partner de prueba `id=1` a 6 organizaciones reales existentes |
 
-Ninguno de los dos scripts SQL se ha ejecutado en Neon todavía.
+`verifyPartner()` y las rutas `app/api/partner/*` (código, no SQL) también están escritos — ver
+`hikonta-partners/README.md`.
 
 ---
 
@@ -140,8 +147,8 @@ viejo). Arreglarla es la base tanto para llevar historial de pagos en general co
 partner pueda "patrocinar" meses de plan a una org de su portafolio — **es el mismo mecanismo**, no
 dos sistemas separados.
 
-**Columnas nuevas sobre `subscription_payments`** (ver `database/partners/01-migrate-subscription-payments.sql`,
-ya escrito, y `02-partners-infrastructure.sql`, pendiente):
+**Columnas nuevas sobre `subscription_payments`** (ver `database/partners/01-migrate-subscription-payments.sql`
+y `02-partners-infrastructure.sql`, ambos ejecutados en Neon):
 
 - `org_id`, `org_subscription_id` — repuntan la tabla a `organizations`/`org_subscriptions` (paso 01).
 - `months_purchased INT` — cuántos meses cubre el pago. Necesario porque no todo pago sigue el

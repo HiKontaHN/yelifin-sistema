@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useIndustries } from "@/hooks/swr/use-organization";
 
 type AccountType = "CASH" | "BANK" | "WALLET" | "OTHER";
 
@@ -63,9 +64,12 @@ export default function OnboardingPage() {
     const { firebaseUser, loading } = useAuth();
     const { replace, push } = useRouter();
 
+    const { industries } = useIndustries();
+
     const [checking, setChecking] = useState(true);
     const [step, setStep] = useState<1 | 2>(1);
     const [currency, setCurrency] = useState("HNL");
+    const [industryId, setIndustryId] = useState<string>(""); // string por el Select; se castea al enviar
     const [saving, setSaving] = useState(false);
 
     const [accounts, setAccounts] = useState<AccountRow[]>([
@@ -122,6 +126,7 @@ export default function OnboardingPage() {
                 },
                 body: JSON.stringify({
                     currency,
+                    industry_id: industryId ? Number(industryId) : undefined,
                     accounts: accounts.map((a) => ({
                         name: a.name.trim(),
                         type: a.type,
@@ -192,6 +197,28 @@ export default function OnboardingPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>
+                                        Industria de tu negocio
+                                        <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
+                                    </Label>
+                                    <Select value={industryId} onValueChange={setIndustryId}>
+                                        <SelectTrigger className="h-11">
+                                            <SelectValue placeholder="Selecciona una industria" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {industries.map((i) => (
+                                                <SelectItem key={i.id} value={String(i.id)}>
+                                                    {i.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Nos ayuda a mostrarte reportes y sugerencias relevantes para tu rubro.
+                                    </p>
                                 </div>
 
                                 <Button className="w-full gap-2 h-11" onClick={() => setStep(2)}>
