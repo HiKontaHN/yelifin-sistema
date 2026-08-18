@@ -132,13 +132,14 @@ export interface ModulePermissions {
 }
 
 export interface OrgInfo {
-  id:       number;
-  name:     string;
-  slug:     string | null;
-  logo_url: string | null;
-  timezone: string;
-  currency: string;
-  locale:   string;
+  id:          number;
+  name:        string;
+  slug:        string | null;
+  logo_url:    string | null;
+  timezone:    string;
+  currency:    string;
+  locale:      string;
+  industry_id: number | null;
 }
 
 export interface OrgRole {

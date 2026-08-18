@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const { orgId } = auth.data;
 
     const [org] = await sql`
-      SELECT id, name, slug, logo_url, timezone, currency, locale, created_at
+      SELECT id, name, slug, logo_url, timezone, currency, locale, industry_id, created_at
       FROM organizations
       WHERE id = ${orgId}
     `;
@@ -47,21 +47,30 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    if (Object.keys(updates).length === 0) {
+    const industryId = "industry_id" in body ? body.industry_id : undefined;
+    if (industryId !== undefined && industryId !== null) {
+      const [industry] = await sql`SELECT id FROM industries WHERE id = ${industryId} AND is_active = TRUE`;
+      if (!industry) return createErrorResponse("Industria inválida", 400);
+    }
+
+    if (Object.keys(updates).length === 0 && industryId === undefined) {
       return createErrorResponse("No hay campos para actualizar", 400);
     }
 
+    // Mismo criterio que el resto de los campos: solo se actualiza si viene
+    // un valor no nulo (esta ruta no soporta "limpiar" la industria a NULL).
     const [org] = await sql`
       UPDATE organizations
       SET
-        name       = COALESCE(${updates.name       ?? null}, name),
-        logo_url   = COALESCE(${updates.logo_url   ?? null}, logo_url),
-        timezone   = COALESCE(${updates.timezone   ?? null}, timezone),
-        currency   = COALESCE(${updates.currency   ?? null}, currency),
-        locale     = COALESCE(${updates.locale     ?? null}, locale),
-        updated_at = NOW()
+        name        = COALESCE(${updates.name     ?? null}, name),
+        logo_url    = COALESCE(${updates.logo_url  ?? null}, logo_url),
+        timezone    = COALESCE(${updates.timezone  ?? null}, timezone),
+        currency    = COALESCE(${updates.currency  ?? null}, currency),
+        locale      = COALESCE(${updates.locale    ?? null}, locale),
+        industry_id = COALESCE(${industryId ?? null}, industry_id),
+        updated_at  = NOW()
       WHERE id = ${orgId}
-      RETURNING id, name, slug, logo_url, timezone, currency, locale
+      RETURNING id, name, slug, logo_url, timezone, currency, locale, industry_id
     `;
 
     return Response.json({ data: org });

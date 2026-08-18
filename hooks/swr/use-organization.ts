@@ -65,7 +65,7 @@ export function useUpdateOrganization() {
   const authFetch = useAuthFetch();
   const [isSaving, setIsSaving] = useState(false);
 
-  const updateOrg = async (input: Partial<Pick<OrgInfo, "name" | "logo_url" | "timezone" | "currency" | "locale">>) => {
+  const updateOrg = async (input: Partial<Pick<OrgInfo, "name" | "logo_url" | "timezone" | "currency" | "locale" | "industry_id">>) => {
     setIsSaving(true);
     try {
       return await authFetch("/api/organization", {
@@ -78,6 +78,27 @@ export function useUpdateOrganization() {
   };
 
   return { updateOrg, isSaving };
+}
+
+// ── Industries ──────────────────────────────────────────────────────────────
+
+export type Industry = { id: number; slug: string; name: string };
+
+export function useIndustries() {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const { data, isLoading, error } = useSWR<{ data: Industry[] }>(
+    firebaseUser ? "/api/industries" : null,
+    (u: string) => authFetch(u),
+    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 } // catálogo, cambia poco
+  );
+
+  return {
+    industries: data?.data ?? [],
+    isLoading,
+    error: (error as any)?.message ?? null,
+  };
 }
 
 // ── Members ────────────────────────────────────────────────────────────────

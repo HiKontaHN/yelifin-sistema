@@ -7,7 +7,12 @@ import Image from "next/image";
 import { toast } from "sonner";
 
 import { useMe, useUpdateProfile, useUploadLogo } from "@/hooks/swr/use-me";
+<<<<<<< Updated upstream
 import { useUpdateOrganization } from "@/hooks/swr/use-organization";
+=======
+import { useUpdateOrganization, useIndustries } from "@/hooks/swr/use-organization";
+import { OwnerGuard } from "@/components/shared/owner-guard";
+>>>>>>> Stashed changes
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
@@ -58,6 +63,7 @@ export default function OrganizationSettingsPage() {
   const { updateProfile, isSaving: isSavingProfile }    = useUpdateProfile();
   const { updateOrg,     isSaving: isSavingOrg }        = useUpdateOrganization();
   const { uploadLogo,    isUploading }                   = useUploadLogo();
+  const { industries }                                   = useIndustries();
 
   const [displayName, setDisplayName] = useState("");
   const [orgName,     setOrgName]     = useState("");
@@ -66,6 +72,7 @@ export default function OrganizationSettingsPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [timezone,    setTimezone]    = useState("");
   const [currency,    setCurrency]    = useState("");
+  const [industryId,  setIndustryId]  = useState<string>(""); // string por el Select
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,6 +83,7 @@ export default function OrganizationSettingsPage() {
       setLogoUrl(org.logo_url ?? null);
       setTimezone(org.timezone ?? "America/Tegucigalpa");
       setCurrency(org.currency ?? "HNL");
+      setIndustryId(org.industry_id ? String(org.industry_id) : "");
     }
   }, [user, org]);
 
@@ -122,10 +130,11 @@ export default function OrganizationSettingsPage() {
       if (isOwner) {
         promises.push(
           updateOrg({
-            name:     orgName.trim() || undefined,
-            logo_url: finalLogoUrl ?? undefined,
+            name:        orgName.trim() || undefined,
+            logo_url:    finalLogoUrl ?? undefined,
             timezone,
             currency,
+            industry_id: industryId ? Number(industryId) : undefined,
           })
         );
       }
@@ -296,6 +305,18 @@ export default function OrganizationSettingsPage() {
                 <p className="text-xs text-muted-foreground">
                   Se usa para mostrar precios y calcular totales en el sistema.
                 </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="industry">Industria del negocio</Label>
+                <Select value={industryId} onValueChange={setIndustryId} disabled={busy}>
+                  <SelectTrigger id="industry" className="h-10"><SelectValue placeholder="Selecciona una industria" /></SelectTrigger>
+                  <SelectContent>
+                    {industries.map((i) => (
+                      <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </>
           )}

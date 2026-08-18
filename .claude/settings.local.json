@@ -71,7 +71,19 @@
       "Bash(./node_modules/.bin/tsc --noEmit)",
       "Bash(npx --no-install eslint .)",
       "Skill(update-config)",
+<<<<<<< Updated upstream
       "PowerShell(npx react-doctor@latest *)"
+=======
+      "PowerShell(npx react-doctor@latest *)",
+      "Bash(grep -E '\\\\.\\(ts|tsx\\)$')",
+      "Bash(xargs wc -l)",
+      "WebSearch",
+      "WebFetch(domain:lineicons.com)",
+      "WebFetch(domain:unpkg.com)",
+      "WebFetch(domain:app.unpkg.com)",
+      "Bash(pnpm add *)",
+      "Bash(gh repo *)"
+>>>>>>> Stashed changes
     ]
   }
 }

@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/onboarding — completar onboarding
-// Body: { currency: string, accounts: { name: string, type: string, balance?: number }[] }
+// Body: { currency: string, industry_id?: number, accounts: { name: string, type: string, balance?: number }[] }
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
@@ -42,10 +42,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const currency = (body?.currency ?? "HNL").toString().trim().toUpperCase();
+    const industryId: number | null = body?.industry_id ? Number(body.industry_id) : null;
     const accounts = Array.isArray(body?.accounts) ? body.accounts : [];
 
     if (!currency || currency.length !== 3)
       return createErrorResponse("Moneda inválida", 400);
+
+    if (industryId !== null) {
+      const [industry] = await sql`SELECT id FROM industries WHERE id = ${industryId} AND is_active = TRUE`;
+      if (!industry) return createErrorResponse("Industria inválida", 400);
+    }
 
     // La cuenta de efectivo siempre debe estar
     const hasEfectivo = accounts.some(
@@ -82,10 +88,14 @@ export async function POST(request: NextRequest) {
       `;
     }
 
-    // 2. Guardar moneda en la org (es lo que lee /api/auth/me y la app)
+    // 2. Guardar moneda + industria en la org (currency es lo que lee
+    //    /api/auth/me y la app; industry_id queda NULL si no se
+    //    seleccionó — se puede completar después en /settings/organization).
     await sql`
       UPDATE organizations
-      SET currency = ${currency}, updated_at = CURRENT_TIMESTAMP
+      SET currency    = ${currency},
+          industry_id = COALESCE(${industryId}, industry_id),
+          updated_at  = CURRENT_TIMESTAMP
       WHERE id = ${orgId}
     `;
 
@@ -104,7 +114,7 @@ export async function POST(request: NextRequest) {
     // que hikonta_session en proxy.ts) para que la navegación al dashboard
     // no repita el fetch de sesión.
     const res = NextResponse.json(
-      { message: "Onboarding completado", data: { currency } },
+      { message: "Onboarding completado", data: { currency, industry_id: industryId } },
       { status: 201 }
     );
     res.cookies.set(
