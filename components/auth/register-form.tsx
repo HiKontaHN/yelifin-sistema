@@ -36,7 +36,7 @@ const registerSchema = z
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
-export function RegisterForm() {
+export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
   const { push } = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -62,6 +62,7 @@ export function RegisterForm() {
           password: data.password,
           display_name: data.name,
           business_name: data.business_name,
+          ...(partnerCode && { partner_code: partnerCode }),
         }),
       });
 

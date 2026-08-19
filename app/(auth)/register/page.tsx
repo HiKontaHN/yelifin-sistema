@@ -1,8 +1,10 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Sparkles, WalletCards } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowLeft, CheckCircle2, Sparkles, WalletCards, Handshake } from "lucide-react";
 import { RegisterForm } from "@/components/auth/register-form";
 import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { Button } from "@/components/ui/button";
@@ -10,7 +12,31 @@ import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { useRedirectIfAuthenticated } from "@/hooks/use-redirect-if-authenticated";
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <RegisterPageContent />
+    </Suspense>
+  );
+}
+
+// Código de invitación de una incubadora/partner (ver
+// database/partners/04-invite-codes.sql) — ?ref=CODIGO en la URL que
+// comparte el partner. Se canjea solo, dentro de /api/auth/register, al
+// crear la cuenta; acá solo se valida para mostrarle al visitante quién lo
+// está invitando antes de que llene el formulario.
+function RegisterPageContent() {
   const { loading } = useRedirectIfAuthenticated();
+  const searchParams = useSearchParams();
+  const partnerCode = searchParams.get("ref")?.trim() || undefined;
+  const [partnerName, setPartnerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!partnerCode) return;
+    fetch(`/api/partners/invite-info?code=${encodeURIComponent(partnerCode)}`)
+      .then((res) => res.json())
+      .then((body) => setPartnerName(body?.data?.valid ? body.data.partnerName : null))
+      .catch(() => setPartnerName(null));
+  }, [partnerCode]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -46,7 +72,14 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            <RegisterForm />
+            {partnerName && (
+              <div className="mb-6 flex items-center gap-2 rounded-xl border border-[#0068ff]/20 bg-[#0068ff]/5 px-4 py-3 text-sm text-slate-700">
+                <Handshake className="size-4 shrink-0 text-[#0068ff]" />
+                Te estás uniendo a través de <span className="font-bold">{partnerName}</span>
+              </div>
+            )}
+
+            <RegisterForm partnerCode={partnerCode} />
 
             <p className="mt-8 text-center text-sm text-slate-600">
               ¿Ya tienes una cuenta?{" "}
