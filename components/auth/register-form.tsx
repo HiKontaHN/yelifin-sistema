@@ -3,10 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +72,18 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       const currentUser = auth.currentUser;
       if (currentUser) {
-        await sendEmailVerification(currentUser);
+        // Correo con nuestra propia plantilla (lib/mailer.ts), no el de
+        // Firebase — la cuenta ya quedó creada, así que un fallo acá no
+        // debe bloquear el mensaje de bienvenida ni el redirect.
+        try {
+          const idToken = await currentUser.getIdToken();
+          await fetch("/api/auth/send-verification-email", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` },
+          });
+        } catch (mailError) {
+          console.error("No se pudo enviar el correo de verificación:", mailError);
+        }
       }
 
       toast.success(

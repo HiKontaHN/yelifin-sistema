@@ -152,23 +152,28 @@ export function LoginForm() {
 
               setIsResetting(true);
               try {
-                const { sendPasswordResetEmail } =
-                  await import("firebase/auth");
-                await sendPasswordResetEmail(auth, email);
+                const res = await fetch("/api/auth/send-password-reset", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email }),
+                });
 
+                if (res.status === 429) {
+                  toast.error("Demasiados intentos. Espera unos minutos.");
+                } else {
+                  // Respuesta genérica (venga o no de una cuenta real) para
+                  // no revelar si el email está registrado — la decide el
+                  // propio endpoint, ver app/api/auth/send-password-reset.
+                  toast.success(
+                    "Si el email está registrado, recibirás un correo en breve",
+                    { duration: 6000 },
+                  );
+                }
+              } catch {
+                // Error de red: misma respuesta genérica.
                 toast.success(
                   "Si el email está registrado, recibirás un correo en breve",
-                  {
-                    duration: 6000,
-                  },
-                );
-              } catch (error: any) {
-                // Respuesta genérica para no revelar si el email existe
-                toast.success(
-                  "Si el email está registrado, recibirás un correo en breve",
-                  {
-                    duration: 6000,
-                  },
+                  { duration: 6000 },
                 );
               } finally {
                 setIsResetting(false);

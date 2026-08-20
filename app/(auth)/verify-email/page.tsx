@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
-import { sendEmailVerification, signOut } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { setTokenCookie } from '@/lib/token-cookie';
 import { useAuth } from '@/hooks/use-auth';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
@@ -38,15 +38,22 @@ export default function VerifyEmailPage() {
     if (!firebaseUser || cooldown > 0) return;
     setIsSending(true);
     try {
-      await sendEmailVerification(firebaseUser);
+      const idToken = await firebaseUser.getIdToken();
+      const res = await fetch('/api/auth/send-verification-email', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (res.status === 429) {
+        toast.error('Demasiados intentos. Espera unos minutos.');
+        return;
+      }
+      if (!res.ok) throw new Error('send-verification-email failed');
+
       toast.success('Correo enviado. Revisa tu bandeja de entrada.');
       setCooldown(RESEND_COOLDOWN);
-    } catch (error: any) {
-      if (error.code === 'auth/too-many-requests') {
-        toast.error('Demasiados intentos. Espera unos minutos.');
-      } else {
-        toast.error('Error al enviar el correo. Intenta de nuevo.');
-      }
+    } catch {
+      toast.error('Error al enviar el correo. Intenta de nuevo.');
     } finally {
       setIsSending(false);
     }
