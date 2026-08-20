@@ -14,6 +14,7 @@ import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import {
     Banknote, Building2, Wallet, HelpCircle,
     Plus, Trash2, CheckCircle2, Loader2, ChevronRight,
@@ -21,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useIndustries } from "@/hooks/swr/use-organization";
+import { FREE_PLAN_MAX_ACCOUNTS } from "@/lib/plan-limits";
 
 type AccountType = "CASH" | "BANK" | "WALLET" | "OTHER";
 
@@ -185,7 +187,7 @@ export default function OnboardingPage() {
                                 <div className="space-y-2">
                                     <Label>Moneda</Label>
                                     <Select value={currency} onValueChange={setCurrency}>
-                                        <SelectTrigger className="h-11">
+                                        <SelectTrigger className="h-11 w-full rounded-xl">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -204,18 +206,14 @@ export default function OnboardingPage() {
                                         Industria de tu negocio
                                         <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
                                     </Label>
-                                    <Select value={industryId} onValueChange={setIndustryId}>
-                                        <SelectTrigger className="h-11">
-                                            <SelectValue placeholder="Selecciona una industria" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {industries.map((i) => (
-                                                <SelectItem key={i.id} value={String(i.id)}>
-                                                    {i.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect
+                                        value={industryId}
+                                        onValueChange={setIndustryId}
+                                        items={industries.map((i) => ({ value: String(i.id), label: i.name }))}
+                                        placeholder="Selecciona una industria"
+                                        searchPlaceholder="Buscar industria..."
+                                        className="h-11 w-full rounded-xl"
+                                    />
                                     <p className="text-xs text-muted-foreground">
                                         Nos ayuda a mostrarte reportes y sugerencias relevantes para tu rubro.
                                     </p>
@@ -276,7 +274,7 @@ export default function OnboardingPage() {
                                                         onChange={(e) => updateAccount(acc.id, "name", e.target.value)}
                                                         placeholder="Ej: Efectivo caja"
                                                         disabled={acc.locked}
-                                                        className="h-9 text-sm"
+                                                        className="h-9 rounded-xl text-sm"
                                                     />
                                                 </div>
                                                 <div className="space-y-1.5">
@@ -286,7 +284,7 @@ export default function OnboardingPage() {
                                                         onValueChange={(v) => updateAccount(acc.id, "type", v)}
                                                         disabled={acc.locked}
                                                     >
-                                                        <SelectTrigger className="h-9 text-sm">
+                                                        <SelectTrigger className="h-9 w-full rounded-xl text-sm">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
@@ -313,20 +311,29 @@ export default function OnboardingPage() {
                                                     placeholder="0"
                                                     min="0"
                                                     step="0.01"
-                                                    className="h-9 text-sm"
+                                                    className="h-9 rounded-xl text-sm"
                                                 />
                                             </div>
                                         </div>
                                     ))}
 
-                                    {/* Agregar cuenta */}
-                                    <button
-                                        onClick={addAccount}
-                                        className="w-full h-11 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
-                                    >
-                                        <Plus className="size-4" />
-                                        Agregar otra cuenta
-                                    </button>
+                                    {/* Agregar cuenta — el plan Gratis incluye hasta
+                                        FREE_PLAN_MAX_ACCOUNTS cuentas (ver lib/plan-limits.ts);
+                                        no tiene sentido dejar configurar más en onboarding
+                                        si se van a perder al terminar el trial de 30 días. */}
+                                    {accounts.length < FREE_PLAN_MAX_ACCOUNTS ? (
+                                        <button
+                                            onClick={addAccount}
+                                            className="w-full h-11 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                                        >
+                                            <Plus className="size-4" />
+                                            Agregar otra cuenta
+                                        </button>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground text-center px-2">
+                                            El plan Gratis incluye hasta {FREE_PLAN_MAX_ACCOUNTS} cuentas. Podrás agregar más cuentas y tarjetas de crédito al mejorar tu plan.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="flex gap-3 pt-1">
