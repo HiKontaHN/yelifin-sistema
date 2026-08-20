@@ -80,6 +80,31 @@ export function useUpdateOrganization() {
   return { updateOrg, isSaving };
 }
 
+// ── Vincular con un partner ─────────────────────────────────────────────────
+// Canjea un código de invitación de incubadora/partner (ver
+// database/partners/04-invite-codes.sql y app/api/organization/link-partner) —
+// usado por Configuración > Organización cuando el negocio ya existe.
+
+export function useLinkPartner() {
+  const authFetch = useAuthFetch();
+  const [isLinking, setIsLinking] = useState(false);
+
+  const linkPartner = async (code: string): Promise<{ partnerName: string }> => {
+    setIsLinking(true);
+    try {
+      const res = await authFetch("/api/organization/link-partner", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      return res.data;
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  return { linkPartner, isLinking };
+}
+
 // ── Industries ──────────────────────────────────────────────────────────────
 
 export type Industry = { id: number; slug: string; name: string };

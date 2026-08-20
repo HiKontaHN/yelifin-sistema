@@ -5,6 +5,7 @@ import { neon } from "@neondatabase/serverless";
 import { seedDefaultCategories } from "@/lib/seed-default-categories";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
+import { redeemPartnerInviteCode } from "@/lib/partner-invites";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
   let createdFirebaseUid: string | null = null;
 
   try {
-    const { email, password, display_name, business_name } = await req.json();
+    const { email, password, display_name, business_name, partner_code } = await req.json();
 
     // ── Validaciones básicas ──────────────────────────────────────
     if (!email || !password || !display_name || !business_name) {
@@ -122,6 +123,17 @@ export async function POST(req: NextRequest) {
 
     // ── 5. Categorías por defecto (las cuentas se crean en onboarding)
     await seedDefaultCategories(orgId, userId, sql);
+
+    // ── 6. Código de invitación de partner (opcional, ?ref= en /register)
+    // Best-effort: un código inválido/vencido NUNCA debe tumbar el registro,
+    // solo se ignora — el negocio ya se creó igual.
+    if (partner_code) {
+      try {
+        await redeemPartnerInviteCode(sql, partner_code, orgId);
+      } catch (partnerError) {
+        console.error("No se pudo canjear el código de partner en registro:", partnerError);
+      }
+    }
 
     return NextResponse.json(
       {

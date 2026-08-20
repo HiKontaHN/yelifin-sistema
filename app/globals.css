@@ -149,6 +149,21 @@
   .landing-marquee:hover {
     animation-play-state: paused;
   }
+
+  .landing-rotate-word {
+    animation: landing-rotate-word 0.4s ease-out;
+  }
+}
+
+@keyframes landing-rotate-word {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes landing-marquee {
@@ -156,6 +171,11 @@
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    /* Moves by exactly one repeated set's width: 1 / --marquee-repeat
+       of the track. --marquee-repeat is set inline on the track by
+       LandingModuleStrip, so its REPEAT_COUNT constant is the only
+       place that number needs to change — a mismatch here would
+       misalign the loop and read as the strip jumping/restarting. */
+    transform: translateX(calc(-100% / var(--marquee-repeat, 2)));
   }
 }

@@ -206,7 +206,7 @@ export function LoginForm() {
         )}
       </div>
 
-      <Button type="submit" className="h-12 w-full rounded-xl bg-[#8cff00] font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
+      <Button type="submit" className="h-12 w-full rounded-xl bg-[#8cff00] text-base font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
         {isLoading ? (
           <>
             <Loader2 className="mr-2 size-4 animate-spin" />

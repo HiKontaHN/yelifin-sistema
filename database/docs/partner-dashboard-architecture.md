@@ -59,6 +59,7 @@ Los scripts de esta feature viven en `database/partners/` (numerados, uno por pa
 | 01 | `01-migrate-subscription-payments.sql` | ✅ ejecutado en Neon — migra `subscription_payments` a `org_id`/`org_subscription_id` |
 | 02 | `02-partners-infrastructure.sql` | ✅ ejecutado en Neon — crea `partners` + `partner_organizations` (con `share_financials`) + `paid_by_partner_id` en `subscription_payments` |
 | 03 | `03-seed-test-data.sql` | ✅ ejecutado — **solo dev**, vincula el partner de prueba `id=1` a 6 organizaciones reales existentes |
+| 04 | `04-invite-codes.sql` | ⬜ pendiente de ejecutar en Neon — crea `partner_invite_codes` (resuelve la pregunta abierta #6 de más abajo) |
 
 `verifyPartner()` y las rutas `app/api/partner/*` (código, no SQL) también están escritos — ver
 `hikonta-partners/README.md`.
@@ -300,8 +301,13 @@ app — mantener consistencia (ver `ui-consistency-auditor`):
 5. **Nueva, específica de HiKonta:** ¿el emprendedor debe *consentir* explícitamente que su
    incubadora vea sus datos (y cuáles)? Afecta si `partner_organizations` se crea desde admin
    (asignación directa) o requiere aceptación del owner de la org.
-6. ¿Cómo se vincula una org a un partner? ¿Panel de admin de HiKonta, o el propio emprendedor
-   ingresa un código de invitación de su incubadora durante el onboarding?
+6. ~~¿Cómo se vincula una org a un partner?~~ **Resuelto (2026-08-19):** códigos de invitación —
+   ver `04-invite-codes.sql` (tabla `partner_invite_codes`) y `lib/partner-invites.ts` en este
+   repo. El partner genera el código desde `hikonta-partners` ("Agregar organización" en
+   `/organizations`); el emprendedor lo canjea acá, en `/register?ref=CODIGO` (cuenta nueva, ver
+   `app/api/auth/register`) o en Configuración → Organización (cuenta existente, ver
+   `app/api/organization/link-partner`). El emprendedor SIEMPRE es quien confirma el vínculo —
+   responde también, de paso, la pregunta 5: es opt-in explícito, igual que `share_financials`.
 
 ---
 

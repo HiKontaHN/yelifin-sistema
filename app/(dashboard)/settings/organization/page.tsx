@@ -7,7 +7,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 
 import { useMe, useUpdateProfile, useUploadLogo } from "@/hooks/swr/use-me";
-import { useUpdateOrganization, useIndustries } from "@/hooks/swr/use-organization";
+import { useUpdateOrganization, useIndustries, useLinkPartner } from "@/hooks/swr/use-organization";
 import { OwnerGuard } from "@/components/shared/owner-guard";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, Building2, Upload, X, Loader2, Save, ImageIcon,
+  ArrowLeft, Building2, Upload, X, Loader2, Save, ImageIcon, Handshake,
 } from "lucide-react";
 
 const TIMEZONES = [
@@ -68,6 +68,9 @@ function OrganizationSettingsContent() {
   const { updateOrg,     isSaving: isSavingOrg }        = useUpdateOrganization();
   const { uploadLogo,    isUploading }                   = useUploadLogo();
   const { industries }                                   = useIndustries();
+  const { linkPartner,   isLinking }                     = useLinkPartner();
+
+  const [partnerCode, setPartnerCode] = useState("");
 
   const [displayName, setDisplayName] = useState("");
   const [orgName,     setOrgName]     = useState("");
@@ -148,6 +151,18 @@ function OrganizationSettingsContent() {
       toast.success("Datos actualizados correctamente");
     } catch (err: any) {
       toast.error(err.message || "Error al guardar los cambios");
+    }
+  };
+
+  const handleLinkPartner = async () => {
+    const code = partnerCode.trim();
+    if (!code) return;
+    try {
+      const { partnerName } = await linkPartner(code);
+      toast.success(`Tu negocio quedó vinculado a ${partnerName}`);
+      setPartnerCode("");
+    } catch (err: any) {
+      toast.error(err.message || "No se pudo vincular el código");
     }
   };
 
@@ -326,6 +341,45 @@ function OrganizationSettingsContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Vincular con una incubadora/partner — código de invitación, ver
+          database/partners/04-invite-codes.sql. Solo el dueño (mismo
+          criterio que el resto de esta página: linkear cambia con quién
+          comparte visibilidad de actividad la organización). */}
+      {isOwner && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Handshake className="size-4 text-muted-foreground" />
+              Vincular con una incubadora
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Si una incubadora o aceleradora te dio un código de invitación, ingrésalo acá para
+              que pueda monitorear tu adopción de HiKonta (nunca tus montos, a menos que lo
+              autorices por separado).
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={partnerCode}
+                onChange={(e) => setPartnerCode(e.target.value.toUpperCase())}
+                placeholder="Código de invitación"
+                disabled={isLinking}
+                className="uppercase"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleLinkPartner}
+                disabled={isLinking || !partnerCode.trim()}
+              >
+                {isLinking ? <Loader2 className="size-4 animate-spin" /> : "Vincular"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Save bar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-3 bg-background/95 backdrop-blur border-t md:static md:border-0 md:bg-transparent md:backdrop-blur-none md:px-0 md:pt-0 md:pb-0">

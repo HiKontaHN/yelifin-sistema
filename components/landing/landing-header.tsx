@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, LayoutDashboard, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HiKontaIcon } from "@/components/shared/hikonta-icon";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
@@ -25,11 +26,7 @@ export function LandingHeader() {
         <nav className="flex h-12 w-full max-w-6xl items-center justify-between rounded-xl bg-[#2A2A2FCC] px-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] sm:h-14 sm:px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <HiKontaIcon className="size-8 rounded-lg shadow-lg shadow-blue-500/30 sm:size-9" />
-            <div
-              role="img"
-              aria-label="HiKonta"
-              className="h-5 w-20 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat invert sm:h-6 sm:w-24"
-            />
+            <HiKontaTitle className="h-5 invert sm:h-6" />
           </Link>
 
           <div className="hidden items-center gap-7 text-sm font-medium text-white/90 lg:flex">
@@ -44,7 +41,7 @@ export function LandingHeader() {
             <div className="h-9 w-28 animate-pulse rounded-lg bg-white/15" />
           ) : isLoggedIn ? (
             <Link href="/dashboard">
-              <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-4 font-bold text-black hover:bg-[#7ce600]">
+              <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-4 text-base font-bold text-black hover:bg-[#7ce600]">
                 <LayoutDashboard className="size-4" />
                 <span className="hidden sm:inline">Ir al panel</span>
                 <span className="sm:hidden">Panel</span>
@@ -56,7 +53,7 @@ export function LandingHeader() {
                 Iniciar Sesión
               </Link>
               <Link href="/register">
-                <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-3 text-sm font-bold text-black hover:bg-[#7ce600] sm:px-4">
+                <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-3 text-base font-bold text-black hover:bg-[#7ce600] sm:px-4">
                   <span className="hidden sm:inline">Empieza Gratis</span>
                   <span className="sm:hidden">Gratis</span>
                   <ArrowRight className="size-4" />

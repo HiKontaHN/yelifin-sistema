@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { DollarSign, FileText, Hash, ImageIcon, PackagePlus, ToggleLeft, UserPlus, X } from "lucide-react";
-
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 const slides = [
   {
     title: "Registra tu inventario",
@@ -29,7 +29,7 @@ export function LandingFlow() {
             ¿Cómo funciona?
           </span>
           <h2 className="mt-4 text-3xl font-normal text-black sm:text-4xl">
-            Tu día con HiKonta se verá así
+            Tu día con <HiKontaTitle className="h-8 sm:h-10" /> se verá así
           </h2>
         </div>
 
@@ -38,7 +38,7 @@ export function LandingFlow() {
             {slides.map((slide) => (
               <article
                 key={slide.title}
-                className={`relative h-[680px] w-[min(88vw,540px)] snap-center overflow-hidden rounded-xl ${slide.gradient} px-4 pt-8 sm:px-8 lg:h-[720px] lg:flex-1`}
+                className={`relative h-170 w-[min(88vw,540px)] snap-center overflow-hidden rounded-xl ${slide.gradient} px-4 pt-8 sm:px-8 lg:h-[720px] lg:flex-1`}
               >
                 <SlideArt type={slide.art} />
                 <div className="relative z-10 text-center text-white">

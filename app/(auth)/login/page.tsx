@@ -4,7 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
+import { ForceLightMode } from "@/components/shared/force-light-mode";
 import { HiKontaIcon } from "@/components/shared/hikonta-icon";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { useRedirectIfAuthenticated } from "@/hooks/use-redirect-if-authenticated";
@@ -13,11 +15,17 @@ export default function LoginPage() {
   const { loading } = useRedirectIfAuthenticated();
 
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <>
+        <ForceLightMode />
+        <LoadingScreen />
+      </>
+    );
   }
 
   return (
     <main className="min-h-screen bg-white text-slate-950" style={{ colorScheme: "light" }}>
+      <ForceLightMode />
       <Link href="/" className="fixed left-4 top-4 z-50 md:left-6 md:top-6">
         <Button variant="ghost" size="icon" className="rounded-full bg-white/80 text-slate-900 shadow-sm backdrop-blur hover:bg-white">
           <ArrowLeft className="size-5" />
@@ -29,11 +37,7 @@ export default function LoginPage() {
           <div className="w-full max-w-md">
             <Link href="/" className="mb-10 flex items-center gap-2">
               <HiKontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
-              <div
-                role="img"
-                aria-label="HiKonta"
-                className="h-6 w-24 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat"
-              />
+              <HiKontaTitle className="h-6" />
             </Link>
 
             <div className="mb-8 space-y-3">
