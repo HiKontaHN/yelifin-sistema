@@ -61,7 +61,7 @@ export function SearchableSelect({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "flex h-9 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm",
+            "flex h-9 items-center justify-between rounded-xl border border-input bg-background px-3 py-2 text-sm",
             "hover:bg-accent hover:text-accent-foreground transition-colors",
             "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
             "disabled:cursor-not-allowed disabled:opacity-50",

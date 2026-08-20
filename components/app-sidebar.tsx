@@ -298,7 +298,7 @@ export function AppSidebar() {
               type="button"
               onClick={toggleSidebar}
               aria-label={isCollapsed ? "Expandir menú" : "Contraer menú"}
-              className="hidden size-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground md:flex"
+              className="hidden size-6 shrink-0 items-center justify-center rounded-xl text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground md:flex"
             >
               {isCollapsed
                 ? <ChevronsRight className="size-4" />
