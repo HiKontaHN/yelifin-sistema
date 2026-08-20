@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { FREE_PLAN_MAX_ACCOUNTS } from "@/lib/plan-limits";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -59,6 +60,12 @@ export async function POST(request: NextRequest) {
     );
     if (!hasEfectivo)
       return createErrorResponse("Debe incluir al menos una cuenta de efectivo", 400);
+
+    // Límite temporal del plan Gratis (ver lib/plan-limits.ts) — espejo del
+    // límite del cliente en app/(auth)/onboarding/page.tsx, para que no se
+    // pueda saltar deshabilitando JS.
+    if (accounts.length > FREE_PLAN_MAX_ACCOUNTS)
+      return createErrorResponse(`El plan Gratis incluye hasta ${FREE_PLAN_MAX_ACCOUNTS} cuentas`, 400);
 
     // Validar cuentas
     const validTypes = ["CASH", "BANK", "WALLET", "OTHER"];
