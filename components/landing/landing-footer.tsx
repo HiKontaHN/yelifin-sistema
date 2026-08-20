@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HiKontaIcon } from "@/components/shared/hikonta-icon";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 
 export function LandingFooter() {
   return (
@@ -7,11 +8,7 @@ export function LandingFooter() {
       <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <Link href="/" className="flex items-center gap-2">
           <HiKontaIcon className="size-9 rounded-lg" />
-          <div
-            role="img"
-            aria-label="HiKonta"
-            className="h-6 w-24 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat invert"
-          />
+          <HiKontaTitle className="h-6 invert" />
         </Link>
         <p className="text-sm text-white/60">© 2026 HiKonta. Sistema de gestión para emprendedores.</p>
         <div className="flex flex-wrap gap-5 text-sm text-white/70">

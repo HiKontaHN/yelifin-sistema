@@ -25,7 +25,7 @@ export function LandingHero() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link href="/register" className="w-full sm:w-auto">
-              <Button className="h-12 w-full rounded-xl bg-[#8cff00] px-7 font-bold text-black shadow-none hover:bg-[#7ce600] sm:w-auto">
+              <Button className="h-12 w-full rounded-xl bg-[#8cff00] px-7 text-base font-bold text-black shadow-none hover:bg-[#7ce600] sm:w-auto">
                 Afíliate gratis
               </Button>
             </Link>

@@ -7,6 +7,7 @@ import { LandingHero } from "@/components/landing/landing-hero";
 import { LandingModuleStrip } from "@/components/landing/landing-module-strip";
 import { LandingPricing } from "@/components/landing/landing-pricing";
 import { LandingTools } from "@/components/landing/landing-tools";
+import { ForceLightMode } from "@/components/shared/force-light-mode";
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       className="font-google-sans-flex min-h-screen overflow-hidden bg-white text-slate-950"
       style={{ colorScheme: "light" }}
     >
+      <ForceLightMode />
       <LandingHeader />
       <LandingHero />
       <LandingModuleStrip />

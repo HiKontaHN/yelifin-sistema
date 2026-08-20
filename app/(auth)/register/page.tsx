@@ -6,16 +6,21 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Sparkles, WalletCards, Handshake } from "lucide-react";
 import { RegisterForm } from "@/components/auth/register-form";
+import { ForceLightMode } from "@/components/shared/force-light-mode";
 import { HiKontaIcon } from "@/components/shared/hikonta-icon";
+import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { useRedirectIfAuthenticated } from "@/hooks/use-redirect-if-authenticated";
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <RegisterPageContent />
-    </Suspense>
+    <>
+      <ForceLightMode />
+      <Suspense fallback={<LoadingScreen />}>
+        <RegisterPageContent />
+      </Suspense>
+    </>
   );
 }
 
@@ -51,29 +56,25 @@ function RegisterPageContent() {
       </Link>
 
       <div className="grid min-h-screen lg:grid-cols-[0.95fr_1.05fr]">
-        <section className="flex items-center justify-center px-5 py-24 sm:px-8 lg:py-12">
+        <section className="flex items-center justify-center px-5 py-10 sm:px-8 lg:py-8">
           <div className="w-full max-w-md">
-            <Link href="/" className="mb-9 flex items-center gap-2">
-              <HiKontaIcon className="size-10 rounded-lg shadow-lg shadow-blue-500/30" />
-              <div
-                role="img"
-                aria-label="HiKonta"
-                className="h-6 w-24 shrink-0 bg-[url('/title-black.svg')] bg-contain bg-left bg-no-repeat"
-              />
+            <Link href="/" className="mb-5 flex items-center gap-2">
+              <HiKontaIcon className="size-9 rounded-lg shadow-lg shadow-blue-500/30" />
+              <HiKontaTitle className="h-5" />
             </Link>
 
-            <div className="mb-8 space-y-3">
+            <div className="mb-5 space-y-1.5">
               <span className="inline-flex rounded-full bg-[#8cff00] px-3 py-1 text-xs font-bold text-black">
                 30 días gratis
               </span>
-              <h1 className="text-4xl font-normal leading-tight text-black">Crea tu cuenta</h1>
-              <p className="text-base leading-7 text-slate-600">
+              <h1 className="text-3xl font-normal leading-tight text-black">Crea tu cuenta</h1>
+              <p className="text-sm leading-6 text-slate-600">
                 Empieza a ordenar tu emprendimiento con inventario, clientes, ventas y reportes en un solo lugar.
               </p>
             </div>
 
             {partnerName && (
-              <div className="mb-6 flex items-center gap-2 rounded-xl border border-[#0068ff]/20 bg-[#0068ff]/5 px-4 py-3 text-sm text-slate-700">
+              <div className="mb-5 flex items-center gap-2 rounded-xl border border-[#0068ff]/20 bg-[#0068ff]/5 px-4 py-3 text-sm text-slate-700">
                 <Handshake className="size-4 shrink-0 text-[#0068ff]" />
                 Te estás uniendo a través de <span className="font-bold">{partnerName}</span>
               </div>
@@ -81,7 +82,7 @@ function RegisterPageContent() {
 
             <RegisterForm partnerCode={partnerCode} />
 
-            <p className="mt-8 text-center text-sm text-slate-600">
+            <p className="mt-5 text-center text-sm text-slate-600">
               ¿Ya tienes una cuenta?{" "}
               <Link href="/login" className="font-bold text-[#0068ff] hover:underline">
                 Inicia sesión
