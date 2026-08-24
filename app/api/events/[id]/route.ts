@@ -51,7 +51,7 @@ export async function GET(
       LEFT JOIN customers c   ON c.id = s.customer_id
       LEFT JOIN accounts  a   ON a.id = s.account_id
       LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
-      WHERE s.event_id = ${eventId} AND s.org_id = ${orgId}
+      WHERE s.event_id = ${eventId} AND s.org_id = ${orgId} AND s.status != 'CANCELLED'
       GROUP BY s.id, c.name, a.name
       ORDER BY s.sold_at ASC
     `;

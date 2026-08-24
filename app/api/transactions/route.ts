@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         t.reference_id,
         t.occurred_at,
         t.created_at,
+        t.deleted_at,
         a.id   AS account_id,
         a.name AS account_name,
         a.type AS account_type,
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
         COUNT(*)::int AS total_count
       FROM transactions t
       WHERE t.org_id = ${orgId}
+        AND t.deleted_at IS NULL
         ${search ? sql`` : sql`AND t.occurred_at >= ${startISO}::timestamptz AND t.occurred_at < ${endISO}::timestamptz`}
         ${search ? sql`AND t.description ILIKE ${"%" + search + "%"}` : sql``}
         ${accountId ? sql`AND (t.account_id = ${Number(accountId)} OR t.to_account_id = ${Number(accountId)})` : sql``}

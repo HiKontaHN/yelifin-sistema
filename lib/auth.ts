@@ -354,6 +354,7 @@ export async function verifyResourceLimit(
             SELECT COUNT(*) AS count FROM sales
             WHERE org_id = ${orgId}
               AND DATE_TRUNC('month', sold_at) = DATE_TRUNC('month', NOW())
+              AND deleted_at IS NULL
           `;
           return Number(r.count);
         },
@@ -365,6 +366,7 @@ export async function verifyResourceLimit(
             SELECT COUNT(*) AS count FROM transactions
             WHERE org_id = ${orgId}
               AND DATE_TRUNC('month', occurred_at) = DATE_TRUNC('month', NOW())
+              AND deleted_at IS NULL
           `;
           return Number(r.count);
         },

@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
               END)
             FROM transactions t
             WHERE t.org_id = ${orgId}
+              AND t.deleted_at IS NULL
               AND t.occurred_at >= ${endISO}::timestamptz
               AND (t.account_id = a.id OR t.to_account_id = a.id)
           ), 
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense
       FROM transactions
       WHERE org_id = ${orgId}
+        AND deleted_at IS NULL
         AND occurred_at >= ${startISO}::timestamptz
         AND occurred_at <  ${endISO}::timestamptz
     `;
@@ -87,6 +89,7 @@ export async function GET(request: NextRequest) {
         COUNT(*)::int AS count
       FROM transactions
       WHERE org_id = ${orgId}
+        AND deleted_at IS NULL
         AND occurred_at >= ${todayStart}::timestamptz
         AND occurred_at <  ${todayEnd}::timestamptz
     `;
@@ -99,13 +102,15 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense
       FROM transactions
       WHERE org_id = ${orgId}
+        AND deleted_at IS NULL
         AND occurred_at >= ${startISO}::timestamptz
         AND occurred_at <  ${endISO}::timestamptz
       GROUP BY DATE(occurred_at)
       ORDER BY date ASC
     `;
 
-    // Transacciones de hoy
+    // Transacciones de hoy (resumen compacto — se excluyen las canceladas;
+    // el ledger completo con insignia "Cancelada" vive en /finances/transactions)
     const todayTransactions = await sql`
       SELECT
         t.id, t.type, t.amount, t.description, t.category,
@@ -116,6 +121,7 @@ export async function GET(request: NextRequest) {
       JOIN accounts a ON a.id = t.account_id
       LEFT JOIN accounts ta ON ta.id = t.to_account_id
       WHERE t.org_id = ${orgId}
+        AND t.deleted_at IS NULL
         AND t.occurred_at >= ${todayStart}::timestamptz
         AND t.occurred_at <  ${todayEnd}::timestamptz
       ORDER BY t.occurred_at DESC

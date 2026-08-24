@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 
 import { useSales, usePatchSale, useDeleteSale, Sale } from "@/hooks/swr/use-sales";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -46,7 +46,7 @@ const formatDateOnly = (dateString: string) =>
 
 type Preset        = "today" | "7d" | "this_month" | "last_month" | "all";
 type PaymentFilter = "all" | "CASH" | "CARD" | "TRANSFER" | "MIXED" | "OTHER";
-type StatusFilter  = "all" | "COMPLETED" | "PENDING";
+type StatusFilter  = "all" | "COMPLETED" | "PENDING" | "CANCELLED";
 
 const paymentConfig: Record<string, { label: string; icon: any }> = {
   CASH:     { label: "Efectivo",      icon: Banknote      },
@@ -70,6 +70,7 @@ const getTaxRate = (v: any): number => Number(v) || 0;
 function PendingActions({ saleId, onMutate, canEdit }: { saleId: number; onMutate: () => void; canEdit: boolean }) {
   const { push } = useRouter();
   const { confirmSale, cancelSale, isPatching } = usePatchSale(saleId);
+  const [cancelOpen, setCancelOpen] = useState(false);
   if (!canEdit) return null;
 
   const handleConfirm = async () => {
@@ -82,10 +83,11 @@ function PendingActions({ saleId, onMutate, canEdit }: { saleId: number; onMutat
     }
   };
 
-  const handleCancel = async () => {
+  const handleCancel = async (reason?: string) => {
     try {
-      await cancelSale();
+      await cancelSale(reason);
       toast.success("Venta cancelada · stock devuelto");
+      setCancelOpen(false);
       onMutate();
     } catch (err: any) {
       toast.error(err.message || "Error al cancelar");
@@ -116,12 +118,21 @@ function PendingActions({ saleId, onMutate, canEdit }: { saleId: number; onMutat
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive focus:bg-destructive/10"
-            onClick={handleCancel}
+            onClick={() => setCancelOpen(true)}
           >
             <XCircle className="size-4 mr-2" /> Cancelar venta
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <CancelSaleDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        title="Cancelar esta venta"
+        description="Se devolverá el stock al inventario y la venta quedará marcada como cancelada."
+        isLoading={isPatching}
+        onConfirm={handleCancel}
+      />
     </div>
   );
 }
@@ -214,10 +225,10 @@ export default function SalesPage() {
     ? [dateFrom && `Desde ${formatDateOnly(dateFrom)}`, dateTo && `Hasta ${formatDateOnly(dateTo)}`].filter(Boolean).join(" · ")
     : PRESET_LABELS[preset];
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = async (reason?: string) => {
     if (!deletingSale) return;
     try {
-      await deleteSale(deletingSale.id);
+      await deleteSale(deletingSale.id, reason);
       toast.success("Venta anulada · inventario y balance revertidos");
       setDeletingSale(null);
     } catch (err: any) {
@@ -320,6 +331,7 @@ export default function SalesPage() {
                 <SelectItem value="all">Todas</SelectItem>
                 <SelectItem value="COMPLETED">Completadas</SelectItem>
                 <SelectItem value="PENDING">Pendientes</SelectItem>
+                <SelectItem value="CANCELLED">Canceladas</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -372,14 +384,18 @@ export default function SalesPage() {
           </Card>
         ) : (
           sales.map((sale) => {
-            const payment   = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
-            const PayIcon   = payment.icon;
-            const taxRate   = getTaxRate(sale.tax_rate);
-            const isPending = sale.status === "PENDING";
+            const payment     = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
+            const PayIcon     = payment.icon;
+            const taxRate     = getTaxRate(sale.tax_rate);
+            const isPending   = sale.status === "PENDING";
+            const isCancelled = sale.status === "CANCELLED";
             return (
               <Card
                 key={sale.id}
-                className={`pt-1 pb-1 cursor-pointer active:scale-[0.99] transition-transform ${isPending ? "border-amber-200 bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
+                className={`pt-1 pb-1 cursor-pointer active:scale-[0.99] transition-transform ${
+                  isPending ? "border-amber-200 bg-amber-50/30 dark:bg-amber-950/10"
+                  : isCancelled ? "opacity-60" : ""
+                }`}
                 onClick={() => push(`/sales/${sale.id}`)}
               >
                 <CardContent className="px-4 py-3">
@@ -392,6 +408,11 @@ export default function SalesPage() {
                             <Clock className="size-2.5" /> Pendiente
                           </Badge>
                         )}
+                        {isCancelled && (
+                          <Badge className="text-[10px] px-1.5 py-0 bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
+                            <XCircle className="size-2.5" /> Cancelada
+                          </Badge>
+                        )}
                         {taxRate > 0 && (
                           <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
                             ISV {taxRate}%
@@ -402,19 +423,22 @@ export default function SalesPage() {
                         {sale.customer_name ?? "Anónimo"} · {formatDateOnly(sale.sold_at)}
                       </p>
                     </div>
-                    {isPending
-                      ? <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
-                      : (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Badge variant="outline" className="gap-1 text-xs">
-                            <PayIcon className="size-3" /> {(sale as any).account_name}
-                          </Badge>
-                          <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
-                        </div>
-                      )
-                    }
+                    {isPending ? (
+                      <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
+                    ) : isCancelled ? (
+                      <Badge variant="outline" className="gap-1 text-xs shrink-0">
+                        <PayIcon className="size-3" /> {(sale as any).account_name}
+                      </Badge>
+                    ) : (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Badge variant="outline" className="gap-1 text-xs">
+                          <PayIcon className="size-3" /> {(sale as any).account_name}
+                        </Badge>
+                        <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
+                      </div>
+                    )}
                   </div>
-                  <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && !isCancelled && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
                     <div>
                       <p className="text-[10px] text-muted-foreground mb-0.5">Productos</p>
                       <p className="text-sm font-semibold">{sale.items_count}</p>
@@ -423,7 +447,7 @@ export default function SalesPage() {
                       <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
                       <p className="text-sm font-bold truncate">{format(Number(sale.total))}</p>
                     </div>
-                    {!isPending && showProfit && (
+                    {!isPending && !isCancelled && showProfit && (
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">Ganancia</p>
                         <p className="text-sm font-bold text-green-600 truncate">
@@ -476,14 +500,18 @@ export default function SalesPage() {
                 </TableRow>
               ) : (
                 sales.map((sale) => {
-                  const payment   = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
-                  const PayIcon   = payment.icon;
-                  const taxRate   = getTaxRate(sale.tax_rate);
-                  const isPending = sale.status === "PENDING";
+                  const payment     = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
+                  const PayIcon     = payment.icon;
+                  const taxRate     = getTaxRate(sale.tax_rate);
+                  const isPending   = sale.status === "PENDING";
+                  const isCancelled = sale.status === "CANCELLED";
                   return (
                     <TableRow
                       key={sale.id}
-                      className={`cursor-pointer hover:bg-muted/50 ${isPending ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}
+                      className={`cursor-pointer hover:bg-muted/50 ${
+                        isPending ? "bg-amber-50/30 dark:bg-amber-950/10"
+                        : isCancelled ? "opacity-60" : ""
+                      }`}
                       onClick={() => push(`/sales/${sale.id}`)}
                     >
                       <TableCell className="font-medium font-mono">{sale.sale_number}</TableCell>
@@ -493,6 +521,10 @@ export default function SalesPage() {
                         {isPending ? (
                           <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">
                             <Clock className="size-3" /> Pendiente
+                          </Badge>
+                        ) : isCancelled ? (
+                          <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
+                            <XCircle className="size-3" /> Cancelada
                           </Badge>
                         ) : (
                           <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline">
@@ -522,17 +554,18 @@ export default function SalesPage() {
                       <TableCell className="text-right font-medium">{format(Number(sale.total))}</TableCell>
                       {showProfit && (
                         <TableCell className="text-right">
-                          {isPending
+                          {isPending || isCancelled
                             ? <span className="text-muted-foreground text-xs">—</span>
                             : <span className="text-green-600 font-medium">{format(Number((sale.net_profit ?? 0) - sale.discount))}</span>
                           }
                         </TableCell>
                       )}
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        {isPending
-                          ? <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
-                          : <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
-                        }
+                        {isPending ? (
+                          <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
+                        ) : !isCancelled ? (
+                          <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   );
@@ -602,13 +635,11 @@ export default function SalesPage() {
       <Fab actions={[{ label: "Nueva venta", icon: ShoppingCart, onClick: () => push("/sales/new") }]} />
 
       {/* Confirm anular venta completada */}
-      <ConfirmDialog
+      <CancelSaleDialog
         open={!!deletingSale}
         onOpenChange={(v) => { if (!v) setDeletingSale(null); }}
         title={`¿Anular ${deletingSale?.sale_number ?? "esta venta"}?`}
-        description="Se revertirá el inventario, el balance de la cuenta y los totales del cliente. Esta acción no se puede deshacer."
-        confirmLabel={isDeleting ? "Anulando..." : "Anular venta"}
-        variant="danger"
+        description="Se revertirá el inventario, el balance de la cuenta y los totales del cliente. La venta quedará marcada como cancelada."
         isLoading={isDeleting}
         onConfirm={handleDeleteConfirm}
       />

@@ -210,13 +210,15 @@ function BaseTableRow({
   item,
   format,
   showCosts,
+  onClick,
 }: {
   item: InventoryItem;
   format: (v: number) => string;
   showCosts: boolean;
+  onClick: () => void;
 }) {
   return (
-    <TableRow className="bg-muted/20 hover:bg-muted/30">
+    <TableRow className="bg-muted/20 hover:bg-muted/30 cursor-pointer" onClick={onClick}>
       <TableCell>
         <div className="flex items-center gap-3 pl-10">
           <div className="relative size-8 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
@@ -262,6 +264,7 @@ function VariantTableRow({
   setAdjustVariant,
   setEditVariant,
   setDeleteVariantTarget,
+  onClick,
 }: {
   variantStock: VariantStock;
   product: Product | null;
@@ -273,11 +276,12 @@ function VariantTableRow({
   setAdjustVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setEditVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setDeleteVariantTarget: (v: { product: Product; variant: ProductVariant } | null) => void;
+  onClick: () => void;
 }) {
   const pv = product ? findVariant(product, variantStock.variant_id) : null;
 
   return (
-    <TableRow className="bg-muted/30 hover:bg-muted/50">
+    <TableRow className="bg-muted/30 hover:bg-muted/50 cursor-pointer" onClick={onClick}>
       <TableCell>
         <div className="flex items-center gap-3 pl-10">
           <div className="relative size-8 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
@@ -327,7 +331,7 @@ function VariantTableRow({
           {Number(variantStock.stock) > 0 ? format(Number(variantStock.total_value ?? 0)) : "—"}
         </TableCell>
       )}
-      <TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
         {pv && product && (
           <VariantActionsMenu
             product={product}
@@ -348,13 +352,15 @@ function BaseCard({
   item,
   format,
   showCosts,
+  onClick,
 }: {
   item: InventoryItem;
   format: (v: number) => string;
   showCosts: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/20 overflow-hidden">
+    <div className="rounded-lg border bg-muted/20 overflow-hidden cursor-pointer" onClick={onClick}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <div className="relative size-9 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
           {item.image_url
@@ -409,6 +415,7 @@ function VariantCard({
   setAdjustVariant,
   setEditVariant,
   setDeleteVariantTarget,
+  onClick,
 }: {
   variantStock: VariantStock;
   product: Product | null;
@@ -420,6 +427,7 @@ function VariantCard({
   setAdjustVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setEditVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setDeleteVariantTarget: (v: { product: Product; variant: ProductVariant } | null) => void;
+  onClick: () => void;
 }) {
   const pv = product ? findVariant(product, variantStock.variant_id) : null;
   const salePrice = variantStock.price_override != null
@@ -427,7 +435,7 @@ function VariantCard({
     : product?.price ?? 0;
 
   return (
-    <div className="rounded-lg border bg-muted/30 overflow-hidden">
+    <div className="rounded-lg border bg-muted/30 overflow-hidden cursor-pointer" onClick={onClick}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <div className="relative size-9 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0">
           {(variantStock.image_url ?? product?.image_url)
@@ -457,7 +465,7 @@ function VariantCard({
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
               {getStockBadge(Number(variantStock.stock))}
               {pv && product && (
                 <VariantActionsMenu
@@ -789,7 +797,12 @@ export default function InventoryPage() {
                       {hasVariants && isExpanded && (
                         <>
                           {Number(item.base_stock) > 0 && (
-                            <BaseTableRow item={item} format={format} showCosts={showCosts} />
+                            <BaseTableRow
+                              item={item}
+                              format={format}
+                              showCosts={showCosts}
+                              onClick={() => push(`/inventory/${item.product_id}`)}
+                            />
                           )}
                           {item.variants_stock.map((vs) => (
                             <VariantTableRow
@@ -804,6 +817,7 @@ export default function InventoryPage() {
                               setAdjustVariant={setAdjustVariant}
                               setEditVariant={setEditVariant}
                               setDeleteVariantTarget={setDeleteVariantTarget}
+                              onClick={() => push(`/inventory/${item.product_id}`)}
                             />
                           ))}
                         </>
@@ -931,7 +945,12 @@ export default function InventoryPage() {
                       {isExpanded && (
                         <div className="mt-2 space-y-2">
                           {Number(item.base_stock) > 0 && (
-                            <BaseCard item={item} format={format} showCosts={showCosts} />
+                            <BaseCard
+                              item={item}
+                              format={format}
+                              showCosts={showCosts}
+                              onClick={() => push(`/inventory/${item.product_id}`)}
+                            />
                           )}
                           {item.variants_stock.map((vs) => (
                             <VariantCard
@@ -946,6 +965,7 @@ export default function InventoryPage() {
                               setAdjustVariant={setAdjustVariant}
                               setEditVariant={setEditVariant}
                               setDeleteVariantTarget={setDeleteVariantTarget}
+                              onClick={() => push(`/inventory/${item.product_id}`)}
                             />
                           ))}
                         </div>

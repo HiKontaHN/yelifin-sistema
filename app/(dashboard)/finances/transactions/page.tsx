@@ -387,10 +387,11 @@ export default function TransactionsPage() {
       const cfg = TYPE_CONFIG[t.type];
       const Icon = cfg.icon;
       const clickable = t.reference_type === "SALE" && t.reference_id;
+      const isCancelled = !!t.deleted_at;
       return (
         <Card
           key={`acc-${t.id}`}
-          className={`pt-3 pb-2.5 ${clickable ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}`}
+          className={`pt-3 pb-2.5 ${isCancelled ? "opacity-60" : ""} ${clickable ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}`}
           onClick={() => handleTransactionClick(t)}
         >
           <CardContent className="pl-3.5">
@@ -401,7 +402,7 @@ export default function TransactionsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <p className={`text-sm font-medium truncate ${isCancelled ? "line-through" : ""}`}>
                       {t.description || REF_LABELS[t.reference_type ?? "OTHER"] || "—"}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
@@ -416,9 +417,15 @@ export default function TransactionsPage() {
                       <p className={`text-sm font-bold ${cfg.color}`}>
                         {cfg.sign}{format(Number(t.amount))}
                       </p>
-                      <Badge className={`text-[10px] mt-0.5 ${cfg.badge}`} variant="outline">
-                        {cfg.label}
-                      </Badge>
+                      {isCancelled ? (
+                        <Badge className="text-[10px] mt-0.5 bg-destructive/10 text-destructive border-destructive/30" variant="outline">
+                          Cancelada
+                        </Badge>
+                      ) : (
+                        <Badge className={`text-[10px] mt-0.5 ${cfg.badge}`} variant="outline">
+                          {cfg.label}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -483,19 +490,26 @@ export default function TransactionsPage() {
       const cfg = TYPE_CONFIG[t.type];
       const Icon = cfg.icon;
       const clickable = t.reference_type === "SALE" && t.reference_id;
+      const isCancelled = !!t.deleted_at;
       return (
         <TableRow
           key={`acc-${t.id}`}
-          className={clickable ? "cursor-pointer hover:bg-muted/50" : ""}
+          className={`${isCancelled ? "opacity-60" : ""} ${clickable ? "cursor-pointer hover:bg-muted/50" : ""}`}
           onClick={() => handleTransactionClick(t)}
         >
           <TableCell>
-            <Badge className={`gap-1 ${cfg.badge}`} variant="outline">
-              <Icon className="size-3" />
-              {cfg.label}
-            </Badge>
+            {isCancelled ? (
+              <Badge className="gap-1 bg-destructive/10 text-destructive border-destructive/30" variant="outline">
+                {cfg.label} · Cancelada
+              </Badge>
+            ) : (
+              <Badge className={`gap-1 ${cfg.badge}`} variant="outline">
+                <Icon className="size-3" />
+                {cfg.label}
+              </Badge>
+            )}
           </TableCell>
-          <TableCell className="max-w-48 truncate text-sm">
+          <TableCell className={`max-w-48 truncate text-sm ${isCancelled ? "line-through" : ""}`}>
             {t.description || "—"}
           </TableCell>
           <TableCell className="text-sm">

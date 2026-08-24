@@ -21,6 +21,7 @@ export type Transaction = {
   account_type: string;
   to_account_id: number | null;
   to_account_name: string | null;
+  deleted_at: string | null;
 };
 
 export type TransactionTotals = {

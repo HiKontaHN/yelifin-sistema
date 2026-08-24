@@ -17,7 +17,7 @@ export type CartItem = {
   discount:     number;
 };
 
-export type SaleStatus = 'PENDING' | 'COMPLETED';
+export type SaleStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
 
 export type CreateSaleInput = {
   customer_id?:    number | null;
@@ -34,7 +34,7 @@ export type CreateSaleInput = {
 };
 
 export type ConfirmSaleInput = { action: 'confirm'; confirmed_at: string };
-export type CancelSaleInput  = { action: 'cancel' };
+export type CancelSaleInput  = { action: 'cancel'; reason?: string };
 
 export type EditSaleInput = {
   action:          'edit';
@@ -73,6 +73,10 @@ export type Sale = {
   items_count:    number;
   // null cuando el rol no tiene show_profit — el backend oculta la ganancia.
   net_profit:     number | null;
+  // presentes solo cuando status === 'CANCELLED'
+  deleted_at:           string | null;
+  deleted_by:           number | null;
+  cancellation_reason:  string | null;
 };
 
 export type SaleDetail = Sale & {
@@ -113,7 +117,7 @@ export type SalesFilters = {
   to?:         string;
   payment?:    'all' | 'CASH' | 'CARD' | 'TRANSFER' | 'MIXED' | 'OTHER';
   search?:     string;
-  status?:     'all' | 'COMPLETED' | 'PENDING';
+  status?:     'all' | 'COMPLETED' | 'PENDING' | 'CANCELLED';
   account_id?: string;
   page?:       number;
   limit?:      number;
@@ -289,7 +293,7 @@ export function usePatchSale(id: number | null) {
   };
 
   const confirmSale = () => patchSale({ action: 'confirm', confirmed_at: new Date().toISOString() });
-  const cancelSale  = () => patchSale({ action: 'cancel' });
+  const cancelSale  = (reason?: string) => patchSale({ action: 'cancel', reason });
   const editSale    = (data: Omit<EditSaleInput, 'action'>) =>
     patchSale({ action: 'edit', ...data });
 
@@ -302,11 +306,12 @@ export function useDeleteSale() {
   const { mutate: globalMutate }    = useSWRConfig();
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const deleteSale = async (id: number) => {
+  const deleteSale = async (id: number, reason?: string) => {
     setIsDeleting(true);
     try {
       const result = await authFetch(`${KEY}/${id}`, {
         method: "DELETE",
+        body:   JSON.stringify({ reason }),
       });
 
       await globalMutate(

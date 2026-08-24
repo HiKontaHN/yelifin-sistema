@@ -30,6 +30,7 @@ import {
   NotebookPen,
   ChevronLeft,
   ChevronRight,
+  XCircle,
 } from "lucide-react";
 
 import { useSale, usePatchSale } from "@/hooks/swr/use-sales";
@@ -37,6 +38,7 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -74,6 +76,7 @@ export default function SaleDetailPage({ params }: Props) {
 
   const isPending   = sale.status === "PENDING";
   const isCompleted = sale.status === "COMPLETED";
+  const isCancelled = sale.status === "CANCELLED";
 
   // Costo y ganancia vienen calculados y filtrados por el backend según
   // show_costs / show_profit del rol (pueden llegar en null). Los ?? 0 son
@@ -97,9 +100,9 @@ export default function SaleDetailPage({ params }: Props) {
     }
   };
 
-  const handleCancelSale = async () => {
+  const handleCancelSale = async (reason?: string) => {
     try {
-      await cancelSale();
+      await cancelSale(reason);
       toast.success("Venta cancelada · stock devuelto");
       setCancelOpen(false);
       push("/sales");
@@ -134,6 +137,12 @@ export default function SaleDetailPage({ params }: Props) {
                 <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">
                   <Clock className="size-3" />
                   Pendiente de pago
+                </Badge>
+              )}
+              {isCancelled && (
+                <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
+                  <XCircle className="size-3" />
+                  Cancelada
                 </Badge>
               )}
               {taxRate > 0 && (
@@ -223,6 +232,30 @@ export default function SaleDetailPage({ params }: Props) {
                 Cancelar venta
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Aviso si fue cancelada */}
+      {isCancelled && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="py-3 px-3.5 text-xs text-destructive space-y-0.5">
+            <p className="font-semibold flex items-center gap-1.5">
+              <XCircle className="size-3.5" />
+              Esta venta fue cancelada
+              {sale.deleted_at && (
+                <>
+                  {" "}el{" "}
+                  {formatInTZ(sale.deleted_at, tz, { day: "numeric", month: "short", year: "numeric" })}
+                </>
+              )}
+              .
+            </p>
+            {sale.cancellation_reason && (
+              <p className="text-[11px] text-destructive/80">
+                Motivo: {sale.cancellation_reason}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -532,14 +565,11 @@ export default function SaleDetailPage({ params }: Props) {
         onConfirm={handleConfirmPayment}
       />
 
-      <ConfirmDialog
+      <CancelSaleDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
         title="Cancelar esta venta"
-        description="Se devolverá el stock al inventario y la venta ya no aparecerá como pendiente."
-        confirmLabel="Sí, cancelar venta"
-        cancelLabel="Volver"
-        variant="danger"
+        description="Se devolverá el stock al inventario y la venta quedará marcada como cancelada."
         isLoading={isPatching}
         onConfirm={handleCancelSale}
       />
