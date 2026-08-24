@@ -55,7 +55,7 @@ export default function TermsPage() {
 
           <h2 className="text-lg font-semibold mt-6">4. Suscripción y Pagos</h2>
           <p>
-            El Plan Profesional tiene un costo de <strong>$11.99 USD al mes, ISV incluido</strong>. El periodo de prueba gratuita es de 30 días sin necesidad de tarjeta de crédito. Al suscribirte, autorizas el cobro recurrente mensual. Los precios pueden cambiar con un aviso previo de al menos 30 días.
+            El Plan Profesional tiene un costo de <strong>$12.99 USD al mes, ISV incluido</strong>. El periodo de prueba gratuita es de 30 días sin necesidad de tarjeta de crédito. Al suscribirte, autorizas el cobro recurrente mensual. Los precios pueden cambiar con un aviso previo de al menos 30 días.
           </p>
           <p className="mt-2">
             <strong>No se realizan reembolsos</strong> por períodos parciales de servicio, meses no utilizados ni por cancelaciones anticipadas, salvo que la ley aplicable en Honduras lo exija expresamente. El acceso continuará hasta el final del período de facturación vigente.
