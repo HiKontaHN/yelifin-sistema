@@ -146,6 +146,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const body   = await request.json();
     const action = body.action as "confirm" | "cancel" | "edit";
+    const reason = typeof body.reason === "string" ? body.reason.trim() || null : null;
 
     if (!["confirm", "cancel", "edit"].includes(action))
       return createErrorResponse("Acción inválida. Usar: confirm | cancel | edit", 400);
@@ -167,9 +168,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         ? `${txParts[0]} (${txParts.slice(1).join(", ")})`
         : txParts[0];
 
-      const refType = sale.event_id ? "EVENT" : "SALE";
-      const refId = sale.event_id ? sale.event_id : saleId;
-
+      // La transacción siempre referencia la venta puntual (reference_type='SALE',
+      // reference_id=saleId), incluso si está ligada a un evento — ver nota en
+      // app/api/sales/route.ts sobre por qué esto es seguro para los reportes de eventos.
       await sql`BEGIN`;
       try {
         await sql`
@@ -182,7 +183,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             category, description, reference_type, reference_id, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, 'INCOME', ${sale.account_id}, ${sale.total},
-            'Ventas', ${txDescription}, ${refType}, ${refId}, ${confirmedAt}
+            'Ventas', ${txDescription}, 'SALE', ${saleId}, ${confirmedAt}
           )
         `;
         await sql`
@@ -282,9 +283,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           `;
         }
 
-        await sql`DELETE FROM sale_supplies WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-        await sql`DELETE FROM sale_items    WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-        await sql`DELETE FROM sales         WHERE id      = ${saleId} AND org_id = ${orgId}`;
+        // Soft-delete: se marcan como canceladas en vez de borrarse, para
+        // conservar trazabilidad (quién, cuándo, por qué).
+        await sql`UPDATE sale_supplies SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+        await sql`UPDATE sale_items    SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+        await sql`
+          UPDATE sales SET
+            status               = 'CANCELLED',
+            deleted_at           = NOW(),
+            deleted_by           = ${userId},
+            cancellation_reason  = ${reason},
+            updated_at           = CURRENT_TIMESTAMP,
+            updated_by           = ${userId}
+          WHERE id = ${saleId} AND org_id = ${orgId}
+        `;
 
         await sql`COMMIT`;
         return Response.json({ message: "Venta cancelada y stock devuelto", data: { id: saleId, status: "CANCELLED" } });
@@ -812,6 +824,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     if (isNaN(saleId)) return createErrorResponse("ID inválido", 400);
 
+    // Body opcional — algunos clientes hacen DELETE sin cuerpo.
+    const body = await request.json().catch(() => ({} as any));
+    const reason = typeof body?.reason === "string" ? body.reason.trim() || null : null;
+
     const [sale] = await sql`
       SELECT * FROM sales WHERE id = ${saleId} AND org_id = ${orgId}
     `;
@@ -898,10 +914,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
           WHERE org_id         = ${orgId}
             AND reference_type = 'SALE'
             AND reference_id   = ${saleId}
+            AND deleted_at     IS NULL
         `;
         if (linkedTx) {
           await sql`
-            DELETE FROM transactions
+            UPDATE transactions
+            SET deleted_at = NOW(), deleted_by = ${userId}
             WHERE id = ${linkedTx.id} AND org_id = ${orgId}
           `;
           await sql`
@@ -923,15 +941,25 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         }
       }
 
-      // 4. Eliminar
-      await sql`DELETE FROM sale_supplies WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-      await sql`DELETE FROM sale_items    WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-      await sql`DELETE FROM sales         WHERE id      = ${saleId} AND org_id = ${orgId}`;
+      // 4. Soft-delete: se marca como cancelada en vez de borrarse, para
+      // conservar trazabilidad (quién, cuándo, por qué).
+      await sql`UPDATE sale_supplies SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+      await sql`UPDATE sale_items    SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+      await sql`
+        UPDATE sales SET
+          status               = 'CANCELLED',
+          deleted_at           = NOW(),
+          deleted_by           = ${userId},
+          cancellation_reason  = ${reason},
+          updated_at           = CURRENT_TIMESTAMP,
+          updated_by           = ${userId}
+        WHERE id = ${saleId} AND org_id = ${orgId}
+      `;
 
       await sql`COMMIT`;
       return Response.json({
-        message: "Venta eliminada, inventario y balance revertidos",
-        data: { id: saleId },
+        message: "Venta cancelada, inventario y balance revertidos",
+        data: { id: saleId, status: "CANCELLED" },
       });
     } catch (e) {
       await sql`ROLLBACK`;

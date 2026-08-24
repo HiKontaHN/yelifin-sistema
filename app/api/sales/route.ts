@@ -264,9 +264,6 @@ export async function POST(request: NextRequest) {
       tax_rate,
       payment_method,
       account_id,
-      credit_card_id,
-      sale_currency,
-      exchange_rate,
       notes,
       sold_at,
       supplies_used,
@@ -274,20 +271,16 @@ export async function POST(request: NextRequest) {
       status = "COMPLETED",
     } = body;
 
-    const isCreditCard = payment_method === "CREDIT_CARD";
-    const isCreditCardUsd = isCreditCard && sale_currency === "USD";
-
     // ── Validaciones básicas ────────────────────────────────────────────
+    // Una venta es un ingreso: siempre se destina a una cuenta (nunca a una
+    // tarjeta de crédito, que es un pasivo — solo puede recibir CHARGE/PAYMENT,
+    // no ingresos).
     if (!items || !Array.isArray(items) || items.length === 0)
       return createErrorResponse("Se requiere al menos un producto", 400);
     if (!payment_method)
       return createErrorResponse("El método de pago es requerido", 400);
-    if (!isCreditCard && !account_id)
+    if (!account_id)
       return createErrorResponse("La cuenta de destino es requerida", 400);
-    if (isCreditCard && !credit_card_id)
-      return createErrorResponse("La tarjeta de crédito es requerida", 400);
-    if (isCreditCardUsd && (!exchange_rate || Number(exchange_rate) <= 0))
-      return createErrorResponse("La tasa de cambio es requerida para ventas en USD", 400);
     if (!["PENDING", "COMPLETED"].includes(status))
       return createErrorResponse("Estado inválido", 400);
 
@@ -305,23 +298,12 @@ export async function POST(request: NextRequest) {
         return createErrorResponse("El precio unitario es requerido", 400);
     }
 
-    // ── Validar cuenta (solo si no es tarjeta de crédito) ──────────────
-    if (!isCreditCard) {
-      const [account] = await sql`
-        SELECT id FROM accounts
-        WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
-      `;
-      if (!account) return createErrorResponse("Cuenta no encontrada", 404);
-    }
-
-    // ── Validar tarjeta de crédito ──────────────────────────────────────
-    if (isCreditCard) {
-      const [card] = await sql`
-        SELECT id FROM credit_cards
-        WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId} AND is_active = TRUE
-      `;
-      if (!card) return createErrorResponse("Tarjeta de crédito no encontrada", 404);
-    }
+    // ── Validar cuenta ───────────────────────────────────────────────────
+    const [account] = await sql`
+      SELECT id FROM accounts
+      WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
+    `;
+    if (!account) return createErrorResponse("Cuenta no encontrada", 404);
 
     // ── Validar evento ──────────────────────────────────────────────────
     const eventIdNum = event_id ? Number(event_id) : null;
@@ -526,16 +508,13 @@ export async function POST(request: NextRequest) {
         INSERT INTO sales (
           org_id, created_by, sale_number, customer_id,
           subtotal, discount, tax_rate, tax, shipping_cost, total,
-          payment_method, account_id, credit_card_id, event_id,
+          payment_method, account_id, event_id,
           status, sold_at, notes
         ) VALUES (
           ${orgId}, ${userId}, ${saleNumber}, ${customer_id ?? null},
           ${subtotal}, ${totalDiscount}, ${taxRateNum}, ${taxAmount},
           ${shippingAmount}, ${grandTotal},
-          ${payment_method},
-          ${isCreditCard ? null : account_id},
-          ${isCreditCard ? Number(credit_card_id) : null},
-          ${eventIdNum},
+          ${payment_method}, ${account_id}, ${eventIdNum},
           ${status}, ${occurredAt}::timestamptz, ${notes ?? null}
         )
         RETURNING id
@@ -612,60 +591,28 @@ export async function POST(request: NextRequest) {
 
       // 4. Transacción + balance + cliente — solo si COMPLETED
       if (status === "COMPLETED") {
-        if (isCreditCard) {
-          // Cargo a tarjeta de crédito
-          const chargeAmount = isCreditCardUsd ? Number(grandTotal) : grandTotal;
-          const chargeCurrency = isCreditCardUsd ? "USD" : (sale_currency ?? "LOCAL");
-          const rateNum = isCreditCardUsd ? Number(exchange_rate) : null;
-          const localEquivalent = isCreditCardUsd ? grandTotal * Number(exchange_rate) : grandTotal;
+        // La transacción siempre referencia la venta puntual (reference_type='SALE',
+        // reference_id=saleId), incluso si está ligada a un evento — así el flujo de
+        // cancelación/eliminación puede encontrarla y revertirla. Los reportes de
+        // eventos calculan sus totales sumando sales.total directamente, no a través
+        // de este tag, así que no dependen de reference_type='EVENT' para el ingreso.
+        await sql`
+          INSERT INTO transactions (
+            org_id, created_by, type, account_id, amount,
+            category, description,
+            reference_type, reference_id, occurred_at
+          ) VALUES (
+            ${orgId}, ${userId}, 'INCOME', ${account_id}, ${grandTotal},
+            'Ventas', ${txDescription},
+            'SALE', ${saleId}, ${occurredAt}::timestamptz
+          )
+        `;
 
-          await sql`
-            INSERT INTO credit_card_transactions (
-              org_id, created_by, credit_card_id, type, description,
-              amount, currency, exchange_rate, amount_local,
-              sale_id, occurred_at
-            ) VALUES (
-              ${orgId}, ${userId}, ${Number(credit_card_id)}, 'CHARGE', ${txDescription},
-              ${chargeAmount}, ${chargeCurrency}, ${rateNum},
-              ${localEquivalent}, ${saleId}, ${occurredAt}::timestamptz
-            )
-          `;
-
-          if (isCreditCardUsd) {
-            await sql`
-              UPDATE credit_cards
-              SET balance_usd = balance_usd + ${chargeAmount}, updated_at = NOW()
-              WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}
-            `;
-          } else {
-            await sql`
-              UPDATE credit_cards
-              SET balance = balance + ${chargeAmount}, updated_at = NOW()
-              WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}
-            `;
-          }
-        } else {
-          const txRefType = eventIdNum ? "EVENT" : "SALE";
-          const txRefId = eventIdNum ? eventIdNum : saleId;
-
-          await sql`
-            INSERT INTO transactions (
-              org_id, created_by, type, account_id, amount,
-              category, description,
-              reference_type, reference_id, occurred_at
-            ) VALUES (
-              ${orgId}, ${userId}, 'INCOME', ${account_id}, ${grandTotal},
-              'Ventas', ${txDescription},
-              ${txRefType}, ${txRefId}, ${occurredAt}::timestamptz
-            )
-          `;
-
-          await sql`
-            UPDATE accounts
-            SET balance = balance + ${grandTotal}
-            WHERE id = ${account_id} AND org_id = ${orgId}
-          `;
-        }
+        await sql`
+          UPDATE accounts
+          SET balance = balance + ${grandTotal}
+          WHERE id = ${account_id} AND org_id = ${orgId}
+        `;
 
         if (customer_id) {
           await sql`

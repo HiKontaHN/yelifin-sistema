@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
             - COALESCE(s.tax, 0)
           ) AS total_profit
         FROM sales s
-        WHERE s.event_id = e.id AND s.org_id = e.org_id
+        WHERE s.event_id = e.id AND s.org_id = e.org_id AND s.status != 'CANCELLED'
       ) s_agg ON true
 
       LEFT JOIN LATERAL (

@@ -25,7 +25,7 @@ export async function DELETE(
     const [transaction] = await sql`
       SELECT id, type, amount, account_id, to_account_id
       FROM transactions
-      WHERE id = ${transactionId} AND org_id = ${orgId}
+      WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
     `;
 
     if (!transaction) return createErrorResponse("Transacción no encontrada", 404);
@@ -95,7 +95,7 @@ export async function PATCH(
     const [old] = await sql`
       SELECT id, type, amount, account_id, to_account_id, reference_type
       FROM transactions
-      WHERE id = ${transactionId} AND org_id = ${orgId}
+      WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
     `;
 
     if (!old) return createErrorResponse("Transacción no encontrada", 404);

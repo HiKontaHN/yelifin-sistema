@@ -80,7 +80,6 @@
       "WebFetch(domain:app.unpkg.com)",
       "Bash(pnpm add *)",
       "Bash(gh repo *)"
->>>>>>> dev
     ]
   }
 }
