@@ -1,24 +1,30 @@
 -- =========================
 -- PLANES
 -- =========================
-INSERT INTO subscription_plans (name, slug, description, price_usd, billing_interval, max_products, max_sales_per_month, max_storage_mb) VALUES
+INSERT INTO subscription_plans (name, slug, description, price_usd, billing_interval, max_products, max_sales_per_month, max_storage_mb, max_accounts, max_supplies) VALUES
 (
   'Trial',
   'trial',
   'Plan gratuito con funciones básicas. Sin fecha de expiración.',
-  0.00, 'MONTHLY', 10, 50, 100
+  0.00, 'MONTHLY', 10, 50, 100, NULL, NULL
 ),
 (
   'Original',
   'original',
   'Plan gratuito de por vida para usuarios fundadores de .',
-  0.00, 'LIFETIME', NULL, NULL, 500
+  0.00, 'LIFETIME', NULL, NULL, 500, NULL, NULL
+),
+(
+  'Básico',
+  'basico',
+  'Plan intermedio para negocios en crecimiento: más productos, clientes, fidelización, eventos y reportes de inventario.',
+  8.99, 'MONTHLY', 500, NULL, 1024, 5, 5  -- $8.99 USD/mes · ISV incluido
 ),
 (
   'Pro',
   'pro',
   'Plan profesional con acceso completo a todas las funciones.',
-  11.99, 'MONTHLY', NULL, NULL, 2048  -- $11.99 USD/mes · ISV incluido
+  12.99, 'MONTHLY', NULL, NULL, 2048, NULL, NULL  -- $12.99 USD/mes · ISV incluido
 );
 
 -- =========================

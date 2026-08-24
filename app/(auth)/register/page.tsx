@@ -122,7 +122,7 @@ function AuthRegisterPanel() {
               <div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-[#0068ff] text-white">
                 <WalletCards className="size-5" />
               </div>
-              <div className="text-3xl font-bold text-slate-900">$11.99</div>
+              <div className="text-3xl font-bold text-slate-900">$12.99</div>
               <div className="mt-1 text-sm text-slate-600">USD/mes plan Pro</div>
             </div>
           </div>

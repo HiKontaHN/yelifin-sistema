@@ -40,7 +40,7 @@ const plans: PlanCard[] = [
   },
   {
     name: "Básico",
-    price: "$6.99",
+    price: "$8.99",
     tagline: "Cuando tu negocio empieza a crecer.",
     highlights: [
       "Todo lo del plan Gratis, más:",
@@ -53,7 +53,7 @@ const plans: PlanCard[] = [
   },
   {
     name: "Pro",
-    price: "$11.99",
+    price: "$12.99",
     tagline: "Todo el poder de HiKonta, sin límites.",
     highlights: [
       "Todo lo del plan Básico, más:",
