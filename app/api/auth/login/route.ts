@@ -75,6 +75,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 2.5. Cuentas de HiKonta Partners (coordinadores de incubadora) usan el
+    // mismo proyecto de Firebase pero viven en `partners`, no en
+    // `organization_members` — nunca deben pasar de acá. Sin este corte,
+    // ensureOrgExists() de abajo (su fallback de migración "crea una org si
+    // no tiene") le provisionaría un negocio + trial de 30 días a una
+    // cuenta que no es de un emprendedor.
+    const [partner] = await sql`SELECT id FROM partners WHERE user_id = ${user.id} LIMIT 1`;
+    if (partner) {
+      return NextResponse.json(
+        { error: "Esta cuenta es de HiKonta Partners — inicia sesión en partners.hikonta.com" },
+        { status: 403 }
+      );
+    }
+
     // 3. Asegurar que el usuario tiene org (crea una si no tiene — fallback de migración)
     const { orgId, roleName } = await ensureOrgExists(
       user.id,
