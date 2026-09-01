@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -200,11 +201,11 @@ export async function POST(request: NextRequest) {
           INSERT INTO credit_card_transactions (
             org_id, created_by, credit_card_id, type, description,
             amount, currency, exchange_rate, amount_local,
-            purchase_batch_id, occurred_at
+            purchase_batch_id, category, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${Number(credit_card_id)}, 'CHARGE', ${txDescription},
             ${ccAmount}, ${curr}, ${isUsd ? rate : null}, ${ccAmountLocal},
-            ${purchaseBatchId}, ${occurredAt}
+            ${purchaseBatchId}, ${INVENTORY_PURCHASE_CATEGORY}, ${occurredAt}
           )
         `;
         if (isUsd) {
@@ -216,10 +217,10 @@ export async function POST(request: NextRequest) {
           await sql`
             INSERT INTO transactions (
               org_id, created_by, account_id, type, amount,
-              description, reference_type, reference_id, occurred_at
+              description, category, reference_type, reference_id, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingTotal},
-              ${'Pago de envío'}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
+              ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
             )
           `;
           await sql`UPDATE accounts SET balance = balance - ${shippingTotal} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
@@ -229,20 +230,20 @@ export async function POST(request: NextRequest) {
         await sql`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${account_id}, 'EXPENSE', ${productsLocal},
-            ${txDescription}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
+            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
         await sql`UPDATE accounts SET balance = balance - ${productsLocal} WHERE id = ${account_id} AND org_id = ${orgId}`;
         await sql`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingTotal},
-            ${'Pago de envío'}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
+            ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
           )
         `;
         await sql`UPDATE accounts SET balance = balance - ${shippingTotal} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
@@ -250,10 +251,10 @@ export async function POST(request: NextRequest) {
         await sql`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${account_id}, 'EXPENSE', ${total},
-            ${txDescription}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
+            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
         await sql`UPDATE accounts SET balance = balance - ${total} WHERE id = ${account_id} AND org_id = ${orgId}`;

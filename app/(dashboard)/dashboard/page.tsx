@@ -227,7 +227,6 @@ export default function DashboardPage() {
       />
       <TopProductsStock
         topProducts={topProducts}
-        lowStock={data?.low_stock ?? []}
         isLoading={isLoading}
       />
       <RecentSalesTable

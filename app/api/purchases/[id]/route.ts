@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -122,10 +123,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             await sql`
               INSERT INTO transactions (
                 org_id, created_by, account_id, type, amount,
-                description, reference_type, reference_id, occurred_at
+                description, category, reference_type, reference_id, occurred_at
               ) VALUES (
                 ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingFinal},
-                'Pago de envío', 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
+                'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
               )
             `;
             await sql`
@@ -162,10 +163,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await sql`
             INSERT INTO transactions (
               org_id, created_by, account_id, type, amount,
-              description, reference_type, reference_id, occurred_at
+              description, category, reference_type, reference_id, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingFinal},
-              'Pago de envío', 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
+              'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
             )
           `;
           await sql`

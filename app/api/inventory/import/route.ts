@@ -19,6 +19,7 @@ import {
   summarizeRows,
   type ResolvedRow,
 } from "@/lib/import-inventory";
+import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -286,11 +287,11 @@ async function executeRow(
         INSERT INTO credit_card_transactions (
           org_id, created_by, credit_card_id, type, description,
           amount, currency, exchange_rate, amount_local,
-          purchase_batch_id, occurred_at
+          purchase_batch_id, category, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${row.account!.id}, 'CHARGE', ${txDescription},
           ${totalCost}, ${"HNL"}, ${null}, ${totalCost},
-          ${purchaseId}, ${occurredAt}
+          ${purchaseId}, ${INVENTORY_PURCHASE_CATEGORY}, ${occurredAt}
         )
       `;
       await sql`
@@ -301,10 +302,10 @@ async function executeRow(
       await sql`
         INSERT INTO transactions (
           org_id, created_by, account_id, type, amount,
-          description, reference_type, reference_id, occurred_at
+          description, category, reference_type, reference_id, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${row.account!.id}, 'EXPENSE', ${totalCost},
-          ${txDescription}, 'PURCHASE', ${purchaseId}, ${occurredAt}
+          ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseId}, ${occurredAt}
         )
       `;
       await sql`

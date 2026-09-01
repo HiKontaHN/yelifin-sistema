@@ -26,7 +26,7 @@ import {
   Package, Warehouse, AlertTriangle, DollarSign,
   Plus, MoreVertical, Pencil, Trash2, PackagePlus,
   ShoppingCart, SlidersHorizontal, ArrowLeftRight,
-  ChevronDown, Layers, Box, Clock, Download, Upload, X, Eye, FileSpreadsheet,
+  ChevronDown, Layers, Box, Clock, X, Eye, FileSpreadsheet,
 } from "lucide-react";
 import {
   Pagination, PaginationContent, PaginationItem,
@@ -58,8 +58,6 @@ import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { usePurchases } from "@/hooks/swr/use-purchases";
 import { useMe } from "@/hooks/swr/use-me";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { BatchExportDialog } from "@/components/inventory/BatchExportDialog";
-import { BatchImportDialog } from "@/components/inventory/BatchImportDialog";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -543,8 +541,6 @@ export default function InventoryPage() {
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
 
   // Diálogos de carga masiva
-  const [batchExportOpen, setBatchExportOpen] = useState(false);
-  const [batchImportOpen, setBatchImportOpen] = useState(false);
 
   // Diálogos de variante
   const [variantProduct, setVariantProduct] = useState<Product | null>(null);
@@ -1044,8 +1040,6 @@ export default function InventoryPage() {
             { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },
             { label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) },
           ] : []),
-          { label: "Exportar plantilla", icon: Download, onClick: () => setBatchExportOpen(true) },
-          { label: "Cargar lote", icon: Upload, onClick: () => setBatchImportOpen(true) },
         ]}
       />
 
@@ -1148,17 +1142,6 @@ export default function InventoryPage() {
         accounts={accounts}
         creditCards={creditCards}
         onSuccess={() => setTransactionOpen(false)}
-      />
-
-      {/* ── Diálogos de carga masiva ─────────────────────────────── */}
-      <BatchExportDialog
-        open={batchExportOpen}
-        onOpenChange={setBatchExportOpen}
-      />
-      <BatchImportDialog
-        open={batchImportOpen}
-        onOpenChange={setBatchImportOpen}
-        onSuccess={handleSuccess}
       />
     </div>
   );
