@@ -350,16 +350,78 @@ El propio código ya lo documenta en la ruta más nueva:
 > — `app/api/inventory/import/route.ts:92-94`
 
 Rutas afectadas del módulo: `purchases/route.ts`, `purchases/[id]/route.ts`,
-`inventory/adjust/route.ts`, `inventory/existing/route.ts`.
+`inventory/adjust/route.ts`, `inventory/existing/route.ts`. El mismo patrón
+existe en otras 5 rutas fuera del módulo: `sales/route.ts`, `sales/[id]/route.ts`,
+`credit-cards/[id]/payment/route.ts`, `supply-purchases/route.ts`,
+`products/[id]/variants/route.ts`.
 
 **Impacto real:** si `POST /api/purchases` falla a mitad (p. ej. tras insertar la
 compra pero antes de la transacción financiera), queda una compra con stock pero
-sin el gasto registrado, y nada lo revierte.
+sin el gasto registrado, y nada lo revierte. `purchases/route.ts` es la ruta de
+mayor riesgo: cada `INSERT` usa el `id` devuelto por el anterior
+(`purchaseBatchId`, `batchItem.id`) con ramas condicionales en JS (cuenta vs.
+tarjeta, envío en cuenta separada o no), así que hay varios puntos intermedios
+donde una falla deja estado a medias.
 
-**Recomendación:** o migrar esas rutas a `Pool` de `@neondatabase/serverless`
-(que sí soporta transacciones), o adoptar el patrón que ya usa el importador
-moderno: operaciones idempotentes por fila y compensación explícita en caso de
-fallo (como hace `restoreTakes()` en `lib/fifo.ts:103`).
+**Opciones evaluadas (ninguna implementada todavía — pendiente de decisión):**
+
+**A. `Pool` de `@neondatabase/serverless` (transacciones reales vía WebSocket)**
+- Mínimo cambio de lógica: la estructura actual (secuencia de `await sql\`...\``)
+  ya asume transacciones, solo cambia el mecanismo de conexión.
+- Verificado contra la infraestructura actual: el proyecto corre en runtime
+  **Node.js**, no Edge (ninguna ruta declara `export const runtime = "edge"`, y
+  usa `@napi-rs/canvas` + `firebase-admin`, incompatibles con Edge) — la
+  limitación de Neon de "WebSocket no sobrevive un solo request en Edge
+  Functions/Cloudflare Workers" no aplica hoy.
+- Requiere el polyfill `neonConfig.webSocketConstructor = ws`. `ws` ya está en
+  `package.json` pero en `devDependencies` y sin usarse en ningún archivo —
+  habría que moverlo a `dependencies` y conectarlo.
+- Cambia la disciplina de conexión: hoy `const sql = neon(...)` se crea una vez
+  a nivel de módulo y se reutiliza; con `Pool` hay que abrir y **cerrar dentro
+  de cada handler** (`pool.connect()` → `client.release()` → `pool.end()` en un
+  `finally`). Un catch mal escrito que se salte el `end()` deja conexiones
+  abiertas y puede agotar el límite de conexiones concurrentes de Neon bajo
+  tráfico.
+- Suma latencia de handshake WebSocket por request (vs. el `fetch` directo
+  actual), aunque insignificante frente al riesgo que resuelve.
+
+**B. Compensación explícita en JS (mismo driver HTTP, sin infraestructura nueva)**
+- El patrón que ya usa `restoreTakes()` en `lib/fifo.ts:103`: si un paso falla,
+  el catch deshace a mano lo que ya se insertó.
+- Se descarta como opción principal para `purchases/route.ts`: no da
+  aislamiento real (otro request puede leer el estado a medias mientras corre
+  la compensación) y cada ruta necesita su propia lógica de reversión — si el
+  `DELETE` de compensación también falla, queda igual de roto con más código
+  para mantener.
+
+**C. Función de Postgres (SP) para el tramo de escritura — opción preferida**
+- Ataca la causa raíz en vez de rodearla: el driver HTTP solo soporta una query
+  por request; una función de Postgres convierte toda la secuencia de inserts
+  en **una sola query**, atómica por diseño de Postgres (si lanza excepción,
+  revierte todo lo que hizo, sin `BEGIN`/`COMMIT` en la app).
+- No requiere infraestructura nueva: sigue siendo `neon()` HTTP, sin `Pool`, sin
+  `ws`, sin disciplina de abrir/cerrar conexión.
+- Bonus de rendimiento: colapsa ~10 round trips HTTPS secuenciales (uno por
+  cada `await sql\`...\`` de hoy) a 1.
+- Costo: el proyecto tiene una convención explícita en `CLAUDE.md` — *"no ORM —
+  direct SQL throughout"*, es decir, negocio en TypeScript, base solo para
+  datos. Hoy no existe ni un solo SP en el schema (la única función/trigger de
+  la base es `set_updated_at()`, ajeno a este módulo) — sería un patrón nuevo,
+  sin precedente, con su propio ciclo de vida vía migraciones.
+- Enfoque **híbrido** propuesto para acotar ese costo: dejar la validación y el
+  cálculo (¿existe la cuenta?, ¿el producto es servicio?, conversión de moneda,
+  prorrateo de envío — `purchases/route.ts:29-135`) tal como está en TS, y mover
+  **solo** la secuencia de `INSERT` encadenados (`purchases/route.ts:141-260`) a
+  una función que reciba los valores ya calculados
+  (`create_purchase_batch(p_org_id, ..., p_items jsonb) RETURNS bigint`) y la
+  ruta la invoque con un único `SELECT create_purchase_batch(...)`.
+- `inventory/adjust/route.ts` e `inventory/existing/route.ts` son más simples
+  (una capa + un movimiento) y `adjust` con salida ya usa el mecanismo de
+  reintento de `consumeFifo()` — falta evaluar si de verdad necesitan SP o si
+  compensación/Pool alcanza ahí.
+
+**Decisión pendiente:** cuál opción (o combinación) usar, y si el alcance es
+solo el módulo de Inventario o las 9 rutas del proyecto con el mismo patrón.
 
 ### 9.2 🟡 Creación de producto sin compensación
 
