@@ -2,16 +2,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useProfitReport } from "@/hooks/swr/use-reports";
 import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN, fmtPct } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, useDateRange } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
+import { DollarSign, Package, TrendingUp, Percent, BarChart3, Receipt } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
@@ -43,20 +45,29 @@ function ProfitReportPageInner() {
     const token = await firebaseUser?.getIdToken();
     if (!token) return;
 
-    const res = await fetch("/api/reports/profit/export", {
-      method:  "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ from, to, symbol }),
-    });
-    if (!res.ok) return;
+    try {
+      const res = await fetch("/api/reports/profit/export", {
+        method:  "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body:    JSON.stringify({ from, to, symbol }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al exportar el reporte");
+      }
 
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `Rentabilidad_${from}_${to}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `Rentabilidad_${from}_${to}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      toast.error(err.message || "Error al exportar el reporte");
+    }
   };
 
   return (
@@ -75,12 +86,13 @@ function ProfitReportPageInner() {
         </div>
       ) : summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Ingresos brutos"   value={format(summary.revenue)}        accent="blue" />
-          {showCosts  && <StatCard label="Costo mercancía"   value={format(summary.cogs)}           accent="red" />}
-          {showProfit && <StatCard label="Utilidad bruta"    value={format(summary.gross_profit)}   accent="green" />}
+          <StatCard label="Ingresos brutos"   value={format(summary.revenue)}        accent="blue" icon={DollarSign} />
+          {showCosts  && <StatCard label="Costo mercancía"   value={format(summary.cogs)}           accent="red" icon={Package} />}
+          {showProfit && <StatCard label="Utilidad bruta"    value={format(summary.gross_profit)}   accent="green" icon={TrendingUp} />}
           {showProfit && (
             <StatCard label="Margen bruto"      value={fmtPct(summary.margin_pct)}
               accent={summary.margin_pct >= 20 ? "green" : summary.margin_pct >= 10 ? "amber" : "red"}
+              icon={Percent}
               sub={`${summary.total_sales} ventas`}
             />
           )}
@@ -89,16 +101,18 @@ function ProfitReportPageInner() {
 
       {/* Expenses note */}
       {!isLoading && expenses && expenses.total_expenses > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3 text-sm flex items-center justify-between">
-          <span className="text-muted-foreground">Gastos registrados en el período</span>
-          <span className="font-semibold text-amber-700 dark:text-amber-400">{format(expenses.total_expenses)}</span>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3 text-sm flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Receipt className="size-3.5 shrink-0" />
+            Otros gastos operativos del período
+          </span>
+          <span className="font-semibold text-amber-700 dark:text-amber-400 tabular-nums">{format(expenses.total_expenses)}</span>
         </div>
       )}
 
       {/* Monthly chart */}
       {!isLoading && byMonth.length > 0 && (
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm font-semibold mb-3">Ingresos vs. utilidad por mes</p>
+        <ReportSection title="Ingresos vs. utilidad por mes" icon={BarChart3}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={byMonth} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -115,16 +129,13 @@ function ProfitReportPageInner() {
               <Bar dataKey="profit"  fill="hsl(142 76% 36%)"    radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ReportSection>
       )}
 
       {/* By product */}
       {!isLoading && byProduct.length > 0 && (
         <div className="space-y-2">
-          <div className="rounded-xl border overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/30">
-              <p className="text-sm font-semibold">Rentabilidad por producto</p>
-            </div>
+          <ReportSection title="Rentabilidad por producto" icon={Package} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -162,7 +173,7 @@ function ProfitReportPageInner() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </ReportSection>
           <PaginationControls
             page={productPage}
             totalPages={Math.ceil(byProduct.length / PRODUCT_PAGE_SIZE)}
@@ -174,7 +185,7 @@ function ProfitReportPageInner() {
       )}
 
       {!isLoading && !summary && (
-        <p className="text-center text-muted-foreground py-16 text-sm">Sin datos de ventas en el período seleccionado.</p>
+        <ReportEmptyState icon={TrendingUp} message="Sin datos de ventas en el período seleccionado." />
       )}
     </ReportShell>
   );

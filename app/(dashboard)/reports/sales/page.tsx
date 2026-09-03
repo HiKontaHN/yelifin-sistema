@@ -2,16 +2,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useSalesReport } from "@/hooks/swr/use-reports";
 import { useCurrency }    from "@/hooks/swr/use-currency";
 import { useAuth }        from "@/hooks/use-auth";
 import { fmtN }           from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, useDateRange } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
+import { ShoppingCart, DollarSign, TrendingUp, Percent, BarChart3, Package } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -43,21 +45,30 @@ function SalesReportPageInner() {
     const token = await firebaseUser?.getIdToken();
     if (!token) return;
 
-    const res = await fetch("/api/reports/sales/export", {
-      method:  "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ from, to, format: fmt, symbol }),
-    });
+    try {
+      const res = await fetch("/api/reports/sales/export", {
+        method:  "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body:    JSON.stringify({ from, to, format: fmt, symbol }),
+      });
 
-    if (!res.ok) return;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al exportar el reporte");
+      }
 
-    const blob     = await res.blob();
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement("a");
-    a.href         = url;
-    a.download     = `Ventas_${from}_${to}.${fmt}`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob     = await res.blob();
+      const url      = URL.createObjectURL(blob);
+      const a        = document.createElement("a");
+      a.href         = url;
+      a.download     = `Ventas_${from}_${to}.${fmt}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      toast.error(err.message || "Error al exportar el reporte");
+    }
   }
 
   const handlePDFExport = () => triggerExport("pdf");
@@ -82,17 +93,16 @@ function SalesReportPageInner() {
         </div>
       ) : summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Ventas"           value={String(summary.total_sales)}          />
-          <StatCard label="Ingresos"         value={format(summary.total_revenue)}        accent="blue"  />
-          {showProfit && <StatCard label="Utilidad bruta"   value={format(summary.gross_profit)}         accent="green" />}
-          {showProfit && <StatCard label="Margen"           value={`${fmtN(marginPct, 1)}%`}             accent={marginPct >= 20 ? "green" : "amber"} sub={`Descuentos: ${format(summary.total_discount)}`} />}
+          <StatCard label="Ventas"           value={String(summary.total_sales)}          icon={ShoppingCart} />
+          <StatCard label="Ingresos"         value={format(summary.total_revenue)}        accent="blue"  icon={DollarSign} />
+          {showProfit && <StatCard label="Utilidad bruta"   value={format(summary.gross_profit)}         accent="green" icon={TrendingUp} />}
+          {showProfit && <StatCard label="Margen"           value={`${fmtN(marginPct, 1)}%`}             accent={marginPct >= 20 ? "green" : "amber"} icon={Percent} sub={`Descuentos: ${format(summary.total_discount)}`} />}
         </div>
       )}
 
       {/* Chart */}
       {!isLoading && byDay.length > 0 && (
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm font-semibold mb-3">Ingresos y utilidad por día</p>
+        <ReportSection title="Ingresos y utilidad por día" icon={BarChart3}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={byDay} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -110,16 +120,13 @@ function SalesReportPageInner() {
               {showProfit && <Bar dataKey="profit"  fill="hsl(142 76% 36%)"       radius={[4,4,0,0]} name="profit"  />}
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ReportSection>
       )}
 
       {/* Top products */}
       {!isLoading && byProduct.length > 0 && (
         <div className="space-y-2">
-          <div className="rounded-xl border overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/30">
-              <p className="text-sm font-semibold">Productos más vendidos</p>
-            </div>
+          <ReportSection title="Productos más vendidos" icon={Package} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -156,7 +163,7 @@ function SalesReportPageInner() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </ReportSection>
           <PaginationControls
             page={productPage}
             totalPages={Math.ceil(byProduct.length / PRODUCT_PAGE_SIZE)}
@@ -168,7 +175,7 @@ function SalesReportPageInner() {
       )}
 
       {!isLoading && !summary && (
-        <p className="text-center text-muted-foreground py-16 text-sm">Sin ventas en el período seleccionado.</p>
+        <ReportEmptyState icon={ShoppingCart} message="Sin ventas en el período seleccionado." />
       )}
     </ReportShell>
   );

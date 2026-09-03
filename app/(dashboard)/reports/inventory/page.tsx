@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useInventoryReport } from "@/hooks/swr/use-reports";
 import { useCurrency }        from "@/hooks/swr/use-currency";
 import { useAuth }            from "@/hooks/use-auth";
@@ -14,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
+import { Package, Boxes, DollarSign, AlertTriangle, ArrowLeftRight, Search } from "lucide-react";
 
 const MOVE_LABEL: Record<string, string> = { IN: "Entrada", OUT: "Salida", ADJUST: "Ajuste" };
 const MOVE_COLOR: Record<string, string> = {
@@ -54,20 +56,29 @@ function InventoryReportPageInner() {
     const token = await firebaseUser?.getIdToken();
     if (!token) return;
 
-    const res = await fetch("/api/reports/inventory/export", {
-      method:  "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ symbol }),
-    });
-    if (!res.ok) return;
+    try {
+      const res = await fetch("/api/reports/inventory/export", {
+        method:  "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body:    JSON.stringify({ symbol }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al exportar el reporte");
+      }
 
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `Inventario_${new Date().toISOString().slice(0, 10)}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `Inventario_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      toast.error(err.message || "Error al exportar el reporte");
+    }
   };
 
   return (
@@ -87,35 +98,39 @@ function InventoryReportPageInner() {
         </div>
       ) : summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Productos activos"  value={String(summary.total_products)} />
-          <StatCard label="Unidades totales"   value={summary.total_stock.toLocaleString("es-HN")} accent="blue" />
-          {showCosts && <StatCard label="Valor en inventario" value={format(summary.total_stock_value)} accent="green" />}
+          <StatCard label="Productos activos"  value={String(summary.total_products)} icon={Package} />
+          <StatCard label="Unidades totales"   value={summary.total_stock.toLocaleString("es-HN")} accent="blue" icon={Boxes} />
+          {showCosts && <StatCard label="Valor en inventario" value={format(summary.total_stock_value)} accent="green" icon={DollarSign} />}
           <StatCard label="Stock bajo / agotado"
             value={`${summary.low_stock_count} / ${summary.zero_stock_count}`}
             accent={summary.low_stock_count + summary.zero_stock_count > 0 ? "red" : "green"}
+            icon={AlertTriangle}
           />
         </div>
       )}
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(["stock", "movements"] as const).map(t => (
-          <Button
-            key={t} variant={tab === t ? "default" : "outline"} size="sm"
-            onClick={() => setTab(t)}
-          >
-            {t === "stock" ? "Stock por producto" : "Movimientos (30 días)"}
-          </Button>
-        ))}
+        <Button variant={tab === "stock" ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setTab("stock")}>
+          <Package className="size-3.5" />
+          Stock por producto
+        </Button>
+        <Button variant={tab === "movements" ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setTab("movements")}>
+          <ArrowLeftRight className="size-3.5" />
+          Movimientos (30 días)
+        </Button>
       </div>
 
       {/* Search */}
       {tab === "stock" && (
-        <Input
-          placeholder="Buscar producto o SKU..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
+        <div className="relative max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar producto o SKU..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
       )}
 
       {/* Stock table */}
@@ -125,7 +140,7 @@ function InventoryReportPageInner() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Producto</th>
                     <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
                     <th className="text-right px-4 py-2">Stock</th>
@@ -185,7 +200,7 @@ function InventoryReportPageInner() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Fecha</th>
                     <th className="text-left px-4 py-2">Tipo</th>
                     <th className="text-left px-4 py-2">Producto</th>

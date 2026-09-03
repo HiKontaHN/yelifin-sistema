@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
+import { defaultMonthRange, getSalesSummary, getSalesByDay, getSalesByProduct, getSalesDetail } from "@/lib/reports/queries";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -11,13 +12,6 @@ const PAYMENT_LABEL: Record<string, string> = {
   CREDIT:      "Crédito",
   CREDIT_CARD: "Tarjeta crédito",
 };
-
-function defaultRange() {
-  const now  = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  return { from, to };
-}
 
 function fmtN(v: number, dec = 2) {
   return Number(v).toFixed(dec);
@@ -1139,94 +1133,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId } = auth.data;
     const body       = await request.json();
-    const def        = defaultRange();
+    const def        = defaultMonthRange();
     const from       = (body.from   ?? def.from)   as string;
     const to         = (body.to     ?? def.to)     as string;
-    const format     = (body.format ?? "xlsx")     as "xlsx" | "pdf";
+    const format     = (body.format ?? "pdf")      as "xlsx" | "pdf";
     const symbol     = (body.symbol ?? "L")        as string;
 
-    const [summary] = await sql`
-      SELECT
-        COUNT(DISTINCT s.id)::int                                              AS total_sales,
-        COALESCE(SUM(s.total),    0)::float                                    AS total_revenue,
-        COALESCE(SUM(s.discount), 0)::float                                    AS total_discount,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float                   AS total_cogs,
-        COALESCE(SUM(s.total) - SUM(si.unit_cost * si.quantity), 0)::float    AS gross_profit
-      FROM sales s
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
-      WHERE s.org_id = ${orgId}
-        AND s.status  = 'COMPLETED'
-        AND s.sold_at >= ${from}::date
-        AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-    `;
-
-    const byDay = await sql`
-      SELECT
-        DATE(s.sold_at)::text                     AS date,
-        COUNT(*)::int                             AS sales_count,
-        COALESCE(SUM(s.total), 0)::float          AS revenue,
-        COALESCE(SUM(s.total) - SUM(si.unit_cost * si.quantity), 0)::float AS profit
-      FROM sales s
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
-      WHERE s.org_id = ${orgId}
-        AND s.status  = 'COMPLETED'
-        AND s.sold_at >= ${from}::date
-        AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-      GROUP BY DATE(s.sold_at)
-      ORDER BY DATE(s.sold_at)
-    `;
-
-    const byProduct = await sql`
-      SELECT
-        p.name                                                  AS product_name,
-        COALESCE(p.sku, '')                                     AS sku,
-        SUM(si.quantity)::int                                   AS qty_sold,
-        COALESCE(SUM(si.line_total), 0)::float                 AS revenue,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float   AS cogs,
-        COALESCE(SUM(si.line_total - si.unit_cost * si.quantity), 0)::float AS profit,
-        CASE
-          WHEN SUM(si.line_total) > 0
-          THEN ROUND(100.0 * SUM(si.line_total - si.unit_cost * si.quantity) / SUM(si.line_total), 1)
-          ELSE 0
-        END::float AS margin_pct
-      FROM sale_items si
-      JOIN products p ON p.id = si.product_id
-      JOIN sales    s ON s.id = si.sale_id
-      WHERE si.org_id = ${orgId}
-        AND s.status   = 'COMPLETED'
-        AND s.sold_at  >= ${from}::date
-        AND s.sold_at  <  (${to}::date + INTERVAL '1 day')
-      GROUP BY p.id, p.name, p.sku
-      ORDER BY revenue DESC
-      LIMIT 100
-    `;
-
-    const detail = await sql`
-      SELECT
-        s.sale_number,
-        DATE(s.sold_at)::text                                                  AS date,
-        COALESCE(c.name, 'Sin cliente')                                        AS customer,
-        s.payment_method,
-        COALESCE(a.name, '')                                                   AS account_name,
-        COUNT(si.id)::int                                                       AS items_count,
-        COALESCE(s.discount, 0)::float                                         AS discount,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float                   AS cogs,
-        s.total::float                                                          AS total,
-        COALESCE(s.total - SUM(si.unit_cost * si.quantity), 0)::float         AS profit
-      FROM sales s
-      LEFT JOIN customers  c  ON c.id  = s.customer_id
-      LEFT JOIN accounts   a  ON a.id  = s.account_id
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
-      WHERE s.org_id = ${orgId}
-        AND s.status  = 'COMPLETED'
-        AND s.sold_at >= ${from}::date
-        AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-      GROUP BY s.id, s.sale_number, s.sold_at, c.name, s.payment_method, a.name, s.discount, s.total
-      ORDER BY s.sold_at DESC
-      LIMIT 1000
-    `;
+    const [summary, byDay, byProduct, detail] = await Promise.all([
+      getSalesSummary(sql, orgId, from, to),
+      getSalesByDay(sql, orgId, from, to),
+      getSalesByProduct(sql, orgId, from, to),
+      getSalesDetail(sql, orgId, from, to),
+    ]);
 
     if (format === "pdf") {
       const pdfBuf = await generatePDF(summary, byDay, byProduct, detail, symbol, from, to);

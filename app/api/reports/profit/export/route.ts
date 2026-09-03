@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
+import { defaultYearRange, getProfitSummary, getProfitByMonth, getProfitByProduct, getOperatingExpenses } from "@/lib/reports/queries";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -12,13 +13,6 @@ function fmtHNL(v: number, symbol = "L") {
 
 function fmtDate(iso: string) {
   return new Date(iso + "T12:00:00").toLocaleDateString("es-HN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function defaultRange() {
-  const now  = new Date();
-  const from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-  const to   = new Date(now.getFullYear(), 11, 31).toISOString().slice(0, 10);
-  return { from, to };
 }
 
 function shortVal(v: number): string {
@@ -211,7 +205,7 @@ async function generatePDF(
   doc.text(`Ventas: ${summary.total_sales}`, MARGIN, y);
   doc.text(`Descuentos: ${fmtHNL(summary.total_discount, symbol)}`, MARGIN + CONTENT_W / 3, y);
   if (totalExpenses > 0)
-    doc.text(`Gastos del período: ${fmtHNL(totalExpenses, symbol)}`, MARGIN + (CONTENT_W * 2) / 3, y);
+    doc.text(`Otros gastos operativos: ${fmtHNL(totalExpenses, symbol)}`, MARGIN + (CONTENT_W * 2) / 3, y);
   y += 8;
 
   // Gráfico mensual
@@ -339,89 +333,26 @@ export async function POST(request: NextRequest) {
   if (denyFeature) return denyFeature;
 
   const perms = await getModulePermissions(auth.data, 'REPORTS');
-  if (!perms.showProfit) {
-    return createErrorResponse("Tu rol no tiene permiso para ver ganancias", 403);
+  // El documento exportado incluye costos junto con las ganancias — requiere
+  // ambos permisos (a diferencia del GET, que puede degradar sin costos).
+  if (!perms.showProfit || !perms.showCosts) {
+    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y ganancias)", 403);
   }
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId } = auth.data;
     const body       = await request.json();
-    const def        = defaultRange();
+    const def        = defaultYearRange();
     const from       = (body.from   ?? def.from)  as string;
     const to         = (body.to     ?? def.to)    as string;
     const symbol     = (body.symbol ?? "L")       as string;
 
-    const [summary] = await sql`
-      SELECT
-        COALESCE(SUM(s.total), 0)::float                                         AS revenue,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float                     AS cogs,
-        COALESCE(SUM(s.total) - SUM(si.unit_cost * si.quantity), 0)::float      AS gross_profit,
-        COALESCE(SUM(s.discount), 0)::float                                      AS total_discount,
-        CASE
-          WHEN SUM(s.total) > 0
-          THEN ROUND(100.0 * (SUM(s.total) - SUM(si.unit_cost * si.quantity)) / SUM(s.total), 1)::float
-          ELSE 0
-        END AS margin_pct,
-        COUNT(DISTINCT s.id)::int AS total_sales
-      FROM sales s
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
-      WHERE s.org_id = ${orgId}
-        AND s.status  = 'COMPLETED'
-        AND s.sold_at >= ${from}::date
-        AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-    `;
-
-    const byMonth = await sql`
-      SELECT
-        TO_CHAR(s.sold_at, 'YYYY-MM')  AS month,
-        TO_CHAR(s.sold_at, 'Mon YYYY') AS month_label,
-        COALESCE(SUM(s.total), 0)::float AS revenue,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float AS cogs,
-        COALESCE(SUM(s.total) - SUM(si.unit_cost * si.quantity), 0)::float AS profit,
-        COUNT(DISTINCT s.id)::int AS sales_count
-      FROM sales s
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
-      WHERE s.org_id = ${orgId}
-        AND s.status  = 'COMPLETED'
-        AND s.sold_at >= ${from}::date
-        AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-      GROUP BY TO_CHAR(s.sold_at, 'YYYY-MM'), TO_CHAR(s.sold_at, 'Mon YYYY')
-      ORDER BY month
-    `;
-
-    const byProduct = await sql`
-      SELECT
-        p.name AS product_name,
-        COALESCE(p.sku, '') AS sku,
-        SUM(si.quantity)::int AS qty_sold,
-        COALESCE(SUM(si.line_total), 0)::float AS revenue,
-        COALESCE(SUM(si.unit_cost * si.quantity), 0)::float AS cogs,
-        COALESCE(SUM(si.line_total - si.unit_cost * si.quantity), 0)::float AS profit,
-        CASE
-          WHEN SUM(si.line_total) > 0
-          THEN ROUND(100.0 * SUM(si.line_total - si.unit_cost * si.quantity) / SUM(si.line_total), 1)::float
-          ELSE 0
-        END AS margin_pct
-      FROM sale_items si
-      JOIN products p ON p.id = si.product_id
-      JOIN sales    s ON s.id = si.sale_id
-      WHERE si.org_id = ${orgId}
-        AND s.status   = 'COMPLETED'
-        AND s.sold_at  >= ${from}::date
-        AND s.sold_at  <  (${to}::date + INTERVAL '1 day')
-      GROUP BY p.id, p.name, p.sku
-      ORDER BY profit DESC
-      LIMIT 50
-    `;
-
-    const [expenses] = await sql`
-      SELECT COALESCE(SUM(amount), 0)::float AS total_expenses
-      FROM transactions
-      WHERE org_id     = ${orgId}
-        AND type       = 'EXPENSE'
-        AND occurred_at >= ${from}::date
-        AND occurred_at <  (${to}::date + INTERVAL '1 day')
-    `;
+    const [summary, byMonth, byProduct, expenses] = await Promise.all([
+      getProfitSummary(sql, orgId, from, to),
+      getProfitByMonth(sql, orgId, from, to),
+      getProfitByProduct(sql, orgId, from, to),
+      getOperatingExpenses(sql, orgId, from, to),
+    ]);
 
     const pdfBuf = await generatePDF(summary, byMonth, byProduct, expenses, symbol, from, to);
 

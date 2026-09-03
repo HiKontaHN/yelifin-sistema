@@ -2,16 +2,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useEventsReport } from "@/hooks/swr/use-reports";
 import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, useDateRange } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
+import { Calendar, DollarSign, Receipt, TrendingUp, BarChart3, CalendarDays } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -54,20 +56,29 @@ function EventsReportPageInner() {
     const token = await firebaseUser?.getIdToken();
     if (!token) return;
 
-    const res = await fetch("/api/reports/events/export", {
-      method:  "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body:    JSON.stringify({ from, to, symbol }),
-    });
-    if (!res.ok) return;
+    try {
+      const res = await fetch("/api/reports/events/export", {
+        method:  "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body:    JSON.stringify({ from, to, symbol }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al exportar el reporte");
+      }
 
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `Eventos_${from}_${to}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `Eventos_${from}_${to}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      toast.error(err.message || "Error al exportar el reporte");
+    }
   };
 
   // Chart data
@@ -98,12 +109,13 @@ function EventsReportPageInner() {
         </div>
       ) : summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Eventos"           value={String(summary.total_events)}   />
-          <StatCard label="Ingresos totales"  value={format(summary.total_revenue)}  accent="blue" />
-          {showProfit && <StatCard label="Gastos totales"    value={format(summary.total_expenses)} accent="red" />}
+          <StatCard label="Eventos"           value={String(summary.total_events)}   icon={Calendar} />
+          <StatCard label="Ingresos totales"  value={format(summary.total_revenue)}  accent="blue" icon={DollarSign} />
+          {showProfit && <StatCard label="Gastos totales"    value={format(summary.total_expenses)} accent="red" icon={Receipt} />}
           {showProfit && (
             <StatCard label="Utilidad neta"     value={format(summary.net_profit)}
               accent={summary.net_profit >= 0 ? "green" : "red"}
+              icon={TrendingUp}
               sub={`${summary.total_sales} ventas`}
             />
           )}
@@ -112,8 +124,7 @@ function EventsReportPageInner() {
 
       {/* Chart */}
       {!isLoading && chartData.length > 0 && (
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm font-semibold mb-3">Ingresos vs. gastos por evento</p>
+        <ReportSection title="Ingresos vs. gastos por evento" icon={BarChart3}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={chartData} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -127,17 +138,17 @@ function EventsReportPageInner() {
               {showProfit && <Bar dataKey="utilidad" fill="hsl(142 76% 36%)"     radius={[4,4,0,0]} />}
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ReportSection>
       )}
 
       {/* Events table */}
       {!isLoading && events.length > 0 && (
         <div className="space-y-2">
-          <div className="rounded-xl border overflow-hidden">
+          <ReportSection title="Detalle por evento" icon={CalendarDays} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Evento</th>
                     <th className="text-left px-4 py-2 hidden sm:table-cell">Fecha</th>
                     <th className="text-right px-4 py-2">Ventas</th>
@@ -183,7 +194,7 @@ function EventsReportPageInner() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </ReportSection>
           <PaginationControls
             page={eventPage}
             totalPages={Math.ceil(events.length / EVENT_PAGE_SIZE)}
@@ -195,7 +206,7 @@ function EventsReportPageInner() {
       )}
 
       {!isLoading && events.length === 0 && (
-        <p className="text-center text-muted-foreground py-16 text-sm">Sin eventos en el período seleccionado.</p>
+        <ReportEmptyState icon={Calendar} message="Sin eventos en el período seleccionado." />
       )}
     </ReportShell>
   );
