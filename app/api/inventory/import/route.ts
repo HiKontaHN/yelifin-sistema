@@ -97,6 +97,11 @@ export async function POST(request: NextRequest) {
     const limitParam = url.searchParams.get("limit");
     const limit = limitParam ? Number(limitParam) || resolved.length : resolved.length;
     const chunk = resolved.slice(offset, offset + limit);
+
+    // Un solo id compartido por todas las filas de esta ejecución de import
+    // (lo genera el cliente una vez y lo reenvía en cada chunk), para poder
+    // verlas juntas como un lote en el detalle de compra.
+    const importBatchId = url.searchParams.get("import_batch_id") || null;
     if (chunk.length === 0)
       return createErrorResponse("No hay filas para procesar en ese rango", 400);
 
@@ -115,7 +120,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
       try {
-        const purchaseId = await executeRow(row, orgId, userId);
+        const purchaseId = await executeRow(row, orgId, userId, importBatchId);
         results.push({ ...rowResult(row, "ok"), ...(purchaseId ? { purchaseId } : {}) });
       } catch (rowError) {
         console.error(`Import fila ${row.rowNumber}:`, rowError);
@@ -218,7 +223,8 @@ function rowResult(row: ResolvedRow, status: "ok" | "failed", error?: string): R
 async function executeRow(
   row: ResolvedRow,
   orgId: number,
-  userId: number
+  userId: number,
+  importBatchId: string | null
 ): Promise<number | null> {
   let productId = row.productId;
 
@@ -258,13 +264,13 @@ async function executeRow(
     const [batch] = await sql`
       INSERT INTO purchase_batches (
         org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
-        subtotal, shipping, tax, total, is_paid, purchased_at, notes, status
+        subtotal, shipping, tax, total, is_paid, purchased_at, notes, status, import_batch_id
       ) VALUES (
         ${orgId}, ${userId},
         ${hasPayment && !isCreditCard ? row.account!.id : null}, ${null},
         ${"HNL"}, ${1},
         ${totalCost}, ${0}, ${0}, ${totalCost},
-        ${false}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}
+        ${false}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}, ${importBatchId}
       )
       RETURNING id
     `;

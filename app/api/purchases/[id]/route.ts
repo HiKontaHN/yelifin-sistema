@@ -9,6 +9,9 @@ const sql = neon(process.env.DATABASE_URL!);
 type Params = { params: Promise<{ id: string }> };
 
 // ── GET /api/purchases/[id] — detalle de una compra (cabecera + items) ─
+// Si la compra pertenece a una importación de Excel (import_batch_id no
+// nulo), agrupa TODAS las compras de esa misma ejecución de importación
+// (una por fila) y devuelve sus items juntos, como un solo lote.
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
@@ -22,23 +25,37 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     if (isNaN(purchaseId)) return createErrorResponse("ID inválido", 400);
 
-    const [purchase] = await sql`
-      SELECT
-        pb.id, pb.account_id, a.name AS account_name,
-        pb.shipping_account_id, sa.name AS shipping_account_name,
-        pb.currency, pb.exchange_rate,
-        pb.subtotal, pb.shipping, pb.total,
-        pb.status, pb.is_paid, pb.purchased_at, pb.notes, pb.created_at,
-        COUNT(pbi.id)::int AS items_count
-      FROM purchase_batches pb
-      LEFT JOIN accounts             a   ON a.id  = pb.account_id
-      LEFT JOIN accounts             sa  ON sa.id = pb.shipping_account_id
-      LEFT JOIN purchase_batch_items pbi ON pbi.purchase_batch_id = pb.id
-      WHERE pb.id = ${purchaseId} AND pb.org_id = ${orgId}
-      GROUP BY pb.id, a.name, sa.name
+    const [requested] = await sql`
+      SELECT id, import_batch_id FROM purchase_batches
+      WHERE id = ${purchaseId} AND org_id = ${orgId}
     `;
+    if (!requested) return createErrorResponse("Compra no encontrada", 404);
 
-    if (!purchase) return createErrorResponse("Compra no encontrada", 404);
+    const groupRows = requested.import_batch_id
+      ? await sql`
+          SELECT id FROM purchase_batches
+          WHERE org_id = ${orgId} AND import_batch_id = ${requested.import_batch_id}
+        `
+      : [{ id: purchaseId }];
+    const groupIds = groupRows.map((r: any) => r.id);
+
+    const [summary] = await sql`
+      SELECT
+        COUNT(DISTINCT pb.id)::int AS batches_count,
+        CASE WHEN COUNT(DISTINCT pb.account_id)          = 1 THEN MAX(a.name)  ELSE NULL END AS account_name,
+        CASE WHEN COUNT(DISTINCT pb.shipping_account_id) = 1 THEN MAX(sa.name) ELSE NULL END AS shipping_account_name,
+        CASE WHEN COUNT(DISTINCT pb.status)              = 1 THEN MAX(pb.status) ELSE NULL END AS status,
+        MIN(pb.purchased_at) AS purchased_at,
+        MAX(pb.notes)        AS notes,
+        MAX(pb.currency)     AS currency,
+        SUM(pb.subtotal)     AS subtotal,
+        SUM(pb.shipping)     AS shipping,
+        SUM(pb.total)        AS total
+      FROM purchase_batches pb
+      LEFT JOIN accounts a  ON a.id  = pb.account_id
+      LEFT JOIN accounts sa ON sa.id = pb.shipping_account_id
+      WHERE pb.id = ANY(${groupIds}) AND pb.org_id = ${orgId}
+    `;
 
     const items = await sql`
       SELECT
@@ -47,11 +64,18 @@ export async function GET(request: NextRequest, { params }: Params) {
       FROM purchase_batch_items pbi
       JOIN products p ON p.id = pbi.product_id
       LEFT JOIN product_variants pv ON pv.id = pbi.variant_id
-      WHERE pbi.purchase_batch_id = ${purchaseId}
+      WHERE pbi.purchase_batch_id = ANY(${groupIds})
       ORDER BY pbi.id
     `;
 
-    const payload = { data: { ...purchase, items } };
+    const payload = {
+      data: {
+        id:             purchaseId,
+        is_group:       groupIds.length > 1,
+        ...summary,
+        items,
+      },
+    };
 
     // Mismo patrón de ocultamiento de costos que GET /api/purchases
     const perms = await getModulePermissions(auth.data, 'INVENTORY');

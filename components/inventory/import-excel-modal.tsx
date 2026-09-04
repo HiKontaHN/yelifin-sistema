@@ -175,7 +175,7 @@ export function ImportExcelModal({
   // ── Subida + dry run ──────────────────────────────────────────────────
   const postImport = async (
     selectedFile: File,
-    opts: { dryRun?: boolean; offset?: number; limit?: number } = {}
+    opts: { dryRun?: boolean; offset?: number; limit?: number; importBatchId?: string } = {}
   ) => {
     const token = await firebaseUser?.getIdToken();
     if (!token) throw new Error("No autenticado");
@@ -185,6 +185,7 @@ export function ImportExcelModal({
     if (opts.dryRun) params.set("dry_run", "true");
     if (opts.offset !== undefined) params.set("offset", String(opts.offset));
     if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.importBatchId) params.set("import_batch_id", opts.importBatchId);
     const qs = params.toString();
     const res = await fetch(`/api/inventory/import${qs ? `?${qs}` : ""}`, {
       method: "POST",
@@ -223,9 +224,10 @@ export function ImportExcelModal({
     const toastId = showProgress ? toast.loading(`Importando 0/${total} filas...`) : undefined;
     try {
       const allResults: RowResult[] = [];
+      const importBatchId = crypto.randomUUID();
       let offset = 0;
       while (offset < total) {
-        const json = await postImport(file, { offset, limit: IMPORT_EXECUTE_CHUNK_SIZE });
+        const json = await postImport(file, { offset, limit: IMPORT_EXECUTE_CHUNK_SIZE, importBatchId });
         allResults.push(...json.data.results);
         offset += IMPORT_EXECUTE_CHUNK_SIZE;
         if (toastId) toast.loading(`Importando ${Math.min(offset, total)}/${total} filas...`, { id: toastId });

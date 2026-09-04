@@ -24,15 +24,17 @@ export function PurchaseDetailDialog({ purchaseId, open, onOpenChange }: Props) 
     ? new Date(purchase.purchased_at).toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })
     : null;
 
+  const itemCount = purchase?.items.length ?? 0;
+
   return (
     <ResponsiveModal
       open={open}
       onOpenChange={onOpenChange}
-      title="Detalle de compra"
+      title={purchase?.is_group ? "Detalle de importación" : "Detalle de compra"}
       icon={ShoppingBag}
       subtitle={
         purchase
-          ? <>{date} · {purchase.items_count} producto{purchase.items_count !== 1 ? "s" : ""}</>
+          ? <>{date} · {itemCount} producto{itemCount !== 1 ? "s" : ""}</>
           : undefined
       }
       footer={
@@ -50,12 +52,14 @@ export function PurchaseDetailDialog({ purchaseId, open, onOpenChange }: Props) 
         <>
           {/* Resumen */}
           <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Wallet className="size-3.5" /> Cuenta
-              </span>
-              <span className="font-medium">{purchase.account_name ?? "Tarjeta de crédito"}</span>
-            </div>
+            {purchase.account_name && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <Wallet className="size-3.5" /> Cuenta
+                </span>
+                <span className="font-medium">{purchase.account_name}</span>
+              </div>
+            )}
             {purchase.shipping != null && Number(purchase.shipping) > 0 && (
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -82,9 +86,11 @@ export function PurchaseDetailDialog({ purchaseId, open, onOpenChange }: Props) 
             <span className="flex items-center gap-1.5">
               <CalendarDays className="size-3.5" /> {date}
             </span>
-            <Badge variant="outline" className="text-xs">
-              {purchase.status === "PENDING" ? "Pendiente de llegada" : "Completada"}
-            </Badge>
+            {purchase.status && (
+              <Badge variant="outline" className="text-xs">
+                {purchase.status === "PENDING" ? "Pendiente de llegada" : "Completada"}
+              </Badge>
+            )}
           </div>
 
           {purchase.notes && (

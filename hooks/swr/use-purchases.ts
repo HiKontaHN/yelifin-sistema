@@ -61,6 +61,25 @@ export type PurchaseWithItems = Purchase & {
   items: PurchaseItemDetail[];
 };
 
+// Devuelto por GET /api/purchases/:id — si la compra vino de una
+// importación de Excel, agrupa todas las filas de esa misma ejecución.
+// account_name/status son null cuando el grupo mezcla varios valores.
+export type PurchaseDetail = {
+  id: number;
+  is_group: boolean;
+  batches_count: number;
+  account_name: string | null;
+  shipping_account_name: string | null;
+  status: 'PENDING' | 'COMPLETED' | null;
+  purchased_at: string;
+  notes: string | null;
+  currency: string;
+  subtotal: number | null;
+  shipping: number | null;
+  total: number | null;
+  items: PurchaseItemDetail[];
+};
+
 function useAuthFetch() {
   const { firebaseUser } = useAuth();
   return async (url: string, options: RequestInit = {}) => {
@@ -157,7 +176,7 @@ export function usePurchase(id: number | null) {
     }
   );
   return {
-    purchase: (data?.data ?? null) as PurchaseWithItems | null,
+    purchase: (data?.data ?? null) as PurchaseDetail | null,
     isLoading,
     error:    error?.message ?? null,
     mutate,
