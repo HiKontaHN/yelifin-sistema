@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { DollarSign, FileText, Hash, ImageIcon, PackagePlus, ToggleLeft, UserPlus, X } from "lucide-react";
+import { DollarSign, Eye, FileText, Hash, ImageIcon, PackagePlus, ToggleLeft, UserPlus, X } from "lucide-react";
 import { HiKontaTitle } from "@/components/shared/hikonta-title";
 const slides = [
   {
@@ -9,18 +9,22 @@ const slides = [
     subtitle: "Crea productos y servicios",
     gradient: "bg-[linear-gradient(145deg,#0068ff_0%,#2f85ff_44%,#eff7ff_100%)]",
     art: "inventory",
-    modal: <ProductDemoModal />,
+    trigger: "Ver demo",
+    Modal: ProductDemoModal,
   },
   {
     title: "Registra tus clientes",
     subtitle: "o usa uno anónimo",
     gradient: "bg-[linear-gradient(145deg,#a85df5_0%,#b77af7_52%,#f3e7ff_100%)]",
     art: "customers",
-    modal: <CustomerDemoModal />,
+    trigger: "Ver demo",
+    Modal: CustomerDemoModal,
   },
 ];
 
 export function LandingFlow() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   return (
     <section id="como-funciona" className="bg-white px-5 py-16 sm:px-8">
       <div className="mx-auto max-w-7xl">
@@ -35,7 +39,7 @@ export function LandingFlow() {
 
         <div className="-mx-5 mt-10 overflow-x-auto px-5 pb-5 [scrollbar-width:none] sm:-mx-8 sm:px-8">
           <div className="mx-auto flex w-max snap-x snap-mandatory gap-6 lg:w-full lg:max-w-6xl lg:gap-8">
-            {slides.map((slide) => (
+            {slides.map((slide, index) => (
               <article
                 key={slide.title}
                 className={`relative h-170 w-[min(88vw,540px)] snap-center overflow-hidden rounded-xl ${slide.gradient} px-4 pt-8 sm:px-8 sm:h-[720px] lg:flex-1`}
@@ -45,9 +49,35 @@ export function LandingFlow() {
                   <h3 className="text-2xl font-bold leading-tight sm:text-4xl">{slide.title}</h3>
                   <p className="mt-2 text-sm text-white/85 sm:text-lg">{slide.subtitle}</p>
                 </div>
-                <div className="absolute inset-x-0 bottom-0 z-10 sm:relative sm:mx-auto sm:mt-7 sm:w-full sm:max-w-lg">
-                  {slide.modal}
+
+                <div className="absolute inset-x-0 bottom-10 z-10 flex justify-center sm:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setOpenIndex(index)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.25)]"
+                  >
+                    <Eye className="size-4 text-[#0068ff]" />
+                    {slide.trigger}
+                  </button>
                 </div>
+
+                <div className="relative z-10 mx-auto mt-6 hidden w-full max-w-lg sm:mt-7 sm:block">
+                  <slide.Modal />
+                </div>
+
+                {openIndex === index && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-end bg-slate-950/50 [animation-duration:200ms] animate-in fade-in sm:hidden"
+                    onClick={() => setOpenIndex(null)}
+                  >
+                    <div
+                      className="w-full animate-in slide-in-from-bottom duration-300"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <slide.Modal onClose={() => setOpenIndex(null)} />
+                    </div>
+                  </div>
+                )}
               </article>
             ))}
           </div>
@@ -57,12 +87,13 @@ export function LandingFlow() {
   );
 }
 
-function DemoModal({ title, icon, children, action, footerNote }: {
+function DemoModal({ title, icon, children, action, footerNote, onClose }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
   action: string;
   footerNote?: string;
+  onClose?: () => void;
 }) {
   return (
     <div className="flex max-h-[520px] w-full flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white text-left text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:mx-auto sm:max-h-[550px] sm:max-w-md sm:rounded-2xl sm:border xl:max-w-lg">
@@ -74,13 +105,13 @@ function DemoModal({ title, icon, children, action, footerNote }: {
           <span className="text-[#0068ff]">{icon}</span>
           {title}
         </div>
-        <button type="button" aria-label="Cerrar demo" className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
+        <button type="button" aria-label="Cerrar demo" onClick={onClose} className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
           <X className="size-5" />
         </button>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:thin] sm:px-5">{children}</div>
       <div className="flex shrink-0 gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:px-5">
-        <button type="button" className="h-11 flex-1 rounded-md border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+        <button type="button" onClick={onClose} className="h-11 flex-1 rounded-md border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-slate-50">
           Cancelar
         </button>
         <button type="button" className="h-11 flex-1 rounded-md bg-[#2f80ed] text-sm font-bold text-white hover:bg-[#1d6fe0]">
@@ -92,7 +123,7 @@ function DemoModal({ title, icon, children, action, footerNote }: {
   );
 }
 
-function ProductDemoModal() {
+function ProductDemoModal({ onClose }: { onClose?: () => void }) {
   const [isService, setIsService] = useState(false);
 
   return (
@@ -101,6 +132,7 @@ function ProductDemoModal() {
       icon={<PackagePlus className="size-5" />}
       action={isService ? "Crear servicio" : "Crear producto"}
       footerNote="Demo visual: no guarda información ni llama endpoints."
+      onClose={onClose}
     >
       <button
         type="button"
@@ -144,9 +176,9 @@ function ProductDemoModal() {
   );
 }
 
-function CustomerDemoModal() {
+function CustomerDemoModal({ onClose }: { onClose?: () => void }) {
   return (
-    <DemoModal title="Nuevo cliente" icon={<UserPlus className="size-5" />} action="Crear cliente" footerNote="Demo visual: puedes escribir, pero no se guarda información.">
+    <DemoModal title="Nuevo cliente" icon={<UserPlus className="size-5" />} action="Crear cliente" footerNote="Demo visual: puedes escribir, pero no se guarda información." onClose={onClose}>
       <TextInput label="Nombre" required placeholder="Ej: Andrea López" />
       <div className="grid gap-4 sm:grid-cols-2">
         <TextInput label="Teléfono" optional placeholder="+504 9999-9999" />

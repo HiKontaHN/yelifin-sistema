@@ -1,12 +1,72 @@
 // app/api/purchases/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 type Params = { params: Promise<{ id: string }> };
+
+// ── GET /api/purchases/[id] — detalle de una compra (cabecera + items) ─
+export async function GET(request: NextRequest, { params }: Params) {
+  const auth = await verifyAuth(request);
+  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canView');
+  if (deny) return deny;
+
+  try {
+    const { orgId }   = auth.data;
+    const { id }       = await params;
+    const purchaseId   = Number(id);
+
+    if (isNaN(purchaseId)) return createErrorResponse("ID inválido", 400);
+
+    const [purchase] = await sql`
+      SELECT
+        pb.id, pb.account_id, a.name AS account_name,
+        pb.shipping_account_id, sa.name AS shipping_account_name,
+        pb.currency, pb.exchange_rate,
+        pb.subtotal, pb.shipping, pb.total,
+        pb.status, pb.is_paid, pb.purchased_at, pb.notes, pb.created_at,
+        COUNT(pbi.id)::int AS items_count
+      FROM purchase_batches pb
+      LEFT JOIN accounts             a   ON a.id  = pb.account_id
+      LEFT JOIN accounts             sa  ON sa.id = pb.shipping_account_id
+      LEFT JOIN purchase_batch_items pbi ON pbi.purchase_batch_id = pb.id
+      WHERE pb.id = ${purchaseId} AND pb.org_id = ${orgId}
+      GROUP BY pb.id, a.name, sa.name
+    `;
+
+    if (!purchase) return createErrorResponse("Compra no encontrada", 404);
+
+    const items = await sql`
+      SELECT
+        pbi.product_id, p.name AS product_name, pv.variant_name,
+        pbi.quantity, pbi.unit_cost, pbi.unit_cost_usd
+      FROM purchase_batch_items pbi
+      JOIN products p ON p.id = pbi.product_id
+      LEFT JOIN product_variants pv ON pv.id = pbi.variant_id
+      WHERE pbi.purchase_batch_id = ${purchaseId}
+      ORDER BY pbi.id
+    `;
+
+    const payload = { data: { ...purchase, items } };
+
+    // Mismo patrón de ocultamiento de costos que GET /api/purchases
+    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+    if (!perms.showCosts) {
+      nullifyKeysDeep(payload, new Set([
+        "subtotal", "shipping", "total", "unit_cost", "unit_cost_usd",
+      ]));
+    }
+
+    return Response.json(payload);
+  } catch (error) {
+    console.error("GET /api/purchases/[id]:", error);
+    return createErrorResponse("Error al obtener la compra", 500);
+  }
+}
 
 // ── PATCH /api/purchases/[id] — confirmar llegada de inventario ────────
 export async function PATCH(request: NextRequest, { params }: Params) {

@@ -57,7 +57,7 @@ export function CustomerSummarySheet({ customer, open, onOpenChange, onEdit, onD
       height="tall"
       bodyClassName="space-y-5"
       header={
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 pr-8">
           <div className="min-w-0">
             <DialogTitle className="text-lg font-bold truncate">{customer.name}</DialogTitle>
             <div className="flex flex-wrap items-center gap-2 mt-1">

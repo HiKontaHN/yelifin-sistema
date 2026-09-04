@@ -146,6 +146,24 @@ export function useCancelPurchase() {
   return { cancelPurchase, isCancelling };
 }
 
+export function usePurchase(id: number | null) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+  const { data, error, isLoading, mutate } = useSWR(
+    firebaseUser && id ? `${KEY}/${id}` : null,
+    (url: string) => authFetch(url),
+    {
+      revalidateOnFocus: false,
+    }
+  );
+  return {
+    purchase: (data?.data ?? null) as PurchaseWithItems | null,
+    isLoading,
+    error:    error?.message ?? null,
+    mutate,
+  };
+}
+
 export function useConfirmPurchaseArrival(id: number | null) {
   const authFetch = useAuthFetch();
   const [isConfirming, setIsConfirming] = useState(false);

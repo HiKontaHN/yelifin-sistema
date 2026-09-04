@@ -45,6 +45,7 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useCreditCards, useAllCreditCardTransactions, AllCardTransaction } from "@/hooks/swr/use-credit-cards";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { EditTransactionModal } from "@/components/transactions/edit-transaction-modal";
+import { PurchaseDetailDialog } from "@/components/products/purchase-detail-dialog";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -195,6 +196,7 @@ export default function TransactionsPage() {
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+  const [viewingPurchaseId, setViewingPurchaseId] = useState<number | null>(null);
   const [analyticsTab, setAnalyticsTab] = useState<"expense" | "income">("expense");
 
   const { deleteTransaction, isDeleting } = useDeleteTransaction();
@@ -349,9 +351,14 @@ export default function TransactionsPage() {
     return { expenses: toArr(expenseMap), income: toArr(incomeMap) };
   }, [rows]);
 
+  const isPurchaseRef = (t: Transaction) =>
+    (t.reference_type === "PURCHASE" || t.reference_type === "PURCHASE_SHIPPING") && !!t.reference_id;
+
   const handleTransactionClick = (t: Transaction) => {
     if (t.reference_type === "SALE" && t.reference_id) {
       push(`/sales/${t.reference_id}`);
+    } else if (isPurchaseRef(t)) {
+      setViewingPurchaseId(t.reference_id);
     }
   };
 
@@ -386,7 +393,7 @@ export default function TransactionsPage() {
       const t = row.data;
       const cfg = TYPE_CONFIG[t.type];
       const Icon = cfg.icon;
-      const clickable = t.reference_type === "SALE" && t.reference_id;
+      const clickable = (t.reference_type === "SALE" || isPurchaseRef(t)) && t.reference_id;
       const isCancelled = !!t.deleted_at;
       return (
         <Card
@@ -489,7 +496,7 @@ export default function TransactionsPage() {
       const t = row.data;
       const cfg = TYPE_CONFIG[t.type];
       const Icon = cfg.icon;
-      const clickable = t.reference_type === "SALE" && t.reference_id;
+      const clickable = (t.reference_type === "SALE" || isPurchaseRef(t)) && t.reference_id;
       const isCancelled = !!t.deleted_at;
       return (
         <TableRow
@@ -1018,6 +1025,13 @@ export default function TransactionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Detalle de compra (lote de inventario) */}
+      <PurchaseDetailDialog
+        purchaseId={viewingPurchaseId}
+        open={!!viewingPurchaseId}
+        onOpenChange={(v) => { if (!v) setViewingPurchaseId(null); }}
+      />
 
     </div>
   );

@@ -54,7 +54,7 @@ export function LandingErrorRelief() {
           </div>
 
           <div className="flex justify-center lg:justify-end lg:pr-10">
-            <div className="text-center w-100">
+            <div className="text-center w-full max-w-100">
               <div className="flex items-center justify-center gap-3 text-4xl font-normal leading-none text-zinc-900 sm:text-5xl">
                 <span>Con</span>
                 <HiKontaIcon className="size-12 rounded-full sm:size-14" />
