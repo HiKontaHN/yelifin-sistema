@@ -82,7 +82,5 @@
       "Bash(gh repo *)"
     ]
   },
-  "skillOverrides": {
-    "typeorm": "name-only"
-  }
+  "skillOverrides": {}
 }

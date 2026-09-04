@@ -23,7 +23,7 @@ export function LandingHeader() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 bg-white/95 py-3 backdrop-blur">
       <div className="relative mx-auto flex max-w-7xl items-center justify-center px-4">
-        <nav className="flex h-12 w-full max-w-6xl items-center justify-between rounded-xl bg-[#2A2A2FCC] px-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] sm:h-14 sm:px-4">
+        <nav className="flex h-12 w-full max-w-6xl items-center justify-between rounded-xl bg-zinc-900/80 px-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] sm:h-14 sm:px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <HiKontaIcon className="size-8 rounded-lg shadow-lg shadow-blue-500/30 sm:size-9" />
             <HiKontaTitle className="h-5 invert sm:h-6" />
@@ -41,7 +41,7 @@ export function LandingHeader() {
             <div className="h-9 w-28 animate-pulse rounded-lg bg-white/15" />
           ) : isLoggedIn ? (
             <Link href="/dashboard">
-              <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-4 text-base font-bold text-black hover:bg-[#7ce600]">
+              <Button className="h-9 gap-2 bg-[#8cff00] px-4 text-base font-bold text-black hover:bg-[#7ce600]">
                 <LayoutDashboard className="size-4" />
                 <span className="hidden sm:inline">Ir al panel</span>
                 <span className="sm:hidden">Panel</span>
@@ -53,7 +53,7 @@ export function LandingHeader() {
                 Iniciar Sesión
               </Link>
               <Link href="/register">
-                <Button className="h-9 gap-2 rounded-lg bg-[#8cff00] px-3 text-base font-bold text-black hover:bg-[#7ce600] sm:px-4">
+                <Button className="h-9 gap-2 bg-[#8cff00] px-3 text-base font-bold text-black hover:bg-[#7ce600] sm:px-4">
                   <span className="hidden sm:inline">Empieza Gratis</span>
                   <span className="sm:hidden">Gratis</span>
                   <ArrowRight className="size-4" />

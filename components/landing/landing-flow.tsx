@@ -38,14 +38,14 @@ export function LandingFlow() {
             {slides.map((slide) => (
               <article
                 key={slide.title}
-                className={`relative h-170 w-[min(88vw,540px)] snap-center overflow-hidden rounded-xl ${slide.gradient} px-4 pt-8 sm:px-8 lg:h-[720px] lg:flex-1`}
+                className={`relative h-170 w-[min(88vw,540px)] snap-center overflow-hidden rounded-xl ${slide.gradient} px-4 pt-8 sm:px-8 sm:h-[720px] lg:flex-1`}
               >
                 <SlideArt type={slide.art} />
                 <div className="relative z-10 text-center text-white">
                   <h3 className="text-2xl font-bold leading-tight sm:text-4xl">{slide.title}</h3>
                   <p className="mt-2 text-sm text-white/85 sm:text-lg">{slide.subtitle}</p>
                 </div>
-                <div className="relative z-10 mx-auto mt-6 w-full max-w-lg sm:mt-7">
+                <div className="absolute inset-x-0 bottom-0 z-10 sm:relative sm:mx-auto sm:mt-7 sm:w-full sm:max-w-lg">
                   {slide.modal}
                 </div>
               </article>
@@ -65,8 +65,11 @@ function DemoModal({ title, icon, children, action, footerNote }: {
   footerNote?: string;
 }) {
   return (
-    <div className="mx-auto flex max-h-[520px] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-h-[550px] xl:max-w-lg">
-      <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+    <div className="flex max-h-[520px] w-full flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white text-left text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:mx-auto sm:max-h-[550px] sm:max-w-md sm:rounded-2xl sm:border xl:max-w-lg">
+      <div className="flex shrink-0 justify-center pb-1 pt-3 sm:hidden" aria-hidden="true">
+        <div className="h-1 w-10 rounded-full bg-slate-300" />
+      </div>
+      <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-4 pb-3 pt-2 sm:px-5 sm:pt-5">
         <div className="flex items-center gap-2 text-base font-bold sm:text-lg">
           <span className="text-[#0068ff]">{icon}</span>
           {title}
