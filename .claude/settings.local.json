@@ -81,5 +81,8 @@
       "Bash(pnpm add *)",
       "Bash(gh repo *)"
     ]
+  },
+  "skillOverrides": {
+    "typeorm": "name-only"
   }
 }
