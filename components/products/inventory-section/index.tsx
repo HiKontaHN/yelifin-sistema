@@ -6,13 +6,15 @@ import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PurchaseForm, PurchaseFormValue, defaultPurchaseForm } from "./purchase-form";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./existing-form";
+import { PendingForm, PendingFormValue, defaultPendingForm } from "./pending-form";
 
 // ── Tipos públicos ─────────────────────────────────────────────────────
-export type InventoryMode = "purchase" | "existing";
+export type InventoryMode = "purchase" | "existing" | "pending";
 
 export type InventorySectionValue =
   | { mode: "purchase"; data: PurchaseFormValue }
   | { mode: "existing"; data: ExistingFormValue }
+  | { mode: "pending"; data: PendingFormValue }
   | null; // null = no registrar inventario
 
 type Props = {
@@ -29,28 +31,22 @@ export function InventorySection({ value, onChange, disabled }: Props) {
   // Estado interno de cada form para no perder datos al cambiar de modo
   const [purchaseData, setPurchaseData] = useState<PurchaseFormValue>(defaultPurchaseForm());
   const [existingData, setExistingData] = useState<ExistingFormValue>(defaultExistingForm());
+  const [pendingData,  setPendingData]  = useState<PendingFormValue>(defaultPendingForm());
+
+  const valueForMode = (m: InventoryMode): InventorySectionValue => {
+    if (m === "existing") return { mode: "existing", data: existingData };
+    if (m === "pending")  return { mode: "pending",  data: pendingData };
+    return { mode: "purchase", data: purchaseData };
+  };
 
   // ── Toggle accordion ───────────────────────────────────────────────
   const handleToggle = () => {
-    if (isOpen) {
-      onChange(null);
-    } else {
-      // Abrir con el último modo activo (o "purchase" por defecto)
-      onChange(
-        mode === "existing"
-          ? { mode: "existing", data: existingData }
-          : { mode: "purchase", data: purchaseData },
-      );
-    }
+    onChange(isOpen ? null : valueForMode(mode));
   };
 
   // ── Cambio de modo ─────────────────────────────────────────────────
   const handleModeChange = (newMode: InventoryMode) => {
-    if (newMode === "existing") {
-      onChange({ mode: "existing", data: existingData });
-    } else {
-      onChange({ mode: "purchase", data: purchaseData });
-    }
+    onChange(valueForMode(newMode));
   };
 
   // ── Cambios en los forms ───────────────────────────────────────────
@@ -62,6 +58,11 @@ export function InventorySection({ value, onChange, disabled }: Props) {
   const handleExistingChange = (data: ExistingFormValue) => {
     setExistingData(data);
     onChange({ mode: "existing", data });
+  };
+
+  const handlePendingChange = (data: PendingFormValue) => {
+    setPendingData(data);
+    onChange({ mode: "pending", data });
   };
 
   return (
@@ -97,7 +98,7 @@ export function InventorySection({ value, onChange, disabled }: Props) {
         <div className="border-t bg-muted/10 px-4 pb-4 pt-4 space-y-4">
 
           {/* Selector de modo */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-4 border-b">
             <ModeButton
               active={mode === "purchase"}
               onClick={() => handleModeChange("purchase")}
@@ -112,6 +113,13 @@ export function InventorySection({ value, onChange, disabled }: Props) {
             >
               Ya lo tengo
             </ModeButton>
+            <ModeButton
+              active={mode === "pending"}
+              onClick={() => handleModeChange("pending")}
+              disabled={disabled}
+            >
+              Pendiente
+            </ModeButton>
           </div>
 
           {/* Form según modo */}
@@ -121,10 +129,16 @@ export function InventorySection({ value, onChange, disabled }: Props) {
               onChange={handlePurchaseChange}
               disabled={disabled}
             />
-          ) : (
+          ) : mode === "existing" ? (
             <ExistingForm
               value={existingData}
               onChange={handleExistingChange}
+              disabled={disabled}
+            />
+          ) : (
+            <PendingForm
+              value={pendingData}
+              onChange={handlePendingChange}
               disabled={disabled}
             />
           )}
@@ -150,10 +164,10 @@ function ModeButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "h-10 rounded-lg border text-sm font-medium transition-colors disabled:cursor-not-allowed",
+        "border-b-2 border-transparent px-0.5 pb-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         active
-          ? "bg-primary text-primary-foreground border-primary"
-          : "bg-background text-muted-foreground hover:bg-muted border-border",
+          ? "border-foreground text-foreground font-semibold"
+          : "text-muted-foreground hover:text-foreground",
       )}
     >
       {children}

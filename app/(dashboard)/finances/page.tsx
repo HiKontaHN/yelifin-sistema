@@ -1,9 +1,9 @@
 ﻿// app/(dashboard)/finances/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -67,15 +67,34 @@ const REF_LABELS: Record<string, string> = {
 
 export default function FinancesPage() {
   const now = new Date();
-  const { push } = useRouter();
+  const { push, replace } = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const [selectedMonth, setSelectedMonth] = useState<number | undefined>(now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number | undefined>(now.getFullYear());
+  // Restaurados desde la URL — "volver" desde /finances/credit-cards/[id]
+  // (que usa router.back()) trae de vuelta esta misma URL con el
+  // mes/año que se estaban viendo.
+  const [selectedMonth, setSelectedMonth] = useState<number | undefined>(() => {
+    const v = Number(searchParams.get("month"));
+    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+  });
+  const [selectedYear, setSelectedYear] = useState<number | undefined>(() => {
+    const v = Number(searchParams.get("year"));
+    return v > 0 ? v : now.getFullYear();
+  });
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [createCardOpen, setCreateCardOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<Account | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<Account | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedMonth !== undefined && selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
+    if (selectedYear !== undefined && selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [selectedMonth, selectedYear, pathname, replace]);
 
   const { summary, isLoading, mutate: mutateSummary } = useFinances({ month: selectedMonth, year: selectedYear });
   const { periods } = useFinancePeriods();

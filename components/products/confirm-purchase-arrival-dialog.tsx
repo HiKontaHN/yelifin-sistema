@@ -148,16 +148,16 @@ export function ConfirmPurchaseArrivalDialog({
                 <Truck className="size-3.5 text-muted-foreground" />
                 ¿Llegó con costo de envío?
               </Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-4 border-b">
                 <button
                   type="button"
                   onClick={() => { setWantsShipping(false); setNewShipping(""); }}
                   disabled={isConfirming}
                   className={cn(
-                    "h-10 rounded-lg border text-sm font-medium transition-colors",
+                    "border-b-2 border-transparent px-0.5 pb-2 text-sm font-medium transition-colors",
                     !wantsShipping
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground hover:bg-muted"
+                      ? "border-foreground text-foreground font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   No, sin envío
@@ -167,10 +167,10 @@ export function ConfirmPurchaseArrivalDialog({
                   onClick={() => setWantsShipping(true)}
                   disabled={isConfirming}
                   className={cn(
-                    "h-10 rounded-lg border text-sm font-medium transition-colors",
+                    "border-b-2 border-transparent px-0.5 pb-2 text-sm font-medium transition-colors",
                     wantsShipping
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground hover:bg-muted"
+                      ? "border-foreground text-foreground font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Sí, agregar envío

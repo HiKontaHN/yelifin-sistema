@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { resolveWarehouseId } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -15,13 +16,17 @@ export async function POST(request: NextRequest) {
     const { userId, orgId } = auth.data;
     const body              = await request.json();
 
-    const { product_id, variant_id, quantity, unit_cost, purchased_at, notes } = body;
+    const { product_id, variant_id, quantity, unit_cost, purchased_at, notes, warehouse_id } = body;
 
     // ── Validaciones ───────────────────────────────────────────────
     if (!product_id)
       return createErrorResponse("El producto es requerido", 400);
     if (!quantity || quantity < 1)
       return createErrorResponse("La cantidad debe ser al menos 1", 400);
+
+    const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
+    if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
+    const warehouseId: number = wh.warehouseId;
 
     const variantId = variant_id ? Number(variant_id) : null;
 
@@ -64,11 +69,11 @@ export async function POST(request: NextRequest) {
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id,
           purchase_batch_item_id,
-          qty_in, qty_available, unit_cost, received_at
+          qty_in, qty_available, unit_cost, received_at, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${product_id}, ${variantId},
           ${null},
-          ${quantity}, ${quantity}, ${unitCost}, ${receivedAt}
+          ${quantity}, ${quantity}, ${unitCost}, ${receivedAt}, ${warehouseId}
         )
         RETURNING id
       `;
@@ -76,10 +81,10 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO inventory_movements (
           org_id, created_by, movement_type, product_id, variant_id,
-          quantity, reference_type, reference_id, notes
+          quantity, reference_type, reference_id, notes, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, 'IN', ${product_id}, ${variantId},
-          ${quantity}, 'INITIAL', ${batch.id}, ${finalNotes}
+          ${quantity}, 'INITIAL', ${batch.id}, ${finalNotes}, ${warehouseId}
         )
       `;
 

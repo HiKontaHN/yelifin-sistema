@@ -141,16 +141,16 @@ export function CartPanel({
         {cart.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground font-medium">ISV (incluido en el precio)</p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 border-b">
               {TAX_PRESETS.map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => onTaxRateChange(p)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                  className={`flex-1 border-b-2 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                     taxRate === p
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "text-muted-foreground border-border hover:bg-muted"
+                      ? "border-foreground text-foreground font-semibold"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {p === 0 ? "Sin ISV" : `${p}%`}

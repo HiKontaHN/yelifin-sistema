@@ -129,7 +129,7 @@ export function AddExpenseDialog({ event, open, onOpenChange, onSuccess }: Props
               Cuenta <span className="text-destructive text-xs">*</span>
             </Label>
             <Select value={accountId} onValueChange={setAccountId} disabled={isLoading}>
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11 w-full">
                 <SelectValue placeholder="Selecciona una cuenta" />
               </SelectTrigger>
               <SelectContent>
@@ -179,7 +179,7 @@ export function AddExpenseDialog({ event, open, onOpenChange, onSuccess }: Props
               <span className="text-xs text-muted-foreground font-normal">opcional</span>
             </Label>
             <Select value={category} onValueChange={setCategory} disabled={isLoading}>
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11 w-full">
                 <SelectValue placeholder="Selecciona una categoría" />
               </SelectTrigger>
               <SelectContent>

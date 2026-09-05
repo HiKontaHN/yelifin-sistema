@@ -1,8 +1,8 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import { Fab } from "@/components/ui/fab";
 import { Button } from "@/components/ui/button";
@@ -175,27 +175,70 @@ function CompletedActions({
 }
 
 // ── Page ──────────────────────────────────────────────────────────────
+// Lee un filtro de la URL validándolo contra los valores permitidos —
+// evita que un query string manipulado a mano meta un valor que ningún
+// <Select> sepa renderizar.
+function readEnumParam<T extends string>(
+  searchParams: URLSearchParams, key: string, allowed: readonly T[], fallback: T
+): T {
+  const v = searchParams.get(key);
+  return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
+const PRESETS: readonly Preset[] = ["today", "7d", "this_month", "last_month", "all"];
+const PAYMENT_FILTERS: readonly PaymentFilter[] = ["all", "CASH", "CARD", "TRANSFER", "MIXED", "OTHER"];
+const STATUS_FILTERS: readonly StatusFilter[] = ["all", "COMPLETED", "PENDING", "CANCELLED"];
+
 export default function SalesPage() {
-  const { push }   = useRouter();
+  const { push, replace } = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { format } = useCurrency();
   const { show_profit: showProfit, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("SALES");
 
-  const [preset,         setPreset]         = useState<Preset>("7d");
-  const [dateFrom,       setDateFrom]       = useState("");
-  const [dateTo,         setDateTo]         = useState("");
-  const [paymentFilter,  setPaymentFilter]  = useState<PaymentFilter>("all");
-  const [accountFilter,  setAccountFilter]  = useState<string>("all");
-  const [search,         setSearch]         = useState("");
-  const [statusFilter,   setStatusFilter]   = useState<StatusFilter>("all");
-  const [page,           setPage]           = useState(1);
+  // Filtros restaurados desde la URL — así, al volver del detalle de una
+  // venta (que ahora usa router.back()), el historial trae de vuelta esta
+  // misma URL con los filtros ya aplicados.
+  const [preset,         setPreset]         = useState<Preset>(() => readEnumParam(searchParams, "preset", PRESETS, "7d"));
+  const [dateFrom,       setDateFrom]       = useState(() => searchParams.get("from") ?? "");
+  const [dateTo,         setDateTo]         = useState(() => searchParams.get("to") ?? "");
+  const [paymentFilter,  setPaymentFilter]  = useState<PaymentFilter>(() => readEnumParam(searchParams, "payment", PAYMENT_FILTERS, "all"));
+  const [accountFilter,  setAccountFilter]  = useState<string>(() => searchParams.get("account") ?? "all");
+  const [search,         setSearch]         = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter,   setStatusFilter]   = useState<StatusFilter>(() => readEnumParam(searchParams, "status", STATUS_FILTERS, "all"));
+  const [page,           setPage]           = useState(() => {
+    const p = Number(searchParams.get("page"));
+    return Number.isInteger(p) && p > 0 ? p : 1;
+  });
   const pageLimit = 15;
 
   const debouncedSearch = useDebounce(search, 300);
 
-  useEffect(() => { setPage(1); }, [
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
+    setPage(1);
+  }, [
     debouncedSearch, statusFilter, accountFilter,
     paymentFilter, preset, dateFrom, dateTo,
   ]);
+
+  // Reflejar los filtros en la URL (replace, no push, para no ensuciar el
+  // historial) — permite que "volver" desde /sales/[id] restaure todos
+  // los filtros y la página.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (preset !== "7d") params.set("preset", preset);
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    if (paymentFilter !== "all") params.set("payment", paymentFilter);
+    if (accountFilter !== "all") params.set("account", accountFilter);
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [preset, dateFrom, dateTo, paymentFilter, accountFilter, debouncedSearch, statusFilter, page, pathname, replace]);
 
   // Delete
   const [deletingSale,   setDeletingSale]   = useState<Sale | null>(null);

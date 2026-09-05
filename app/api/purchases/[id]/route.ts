@@ -326,7 +326,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     if (isNaN(purchaseId)) return createErrorResponse("ID inválido", 400);
 
     const [purchase] = await sql`
-      SELECT id, account_id, status, notes
+      SELECT id, account_id, status, notes, is_paid
       FROM purchase_batches
       WHERE id = ${purchaseId} AND org_id = ${orgId}
     `;
@@ -338,8 +338,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     // Las compras pagadas con tarjeta se guardan con account_id = NULL — igual que
     // los pendientes de importación Excel sin fuente de pago, que no tienen cargo
     // que revertir (si el import usó tarjeta, el cargo existe y está vinculado v4.5).
+    // is_paid = TRUE marca las que ya estaban pagadas antes de la plataforma
+    // (already_paid, ver POST /api/purchases) — nunca tuvieron cargo alguno
+    // que buscar, ni de cuenta ni de tarjeta.
     const isImported         = (purchase.notes ?? "").startsWith("Importación Excel");
-    const isCreditCardFunded = purchase.account_id === null;
+    const isCreditCardFunded = !purchase.is_paid && purchase.account_id === null;
 
     // La reversión de cargos a tarjeta depende de credit_card_transactions.purchase_batch_id
     // (migración v4.5). Se verifica antes de abrir la transacción para no ejecutar una

@@ -151,7 +151,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             onValueChange={(v) => set({ currency: v as "USD" | "HNL" })}
             disabled={disabled}
           >
-            <SelectTrigger className="h-11">
+            <SelectTrigger className="h-11 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
@@ -188,17 +188,17 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             Costo ({symbol}) <span className="text-destructive text-xs">*</span>
           </Label>
           {/* Toggle */}
-          <div className="flex rounded-lg border overflow-hidden text-xs">
-            {(["unit", "total"] as CostMode[]).map((mode, i) => (
+          <div className="flex items-center gap-3 border-b text-xs">
+            {(["unit", "total"] as CostMode[]).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 disabled={disabled}
                 onClick={() => setCostMode(mode)}
-                className={`px-3 py-1 font-medium transition-colors ${i > 0 ? "border-l" : ""} ${
+                className={`border-b-2 border-transparent px-0.5 pb-1.5 font-medium transition-colors ${
                   costMode === mode
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
+                    ? "border-foreground text-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {mode === "unit" ? "Por unidad" : "Total"}

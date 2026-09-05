@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -171,24 +171,45 @@ function ActionsMenu({
 }
 
 // ── Page ───────────────────────────────────────────────────────────────
+const TYPE_FILTERS = ["all", "INCOME", "EXPENSE", "TRANSFER"] as const;
+
 export default function TransactionsPage() {
-  const { push } = useRouter();
+  const { push, replace } = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
   const now = new Date();
 
-  const [filterMode, setFilterMode] = useState<"month" | "date">("month");
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [specificDate, setSpecificDate] = useState("");
+  // Filtros restaurados desde la URL — "volver" desde /sales/[id] (cuando
+  // se hace clic en una transacción de tipo SALE) trae de vuelta esta
+  // misma URL con todos los filtros y la página ya aplicados.
+  const [filterMode, setFilterMode] = useState<"month" | "date">(() => {
+    const v = searchParams.get("mode");
+    return v === "date" ? "date" : "month";
+  });
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const v = Number(searchParams.get("year"));
+    return v > 0 ? v : now.getFullYear();
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const v = Number(searchParams.get("month"));
+    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+  });
+  const [specificDate, setSpecificDate] = useState(() => searchParams.get("date") ?? "");
   const [sourceFilter, setSourceFilter] = useState<string>(() => {
     const accountId = searchParams.get("account_id");
     return accountId ? accountId : "all";
   }); // "all" | "cc-{id}" | account_id
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>(() => {
+    const v = searchParams.get("type");
+    return v && (TYPE_FILTERS as readonly string[]).includes(v) ? v : "all";
+  });
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [modalOpen, setModalOpen] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    const p = Number(searchParams.get("page"));
+    return Number.isInteger(p) && p > 0 ? p : 1;
+  });
   const pageLimit = 15;
 
   const debouncedSearch = useDebounce(search, 300);
@@ -272,10 +293,34 @@ export default function TransactionsPage() {
       ? formatDate(specificDate)
       : `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
 
-  // Reset page on filter changes
-  useEffect(() => { setPage(1); }, [
+  // Reset page on filter changes — no en el primer render, para no pisar
+  // la página restaurada desde la URL.
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
+    setPage(1);
+  }, [
     typeFilter, sourceFilter, filterMode,
     selectedMonth, selectedYear, specificDate, debouncedSearch,
+  ]);
+
+  // Reflejar los filtros en la URL (replace, no push) — permite que
+  // "volver" desde /sales/[id] restaure todos los filtros y la página.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filterMode !== "month") params.set("mode", filterMode);
+    if (selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
+    if (selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
+    if (specificDate) params.set("date", specificDate);
+    if (sourceFilter !== "all") params.set("account_id", sourceFilter);
+    if (typeFilter !== "all") params.set("type", typeFilter);
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [
+    filterMode, selectedYear, selectedMonth, specificDate,
+    sourceFilter, typeFilter, debouncedSearch, page, pathname, replace,
   ]);
 
   // Sincroniza la pestaña del gráfico con el filtro de tipo

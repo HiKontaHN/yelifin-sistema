@@ -1,8 +1,8 @@
 ﻿// app/(dashboard)/events/page.tsx
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { addMonths, startOfMonth, endOfMonth, format as formatMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +26,9 @@ import { AddExpenseDialog }    from "@/components/events/add-expense-dialog";
 import { Fab }                 from "@/components/ui/fab";
 
 export default function EventsPage() {
-  const { push }                      = useRouter();
+  const { push, replace }              = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { events, isLoading, mutate } = useEvents();
   const { format }                    = useCurrency();
   const { show_profit: showProfit, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("EVENTS");
@@ -38,9 +40,25 @@ export default function EventsPage() {
   const [expenseEvent, setExpenseEvent] = useState<Event | null>(null);
 
   // null = "sin elección manual, usar el default" (mes actual, o si no
-  // tiene eventos, el mes con registros más reciente).
-  const [manualYear,  setManualYear]  = useState<number | null>(null);
-  const [manualMonth, setManualMonth] = useState<number | null>(null); // 0-11
+  // tiene eventos, el mes con registros más reciente). Restaurado desde
+  // la URL para que "volver" desde /events/[id] (que usa router.back())
+  // no resetee el mes/año que se estaba viendo.
+  const [manualYear,  setManualYear]  = useState<number | null>(() => {
+    const v = searchParams.get("y");
+    return v ? Number(v) : null;
+  });
+  const [manualMonth, setManualMonth] = useState<number | null>(() => {
+    const v = searchParams.get("m");
+    return v ? Number(v) : null;
+  }); // 0-11
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (manualYear !== null) params.set("y", String(manualYear));
+    if (manualMonth !== null) params.set("m", String(manualMonth));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [manualYear, manualMonth, pathname, replace]);
 
   // ── Meses/años que sí tienen eventos (un evento "pertenece" a todos los
   // meses con los que se solapa su rango de fechas) ─────────────────────

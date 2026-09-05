@@ -271,13 +271,13 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
     >
           {/* Modo de pago */}
           {creditCards.length > 0 && (
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-muted rounded-lg">
+            <div className="flex items-center gap-4 border-b">
               <button
                 type="button"
                 onClick={() => setPaymentMode("account")}
                 className={cn(
-                  "flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer",
-                  paymentMode === "account" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  "flex items-center gap-1.5 border-b-2 border-transparent px-0.5 pb-2 text-xs font-medium transition-colors cursor-pointer",
+                  paymentMode === "account" ? "border-foreground text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Wallet className="size-3" /> Cuenta
@@ -286,8 +286,8 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                 type="button"
                 onClick={() => setPaymentMode("credit_card")}
                 className={cn(
-                  "flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer",
-                  paymentMode === "credit_card" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  "flex items-center gap-1.5 border-b-2 border-transparent px-0.5 pb-2 text-xs font-medium transition-colors cursor-pointer",
+                  paymentMode === "credit_card" ? "border-foreground text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <CreditCard className="size-3" /> Tarjeta
@@ -362,7 +362,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                 onValueChange={(val) => setValue("currency", val as "USD" | "HNL")}
                 disabled={isCreating}
               >
-                <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-11 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
                   <SelectItem value="USD">USD — Dólares</SelectItem>
                   {businessCurrency !== "USD" && (
@@ -475,7 +475,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                         onValueChange={(val) => updateItem(item.key, "variant_key", val)}
                         disabled={isCreating}
                       >
-                        <SelectTrigger className="h-10 text-sm">
+                        <SelectTrigger className="h-10 w-full text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

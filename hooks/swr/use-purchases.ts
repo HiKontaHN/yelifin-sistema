@@ -27,6 +27,9 @@ export type CreatePurchaseInput = {
   notes?: string;
   purchased_at?: string;
   status?: 'PENDING' | 'COMPLETED';
+  // Ya se pagó antes de usar la plataforma — no requiere account_id/
+  // credit_card_id y no genera ningún movimiento financiero.
+  already_paid?: boolean;
   items: Omit<PurchaseItem, 'unit_cost' | 'total_cost'>[];
 };
 

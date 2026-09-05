@@ -49,7 +49,7 @@ export default function SaleDetailPage({ params }: Props) {
   const numericId           = Number(id);
   const { sale, isLoading } = useSale(numericId);
   const { confirmSale, cancelSale, isPatching } = usePatchSale(numericId);
-  const { refresh, push }   = useRouter();
+  const { refresh, push, back } = useRouter();
   const { format }          = useCurrency();
   const tz                  = useTimezone();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("SALES");
@@ -117,10 +117,8 @@ export default function SaleDetailPage({ params }: Props) {
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild className="shrink-0">
-            <Link href="/sales">
-              <ArrowLeft className="size-4" />
-            </Link>
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => back()}>
+            <ArrowLeft className="size-4" />
           </Button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">

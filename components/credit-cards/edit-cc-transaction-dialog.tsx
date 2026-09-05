@@ -185,7 +185,7 @@ export function EditCCTransactionDialog({
                   onValueChange={field.onChange}
                   disabled={isSubmittingOrUpdating}
                 >
-                  <SelectTrigger className="h-11 text-base">
+                  <SelectTrigger className="h-11 w-full text-base">
                     <SelectValue placeholder="Seleccionar moneda" />
                   </SelectTrigger>
                   <SelectContent>
@@ -273,7 +273,7 @@ export function EditCCTransactionDialog({
                   onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
                   disabled={isSubmittingOrUpdating}
                 >
-                  <SelectTrigger className="h-11 text-base">
+                  <SelectTrigger className="h-11 w-full text-base">
                     <SelectValue placeholder="Sin categoria" />
                   </SelectTrigger>
                   <SelectContent>

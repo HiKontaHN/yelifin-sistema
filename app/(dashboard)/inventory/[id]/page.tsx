@@ -298,7 +298,7 @@ export default function ProductDetailPage({ params }: Props) {
   const { product, isLoading, error } = useProductDetail(numericId);
   const { format }         = useCurrency();
   const tz                 = useTimezone();
-  const { push }           = useRouter();
+  const { push, back }     = useRouter();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
 
   if (isLoading) return <ProductDetailSkeleton />;
@@ -333,7 +333,7 @@ export default function ProductDetailPage({ params }: Props) {
 
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => push("/inventory")}>
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => back()}>
           <ArrowLeft className="size-4" />
         </Button>
 

@@ -1,8 +1,8 @@
 ﻿// app/(dashboard)/inventory/page.tsx
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Fragment } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -509,16 +509,43 @@ function VariantCard({
 // ── Page ───────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const { push } = useRouter();
+  const { push, replace } = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState("in_stock");
-  const [page, setPage] = useState(1);
+  // Estado de filtros restaurado desde la URL — así, al volver del detalle
+  // de un producto (que usa router.back()), el historial del navegador
+  // trae de vuelta esta misma URL con los filtros ya aplicados.
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [stockFilter, setStockFilter] = useState(() => searchParams.get("stock") ?? "in_stock");
+  const [page, setPage] = useState(() => {
+    const p = Number(searchParams.get("page"));
+    return Number.isInteger(p) && p > 0 ? p : 1;
+  });
   const pageLimit = 15;
 
   const debouncedSearch = useDebounce(search, 300);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, stockFilter]);
+  // No resetear la página a 1 en el primer render — solo cuando el
+  // usuario realmente cambia un filtro después de montar la página
+  // (evita pisar la página restaurada desde la URL).
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
+    setPage(1);
+  }, [debouncedSearch, stockFilter]);
+
+  // Reflejar los filtros en la URL (replace, no push, para no ensuciar el
+  // historial) — es lo que permite que "volver" desde /inventory/[id]
+  // restaure búsqueda, filtro de stock y página.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (stockFilter !== "in_stock") params.set("stock", stockFilter);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [debouncedSearch, stockFilter, page, pathname, replace]);
 
   const { inventory, stats, total, totalPages, isLoading: loadingInventory, mutate: mutateInventory } = useInventory({
     search: debouncedSearch || undefined,

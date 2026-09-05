@@ -54,7 +54,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   const { firebaseUser }                                   = useAuth();
   const { createProduct, isCreating }                      = useCreateProduct();
   const { createPurchase, isCreating: isCreatingPurchase } = useCreatePurchase();
-  const { symbol }                                         = useCurrency();
+  const { symbol, currency: businessCurrency }             = useCurrency();
 
   const [imageFile,        setImageFile]        = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -202,6 +202,24 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
           throw new Error(err.error || "Error al registrar existencia inicial");
         }
         toast.success("Producto creado con existencia inicial");
+
+      } else if (!data.is_service && inventory?.mode === "pending") {
+        const d = inventory.data;
+        await createPurchase({
+          already_paid:  true,
+          status:        "PENDING",
+          currency:      businessCurrency as "USD" | "HNL",
+          exchange_rate: 1,
+          shipping:      0,
+          notes:         d.notes || undefined,
+          purchased_at:  d.purchased_at ? localDateToISO(d.purchased_at) : undefined,
+          items: [{
+            product_id:    productId,
+            quantity:      Number(d.quantity),
+            unit_cost_usd: d.unit_cost,
+          }],
+        });
+        toast.success("Producto creado — inventario pendiente de llegada");
 
       } else {
         toast.success(data.is_service ? "Servicio creado exitosamente" : "Producto creado exitosamente");

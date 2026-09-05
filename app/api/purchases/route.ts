@@ -21,9 +21,15 @@ export async function POST(request: NextRequest) {
       account_id, credit_card_id, shipping_account_id, currency, exchange_rate,
       shipping, notes, purchased_at, items, warehouse_id,
       status = "COMPLETED",
+      // Ya se pagó antes de usar la plataforma (ej. stock comprado antes de
+      // registrarse) — no requiere cuenta/tarjeta y NO genera ningún
+      // movimiento financiero. Combinado con status "PENDING" cubre el caso
+      // "aún no llega, pero ya está pagado"; ver database/docs si se agrega
+      // documentación formal de este flag.
+      already_paid = false,
     } = body;
 
-    const isCreditCard = !!credit_card_id && !account_id;
+    const isCreditCard = !already_paid && !!credit_card_id && !account_id;
 
     const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
     if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
@@ -33,10 +39,12 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("Estado inválido", 400);
 
     // ── Validaciones básicas ────────────────────────────────────────
-    if (!isCreditCard && !account_id)
-      return createErrorResponse("La cuenta es requerida", 400);
-    if (isCreditCard && !credit_card_id)
-      return createErrorResponse("La tarjeta de crédito es requerida", 400);
+    if (!already_paid) {
+      if (!isCreditCard && !account_id)
+        return createErrorResponse("La cuenta es requerida", 400);
+      if (isCreditCard && !credit_card_id)
+        return createErrorResponse("La tarjeta de crédito es requerida", 400);
+    }
     if (!items || !Array.isArray(items) || items.length === 0)
       return createErrorResponse("Se requiere al menos un producto", 400);
 
@@ -48,16 +56,18 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Validar cuenta o tarjeta ────────────────────────────────────
-    if (!isCreditCard) {
-      const [account] = await sql`
-        SELECT id FROM accounts WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
-      `;
-      if (!account) return createErrorResponse("Cuenta no encontrada", 404);
-    } else {
-      const [card] = await sql`
-        SELECT id FROM credit_cards WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId} AND is_active = TRUE
-      `;
-      if (!card) return createErrorResponse("Tarjeta de crédito no encontrada", 404);
+    if (!already_paid) {
+      if (!isCreditCard) {
+        const [account] = await sql`
+          SELECT id FROM accounts WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
+        `;
+        if (!account) return createErrorResponse("Cuenta no encontrada", 404);
+      } else {
+        const [card] = await sql`
+          SELECT id FROM credit_cards WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId} AND is_active = TRUE
+        `;
+        if (!card) return createErrorResponse("Tarjeta de crédito no encontrada", 404);
+      }
     }
 
     // ── Validar productos y variantes ───────────────────────────────
@@ -128,8 +138,9 @@ export async function POST(request: NextRequest) {
     const total           = totalLocal;
     const occurredAt      = purchased_at ?? new Date().toISOString();
 
-    // ¿Se paga el envío desde una cuenta separada?
-    const shippingAccId      = shipping_account_id ? Number(shipping_account_id) : null;
+    // ¿Se paga el envío desde una cuenta separada? — nunca si ya está pagado,
+    // no hay ninguna cuenta de la que descontar nada.
+    const shippingAccId      = !already_paid && shipping_account_id ? Number(shipping_account_id) : null;
     const hasShippingAccount = !!shippingAccId && shippingTotal > 0;
 
     let txDescription: string;
@@ -150,10 +161,10 @@ export async function POST(request: NextRequest) {
           subtotal, shipping, tax, total,
           is_paid, purchased_at, notes, status, warehouse_id
         ) VALUES (
-          ${orgId}, ${userId}, ${isCreditCard ? null : account_id}, ${shippingAccId},
+          ${orgId}, ${userId}, ${already_paid || isCreditCard ? null : account_id}, ${shippingAccId},
           ${curr}, ${rate},
           ${subtotal}, ${shippingTotal}, ${0}, ${total},
-          ${false}, ${occurredAt}, ${notes ?? null}, ${status}, ${warehouseId}
+          ${!!already_paid}, ${occurredAt}, ${notes ?? null}, ${status}, ${warehouseId}
         )
         RETURNING id
       `;
@@ -197,8 +208,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 3. Movimiento financiero
-      if (isCreditCard) {
+      // 3. Movimiento financiero — se salta por completo si ya está pagado
+      // (already_paid): no hay cuenta/tarjeta de la que descontar nada.
+      if (already_paid) {
+        // nada que hacer — sin transacción, sin cargo a tarjeta.
+      } else if (isCreditCard) {
         // CC se carga solo por los productos; el envío va a cuenta separada (si aplica)
         const ccAmount      = totalInCurrency; // siempre productos en moneda de compra
         const ccAmountLocal = hasShippingAccount ? productsLocal : totalLocal;

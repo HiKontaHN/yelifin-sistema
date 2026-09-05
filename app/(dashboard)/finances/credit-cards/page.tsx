@@ -1,8 +1,8 @@
 ﻿// app/(dashboard)/finances/credit-cards/page.tsx
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +49,9 @@ const formatDate = (d: string) =>
 
 export default function CreditCardsPage() {
   const now = new Date();
-  const { push } = useRouter();
+  const { push, replace } = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const { creditCards, isLoading, mutate } = useCreditCards();
   const { accounts } = useAccounts();
@@ -60,9 +62,31 @@ export default function CreditCardsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [payCard, setPayCard] = useState<CreditCardType | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [selectedCardId, setSelectedCardId] = useState<number | undefined>(undefined);
+
+  // Restaurados desde la URL — "volver" desde /finances/credit-cards/[id]
+  // (que usa router.back()) trae de vuelta esta misma URL con el
+  // mes/año/tarjeta que se estaban viendo.
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const v = Number(searchParams.get("month"));
+    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+  });
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const v = Number(searchParams.get("year"));
+    return v > 0 ? v : now.getFullYear();
+  });
+  const [selectedCardId, setSelectedCardId] = useState<number | undefined>(() => {
+    const v = searchParams.get("card");
+    return v ? Number(v) : undefined;
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
+    if (selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
+    if (selectedCardId !== undefined) params.set("card", String(selectedCardId));
+    const qs = params.toString();
+    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [selectedMonth, selectedYear, selectedCardId, pathname, replace]);
 
   const { periods } = useCCTransactionPeriods();
 
