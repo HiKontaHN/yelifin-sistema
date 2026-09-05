@@ -108,6 +108,34 @@ export function verifyEmailTemplate({ actionLink }: { actionLink: string }): { s
   };
 }
 
+export function teamInviteTemplate({ orgName, roleName, actionLink }: { orgName: string; roleName: string; actionLink: string }): { subject: string; html: string; text: string } {
+  const bodyHtml = `
+    <h1 style="margin:0 0 12px 0; color:${TEXT_DARK}; font-size:22px; font-weight:700;">Te agregaron a ${orgName}</h1>
+    <p style="margin:0; color:${TEXT_MUTED}; font-size:15px; line-height:1.6;">
+      Ya formas parte del equipo de <strong>${orgName}</strong> en HiKonta, con el rol de <strong>${roleName}</strong>. Confirma tu correo para activar tu cuenta y empezar a usarla con el email y la contraseña que te compartieron.
+    </p>
+    ${ctaButton("Confirmar mi correo", actionLink)}
+    <p style="margin:0; color:${TEXT_MUTED}; font-size:12px; line-height:1.6;">
+      Si no esperabas este correo, puedes ignorarlo.
+    </p>`;
+
+  const text = [
+    `Te agregaron a ${orgName} — HiKonta`,
+    "",
+    `Ya formas parte del equipo de ${orgName} en HiKonta, con el rol de ${roleName}. Confirma tu correo para activar tu cuenta y empezar a usarla con el email y la contraseña que te compartieron.`,
+    "",
+    `Confirmar mi correo: ${actionLink}`,
+    "",
+    "Si no esperabas este correo, puedes ignorarlo.",
+  ].join("\n");
+
+  return {
+    subject: `Te agregaron a ${orgName} — HiKonta`,
+    html: emailShell({ previewText: `Confirma tu correo para activar tu cuenta en ${orgName}.`, bodyHtml }),
+    text,
+  };
+}
+
 export function resetPasswordTemplate({ actionLink }: { actionLink: string }): { subject: string; html: string; text: string } {
   const bodyHtml = `
     <h1 style="margin:0 0 12px 0; color:${TEXT_DARK}; font-size:22px; font-weight:700;">Restablece tu contraseña</h1>

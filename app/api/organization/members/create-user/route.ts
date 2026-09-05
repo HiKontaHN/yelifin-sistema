@@ -3,6 +3,8 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, verifyResourceLimit, requireModule } from "@/lib/auth";
 import { adminAuth } from "@/lib/firebase-admin";
+import { sendMail } from "@/lib/mailer";
+import { teamInviteTemplate } from "@/lib/email-templates";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -47,9 +49,10 @@ export async function POST(request: NextRequest) {
     if (!role)          return createErrorResponse("Rol no válido para esta organización", 400);
     if (role.is_owner)  return createErrorResponse("No se puede asignar el rol de dueño a un miembro nuevo", 400);
 
-    // Obtener timezone/currency/locale de la org para el perfil del nuevo usuario
+    // Obtener nombre/timezone/currency/locale de la org — el nombre va en el
+    // correo de bienvenida, el resto hereda el perfil del nuevo usuario
     const [org] = await sql`
-      SELECT timezone, currency, locale FROM organizations WHERE id = ${orgId}
+      SELECT name, timezone, currency, locale FROM organizations WHERE id = ${orgId}
     `;
 
     // Verificar que el email no está ya en uso en esta org
@@ -67,7 +70,9 @@ export async function POST(request: NextRequest) {
         email:         email.trim().toLowerCase(),
         password,
         displayName:   display_name?.trim() || undefined,
-        emailVerified: true,
+        // Igual que en el registro normal — debe confirmar su correo antes
+        // de poder pasar de /verify-email (ver proxy.ts + hooks/use-auth.ts).
+        emailVerified: false,
         disabled:      false,
       });
     } catch (fbErr: any) {
@@ -133,7 +138,25 @@ export async function POST(request: NextRequest) {
       WHERE om.id = ${member.id}
     `;
 
-    return Response.json({ data: result }, { status: 201 });
+    // Correo de bienvenida — también sirve de verificación de cuenta (ver
+    // emailVerified: false arriba). Best-effort: si el envío falla, el
+    // usuario ya quedó creado y funcional, solo no recibió el correo; se
+    // informa en la respuesta para que el dueño pueda avisarle a mano.
+    let emailSent = true;
+    try {
+      const actionLink = await adminAuth.generateEmailVerificationLink(result.email);
+      const { subject, html, text } = teamInviteTemplate({
+        orgName:  org.name,
+        roleName: result.role_name,
+        actionLink,
+      });
+      await sendMail({ to: result.email, subject, html, text });
+    } catch (mailError) {
+      console.error("POST /api/organization/members/create-user (email):", mailError);
+      emailSent = false;
+    }
+
+    return Response.json({ data: { ...result, email_sent: emailSent } }, { status: 201 });
   } catch (error) {
     console.error("POST /api/organization/members/create-user:", error);
     return createErrorResponse("Error al crear usuario", 500);

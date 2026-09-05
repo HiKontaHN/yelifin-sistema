@@ -93,14 +93,18 @@ function CreateMemberDialog({
     if (!roleId)          { toast.error("Seleccioná un rol"); return; }
 
     try {
-      await createMemberUser({
+      const res = await createMemberUser({
         email:        email.trim(),
         password,
         display_name: name.trim() || undefined,
         role_id:      Number(roleId),
         ...(warehouseId ? { default_warehouse_id: Number(warehouseId) } : {}),
       });
-      toast.success("Usuario creado y agregado al equipo");
+      if (res?.data?.email_sent === false) {
+        toast.warning("Usuario creado, pero no se pudo enviar el correo de bienvenida — avísale manualmente.");
+      } else {
+        toast.success("Usuario creado y agregado al equipo. Le enviamos un correo para confirmar su cuenta.");
+      }
       onCreated();
       handleClose();
     } catch (err: any) {

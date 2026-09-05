@@ -108,10 +108,10 @@ export function useUploadLogo() {
 }
 
 export function useMe() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, loading: authLoading } = useAuth();
   const authFetch = useAuthFetch();
 
-  const { data, isLoading, error, mutate } = useSWR<UserProfileResponse>(
+  const { data, isLoading: profileLoading, error, mutate } = useSWR<UserProfileResponse>(
     firebaseUser ? KEY : null,
     (u: string) => authFetch(u),
     {
@@ -120,6 +120,13 @@ export function useMe() {
       revalidateOnReconnect:  false,
     }
   );
+
+  // SWR reporta isLoading=false mientras la key es null (Firebase aún no
+  // resolvió firebaseUser) — sin esto, un consumidor que actúa apenas
+  // isLoading es false (ej. ModuleGuard redirigiendo si !can_view) lee un
+  // falso "ya cargó, sin acceso" en ese instante inicial y navega mal
+  // antes de que llegue el perfil real. authLoading cubre ese hueco.
+  const isLoading = authLoading || (!!firebaseUser && profileLoading);
 
   const user         = data?.user         ?? null;
   const profile      = data?.profile      ?? null;
