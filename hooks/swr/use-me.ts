@@ -11,6 +11,7 @@ import type {
   OrgModule,
   ModulePermissions,
 } from "@/types";
+import { defaultSubitem } from "@/lib/permissions";
 
 const KEY = "/api/auth/me";
 
@@ -142,11 +143,12 @@ export function useMe() {
     return !!(list && list.length > 0);
   };
 
-  const getModulePermissions = (module: OrgModule): ModulePermissions => {
+  const getModulePermissions = (module: OrgModule, subitem?: string): ModulePermissions => {
     if (isOwner) {
       return { can_view: true, can_edit: true, can_delete: true, show_costs: true, show_profit: true };
     }
-    return permissions[module] ?? DENY_ALL;
+    const key = subitem ?? defaultSubitem(module);
+    return permissions[module]?.[key] ?? DENY_ALL;
   };
 
   const hasActiveSubscription =

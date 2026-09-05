@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useMe }   from "@/hooks/swr/use-me"
 import type { OrgModule } from "@/types"
+import { MODULE_SUBITEMS } from "@/lib/permissions"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { HiKontaIcon } from "@/components/shared/hikonta-icon"
@@ -40,8 +41,8 @@ const financesOnlyNav = [
 // ── Nav config ──────────────────────────────────────────────────────────
 // `feature` opcional: el ítem/submenú solo se muestra si el plan la incluye.
 type NavItemDef = {
-  title: string; url: string; icon: any; activeIcon?: any; module?: OrgModule; feature?: string;
-  submenu?: Array<{ title: string; url: string; feature?: string }>;
+  title: string; url: string; icon: any; activeIcon?: any; module?: OrgModule; subitem?: string; feature?: string;
+  submenu?: Array<{ title: string; url: string; subitem?: string; feature?: string }>;
 };
 
 const mainNav: NavItemDef[] = [
@@ -49,9 +50,9 @@ const mainNav: NavItemDef[] = [
   {
     title: "Inventario", url: "/inventory", icon: Package, activeIcon: PackageOpen, module: "INVENTORY",
     submenu: [
-      { title: "Productos",    url: "/inventory" },
-      { title: "Movimientos",  url: "/inventory/movements" },
-      { title: "En camino",    url: "/purchases/pending" },
+      { title: "Productos",    url: "/inventory",          subitem: "STOCK" },
+      { title: "Movimientos",  url: "/inventory/movements", subitem: "MOVEMENTS" },
+      { title: "En camino",    url: "/purchases/pending",   subitem: "INCOMING" },
     ],
   },
   {
@@ -65,23 +66,23 @@ const mainNav: NavItemDef[] = [
   {
     title: "Finanzas", url: "/finances", icon: CreditCard, module: "FINANCES",
     submenu: [
-      { title: "Cuentas",          url: "/finances" },
-      { title: "Transacciones",    url: "/finances/transactions" },
-      { title: "Tarjetas crédito", url: "/finances/credit-cards" },
+      { title: "Cuentas",          url: "/finances",               subitem: "ACCOUNTS" },
+      { title: "Transacciones",    url: "/finances/transactions",  subitem: "TRANSACTIONS" },
+      { title: "Tarjetas crédito", url: "/finances/credit-cards",  subitem: "CREDIT_CARDS" },
     ],
   },
   { title: "Eventos",     url: "/events",   icon: Calendar,  module: "EVENTS" },
-  { title: "Suministros", url: "/supplies", icon: ShoppingBag, module: "INVENTORY" },
+  { title: "Suministros", url: "/supplies", icon: ShoppingBag, module: "INVENTORY", subitem: "SUPPLIES" },
 ]
 
 const secondaryNav: NavItemDef[] = [
   {
     title: "Reportes", url: "/reports", icon: BarChart3, module: "REPORTS",
     submenu: [
-      { title: "Ventas",        url: "/reports/sales",     feature: "reports.sales" },
-      { title: "Inventario",    url: "/reports/inventory", feature: "reports.inventory" },
-      { title: "Rentabilidad",  url: "/reports/profit",    feature: "reports.profit" },
-      { title: "Eventos",       url: "/reports/events",    feature: "reports.events" },
+      { title: "Ventas",        url: "/reports/sales",     subitem: "SALES",     feature: "reports.sales" },
+      { title: "Inventario",    url: "/reports/inventory", subitem: "INVENTORY", feature: "reports.inventory" },
+      { title: "Rentabilidad",  url: "/reports/profit",    subitem: "PROFIT",    feature: "reports.profit" },
+      { title: "Eventos",       url: "/reports/events",    subitem: "EVENTS",    feature: "reports.events" },
     ],
   },
 ]
@@ -247,9 +248,14 @@ export function AppSidebar() {
     return pathname.startsWith(url)
   }
 
-  const canViewModule = (module?: OrgModule) => {
+  const canViewModule = (module?: OrgModule, subitem?: string) => {
     if (!module || meIsLoading) return true
-    return getModulePermissions(module).can_view
+    if (subitem) return getModulePermissions(module, subitem).can_view
+    // Sin subitem específico (ítems padre de INVENTORY/FINANCES/REPORTS):
+    // visible si el rol puede ver AL MENOS uno de los subitems del módulo,
+    // para que p. ej. "Inventario" siga apareciendo aunque el rol solo
+    // tenga acceso a "Movimientos".
+    return MODULE_SUBITEMS[module].some(({ code }) => getModulePermissions(module, code).can_view)
   }
 
   // Feature del plan: mientras el perfil carga se muestra todo (el API
@@ -262,9 +268,9 @@ export function AppSidebar() {
 
   const filterByPlan = (items: NavItemDef[]) =>
     items
-      .filter(item => canViewModule(item.module) && planHasFeature(item.feature))
+      .filter(item => canViewModule(item.module, item.subitem) && planHasFeature(item.feature))
       .map(item => item.submenu
-        ? { ...item, submenu: item.submenu.filter(s => planHasFeature(s.feature)) }
+        ? { ...item, submenu: item.submenu.filter(s => canViewModule(item.module, s.subitem) && planHasFeature(s.feature)) }
         : item)
       .filter(item => !item.submenu || item.submenu.length > 0)
 

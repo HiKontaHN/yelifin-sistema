@@ -11,7 +11,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canView');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
   if (deny) return deny;
 
   try {
@@ -94,7 +94,7 @@ export async function PATCH(
 ) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canEdit');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;
 
   try {
@@ -145,7 +145,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canDelete');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canDelete', 'CREDIT_CARDS');
   if (deny) return deny;
 
   try {

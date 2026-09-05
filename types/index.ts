@@ -161,7 +161,11 @@ export interface OrgMember {
   is_owner_role: boolean;
 }
 
-export type OrgPermissions = Partial<Record<OrgModule, ModulePermissions>>;
+// Permisos por módulo, y dentro de cada módulo por subitem (ver
+// lib/permissions.ts para el catálogo de subitems por módulo — desde
+// la migración v4.17, org_role_permissions guarda una fila por
+// {rol, módulo, subitem}).
+export type OrgPermissions = Partial<Record<OrgModule, Record<string, ModulePermissions>>>;
 
 // ============================================
 // PERFIL COMPLETO (respuesta de /api/auth/me)

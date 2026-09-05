@@ -1,14 +1,10 @@
 // app/api/organization/roles/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, OrgModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-const MODULES: OrgModule[] = [
-  "DASHBOARD", "PRODUCTS", "INVENTORY", "SALES", "CUSTOMERS",
-  "FINANCES", "EVENTS", "REPORTS", "ADMIN",
-];
 
 export async function PATCH(
   request: NextRequest,
@@ -50,39 +46,44 @@ export async function PATCH(
       `;
     }
 
-    // Upsert de permisos para los módulos provistos
+    // Upsert de permisos para los módulos provistos — una fila por subitem,
+    // tomando el valor de ese subitem del payload anidado
+    // {module: {subitem: ...}} si lo trae, o false si no.
     if (permissions && typeof permissions === "object") {
       for (const module of MODULES) {
         if (!(module in permissions)) continue;
-        const p = permissions[module];
-        await sql`
-          INSERT INTO org_role_permissions (role_id, module, can_view, can_edit, can_delete, show_costs, show_profit)
-          VALUES (
-            ${roleId}, ${module},
-            ${p.can_view    ?? false},
-            ${p.can_edit    ?? false},
-            ${p.can_delete  ?? false},
-            ${p.show_costs  ?? false},
-            ${p.show_profit ?? false}
-          )
-          ON CONFLICT (role_id, module) DO UPDATE SET
-            can_view    = EXCLUDED.can_view,
-            can_edit    = EXCLUDED.can_edit,
-            can_delete  = EXCLUDED.can_delete,
-            show_costs  = EXCLUDED.show_costs,
-            show_profit = EXCLUDED.show_profit
-        `;
+        const modulePerms = permissions[module] ?? {};
+        for (const { code: subitem } of MODULE_SUBITEMS[module]) {
+          const p = modulePerms[subitem] ?? {};
+          await sql`
+            INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
+            VALUES (
+              ${roleId}, ${module}, ${subitem},
+              ${p.can_view    ?? false},
+              ${p.can_edit    ?? false},
+              ${p.can_delete  ?? false},
+              ${p.show_costs  ?? false},
+              ${p.show_profit ?? false}
+            )
+            ON CONFLICT (role_id, module, subitem) DO UPDATE SET
+              can_view    = EXCLUDED.can_view,
+              can_edit    = EXCLUDED.can_edit,
+              can_delete  = EXCLUDED.can_delete,
+              show_costs  = EXCLUDED.show_costs,
+              show_profit = EXCLUDED.show_profit
+          `;
+        }
       }
     }
 
     const savedPerms = await sql`
-      SELECT module, can_view, can_edit, can_delete, show_costs, show_profit
+      SELECT module, subitem, can_view, can_edit, can_delete, show_costs, show_profit
       FROM org_role_permissions WHERE role_id = ${roleId}
     `;
 
-    const permissionsMap: Record<string, object> = {};
+    const permissionsMap: Record<string, Record<string, object>> = {};
     for (const p of savedPerms) {
-      permissionsMap[p.module] = {
+      (permissionsMap[p.module] ??= {})[p.subitem] = {
         can_view: p.can_view, can_edit: p.can_edit, can_delete: p.can_delete,
         show_costs: p.show_costs, show_profit: p.show_profit,
       };

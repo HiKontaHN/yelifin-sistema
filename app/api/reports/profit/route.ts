@@ -9,13 +9,13 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'REPORTS', 'canView');
+  const deny = await requireModule(auth.data, 'REPORTS', 'canView', 'PROFIT');
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.profit');
   if (denyFeature) return denyFeature;
 
   // Este reporte es 100% costos/ganancias — requiere el permiso atómico
-  const perms = await getModulePermissions(auth.data, 'REPORTS');
+  const perms = await getModulePermissions(auth.data, 'REPORTS', 'PROFIT');
   if (!perms.showProfit) {
     return createErrorResponse("Tu rol no tiene permiso para ver ganancias", 403);
   }

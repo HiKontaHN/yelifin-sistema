@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canEdit');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'TRANSACTIONS');
   if (deny) return deny;
 
   try {
@@ -56,7 +56,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canDelete');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canDelete', 'TRANSACTIONS');
   if (deny) return deny;
 
   try {

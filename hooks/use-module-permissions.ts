@@ -9,10 +9,10 @@ const DENY_ALL: ModulePermissions = {
   show_costs: false, show_profit: false,
 };
 
-export function useModulePermissions(module: OrgModule): ModulePermissions & { isLoading: boolean } {
+export function useModulePermissions(module: OrgModule, subitem?: string): ModulePermissions & { isLoading: boolean } {
   const { isLoading, getModulePermissions } = useMe();
 
   if (isLoading) return { ...DENY_ALL, isLoading: true };
 
-  return { ...getModulePermissions(module), isLoading: false };
+  return { ...getModulePermissions(module, subitem), isLoading: false };
 }

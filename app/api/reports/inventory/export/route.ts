@@ -276,13 +276,13 @@ async function generatePDF(
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'REPORTS', 'canView');
+  const deny = await requireModule(auth.data, 'REPORTS', 'canView', 'INVENTORY');
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.inventory');
   if (denyFeature) return denyFeature;
 
   // El documento exportado incluye costos y márgenes — requiere ambos permisos
-  const perms = await getModulePermissions(auth.data, 'REPORTS');
+  const perms = await getModulePermissions(auth.data, 'REPORTS', 'INVENTORY');
   if (!perms.showCosts || !perms.showProfit) {
     return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y márgenes)", 403);
   }

@@ -327,12 +327,12 @@ async function generatePDF(
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'REPORTS', 'canView');
+  const deny = await requireModule(auth.data, 'REPORTS', 'canView', 'PROFIT');
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.profit');
   if (denyFeature) return denyFeature;
 
-  const perms = await getModulePermissions(auth.data, 'REPORTS');
+  const perms = await getModulePermissions(auth.data, 'REPORTS', 'PROFIT');
   // El documento exportado incluye costos junto con las ganancias — requiere
   // ambos permisos (a diferencia del GET, que puede degradar sin costos).
   if (!perms.showProfit || !perms.showCosts) {

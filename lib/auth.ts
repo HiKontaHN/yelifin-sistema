@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
+import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -228,7 +229,8 @@ export async function requireFeature(
 export async function verifyModuleAccess(
   auth: AuthUser,
   module: OrgModule,
-  permission: keyof ModulePermissions
+  permission: keyof ModulePermissions,
+  subitem: string = defaultSubitem(module)
 ): Promise<{ allowed: boolean; error?: string }> {
   if (auth.isOwner) return { allowed: true };
 
@@ -236,7 +238,7 @@ export async function verifyModuleAccess(
     const [perm] = await sql`
       SELECT can_view, can_edit, can_delete, show_costs, show_profit
       FROM org_role_permissions
-      WHERE role_id = ${auth.roleId} AND module = ${module}
+      WHERE role_id = ${auth.roleId} AND module = ${module} AND subitem = ${subitem}
     `;
 
     if (!perm) return { allowed: false, error: "Sin acceso a este módulo" };
@@ -293,6 +295,42 @@ export async function verifyAnyModuleAccess(
   }
 }
 
+// ── requireAnySubitem ────────────────────────────────────────────────────
+// Para endpoints "resumen" que cruzan varios subitems de un mismo módulo
+// (ej. finances/summary junta ACCOUNTS + TRANSACTIONS) — concede acceso
+// si el rol tiene el permiso en CUALQUIERA de los subitems indicados.
+
+export async function requireAnySubitem(
+  auth: AuthUser,
+  module: OrgModule,
+  subitems: string[],
+  permission: keyof ModulePermissions
+): Promise<Response | null> {
+  if (auth.isOwner) return null;
+
+  try {
+    const rows = await sql`
+      SELECT can_view, can_edit, can_delete, show_costs, show_profit
+      FROM org_role_permissions
+      WHERE role_id = ${auth.roleId} AND module = ${module} AND subitem = ANY(${subitems})
+    `;
+
+    const column: Record<keyof ModulePermissions, string> = {
+      canView: "can_view", canEdit: "can_edit", canDelete: "can_delete",
+      showCosts: "show_costs", showProfit: "show_profit",
+    };
+    const col = column[permission];
+
+    if (!rows.some((r) => r[col] === true)) {
+      return createErrorResponse("Sin acceso a este módulo", 403);
+    }
+    return null;
+  } catch (error) {
+    console.error("Error en requireAnySubitem:", error);
+    return createErrorResponse("Error al verificar permisos", 500);
+  }
+}
+
 // ── getModulePermissions ───────────────────────────────────────────────
 // Devuelve todos los permisos de un módulo para un usuario.
 // Útil en endpoints que necesitan condicionar qué datos retornan
@@ -300,7 +338,8 @@ export async function verifyAnyModuleAccess(
 
 export async function getModulePermissions(
   auth: AuthUser,
-  module: OrgModule
+  module: OrgModule,
+  subitem: string = defaultSubitem(module)
 ): Promise<ModulePermissions> {
   if (auth.isOwner) {
     return { canView: true, canEdit: true, canDelete: true, showCosts: true, showProfit: true };
@@ -310,7 +349,7 @@ export async function getModulePermissions(
     const [perm] = await sql`
       SELECT can_view, can_edit, can_delete, show_costs, show_profit
       FROM org_role_permissions
-      WHERE role_id = ${auth.roleId} AND module = ${module}
+      WHERE role_id = ${auth.roleId} AND module = ${module} AND subitem = ${subitem}
     `;
 
     if (!perm) {
@@ -522,15 +561,15 @@ export async function ensureOrgExists(
     RETURNING id, name
   `;
 
-  // Permisos totales para el rol dueño
-  await sql`
-    INSERT INTO org_role_permissions (role_id, module, can_view, can_edit, can_delete, show_costs, show_profit)
-    SELECT ${ownerRole.id}, m.module, TRUE, TRUE, TRUE, TRUE, TRUE
-    FROM (VALUES
-      ('DASHBOARD'), ('PRODUCTS'), ('INVENTORY'), ('SALES'), ('CUSTOMERS'),
-      ('FINANCES'), ('EVENTS'), ('REPORTS'), ('ADMIN')
-    ) AS m(module)
-  `;
+  // Permisos totales para el rol dueño, en todos los subitems de cada módulo
+  for (const module of MODULES) {
+    for (const { code: subitem } of MODULE_SUBITEMS[module]) {
+      await sql`
+        INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
+        VALUES (${ownerRole.id}, ${module}, ${subitem}, TRUE, TRUE, TRUE, TRUE, TRUE)
+      `;
+    }
+  }
 
   await sql`
     INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
@@ -562,10 +601,11 @@ export async function ensureOrgExists(
 export async function requireModule(
   auth: AuthUser,
   module: OrgModule,
-  permission: keyof ModulePermissions
+  permission: keyof ModulePermissions,
+  subitem?: string
 ): Promise<Response | null> {
   if (auth.isOwner) return null;
-  const { allowed, error } = await verifyModuleAccess(auth, module, permission);
+  const { allowed, error } = await verifyModuleAccess(auth, module, permission, subitem);
   if (!allowed) return createErrorResponse(error ?? "Sin acceso a este módulo", 403);
   return null;
 }

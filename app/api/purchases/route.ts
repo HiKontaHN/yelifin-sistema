@@ -9,7 +9,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'INCOMING');
   if (deny) return deny;
 
   try {
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canView');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'INCOMING');
   if (deny) return deny;
 
   try {
@@ -348,7 +348,7 @@ export async function GET(request: NextRequest) {
     // Toda esta respuesta es información de costo (lo que costó adquirir el
     // inventario) — sin show_costs se anula subtotal/shipping/total del lote
     // y unit_cost/unit_cost_usd de cada item.
-    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+    const perms = await getModulePermissions(auth.data, 'INVENTORY', 'INCOMING');
     if (!perms.showCosts) {
       nullifyKeysDeep(payload, new Set([
         "subtotal", "shipping", "total", "unit_cost", "unit_cost_usd",

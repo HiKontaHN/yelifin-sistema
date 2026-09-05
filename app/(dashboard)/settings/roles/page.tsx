@@ -1,7 +1,7 @@
 // app/(dashboard)/settings/roles/page.tsx
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import {
   type OrgRole,
 } from "@/hooks/swr/use-organization";
 import type { OrgModule, ModulePermissions } from "@/types";
+import { MODULES, MODULE_SUBITEMS, MODULE_LABELS } from "@/lib/permissions";
 
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -34,52 +35,6 @@ import { cn } from "@/lib/utils";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const MODULES: { key: OrgModule; label: string; subitems?: string[] }[] = [
-  {
-    key: "DASHBOARD",
-    label: "Dashboard",
-    subitems: ["Inicio / resumen del negocio"],
-  },
-  {
-    key: "PRODUCTS",
-    label: "Productos",
-    subitems: ["Catálogo de productos"],
-  },
-  {
-    key: "INVENTORY",
-    label: "Inventario",
-    subitems: ["Inventario", "Movimientos", "En camino", "Suministros"],
-  },
-  {
-    key: "SALES",
-    label: "Ventas",
-    subitems: ["Lista de ventas", "Nueva venta (POS)"],
-  },
-  {
-    key: "CUSTOMERS",
-    label: "Clientes",
-  },
-  {
-    key: "FINANCES",
-    label: "Finanzas",
-    subitems: ["Cuentas", "Transacciones", "Tarjetas de crédito"],
-  },
-  {
-    key: "EVENTS",
-    label: "Eventos",
-  },
-  {
-    key: "REPORTS",
-    label: "Reportes",
-    subitems: ["Ventas", "Inventario", "Rentabilidad", "Eventos"],
-  },
-  {
-    key: "ADMIN",
-    label: "Administración",
-    subitems: ["Equipo", "Roles"],
-  },
-];
-
 const PERM_COLS: { key: keyof ModulePermissions; label: string; mobileLabel: string; hint: string }[] = [
   { key: "can_view",    label: "Ver",      mobileLabel: "Ver",           hint: "Puede entrar y ver el módulo" },
   { key: "can_edit",    label: "Editar",   mobileLabel: "Crear / editar", hint: "Puede crear y modificar registros" },
@@ -88,22 +43,34 @@ const PERM_COLS: { key: keyof ModulePermissions; label: string; mobileLabel: str
   { key: "show_profit", label: "Ganancia", mobileLabel: "Ver ganancias", hint: "Ve utilidades y márgenes" },
 ];
 
-type PermState = Record<OrgModule, ModulePermissions>;
+// Permisos por módulo y, dentro de cada módulo, por subitem — ver
+// lib/permissions.ts. Los módulos de un solo subitem (DASHBOARD,
+// PRODUCTS, SALES, CUSTOMERS, EVENTS) se ven exactamente igual que
+// antes; INVENTORY/FINANCES/REPORTS/ADMIN muestran una fila por subitem.
+type PermState = Record<OrgModule, Record<string, ModulePermissions>>;
+
+const EMPTY_MODULE_PERM: ModulePermissions = {
+  can_view: false, can_edit: false, can_delete: false,
+  show_costs: false, show_profit: false,
+};
 
 function emptyPerms(): PermState {
   return Object.fromEntries(
-    MODULES.map(({ key }) => [key, {
-      can_view: false, can_edit: false, can_delete: false,
-      show_costs: false, show_profit: false,
-    }])
+    MODULES.map((module) => [module, Object.fromEntries(
+      MODULE_SUBITEMS[module].map(({ code }) => [code, { ...EMPTY_MODULE_PERM }])
+    )])
   ) as PermState;
 }
 
 function roleToPerms(role: OrgRole): PermState {
   const base = emptyPerms();
-  for (const mod of MODULES) {
-    const p = role.permissions[mod.key];
-    if (p) base[mod.key] = { ...p };
+  for (const module of MODULES) {
+    const modulePerms = role.permissions[module];
+    if (!modulePerms) continue;
+    for (const { code } of MODULE_SUBITEMS[module]) {
+      const p = modulePerms[code];
+      if (p) base[module][code] = { ...p };
+    }
   }
   return base;
 }
@@ -119,55 +86,78 @@ function PermGrid({
   onChange?: (next: PermState) => void;
   readOnly?: boolean;
 }) {
-  const toggle = (mod: OrgModule, col: keyof ModulePermissions) => {
+  const toggle = (module: OrgModule, subitem: string, col: keyof ModulePermissions) => {
     if (readOnly || !onChange) return;
     onChange({
       ...perms,
-      [mod]: { ...perms[mod], [col]: !perms[mod][col] },
+      [module]: {
+        ...perms[module],
+        [subitem]: { ...perms[module][subitem], [col]: !perms[module][subitem][col] },
+      },
+    });
+  };
+
+  // Encabezado de módulo dividido: un clic otorga/quita esa columna en
+  // todos sus subitems a la vez (mismo efecto que el único checkbox de
+  // antes, cuando el módulo todavía no se dividía).
+  const toggleAll = (module: OrgModule, col: keyof ModulePermissions) => {
+    if (readOnly || !onChange) return;
+    const subitems = MODULE_SUBITEMS[module];
+    const allOn = subitems.every(({ code }) => perms[module][code][col]);
+    const nextValue = !allOn;
+    onChange({
+      ...perms,
+      [module]: Object.fromEntries(
+        subitems.map(({ code }) => [code, { ...perms[module][code], [col]: nextValue }])
+      ),
     });
   };
 
   return (
     <>
-      {/* ── Móvil: una tarjeta por módulo con etiquetas completas ── */}
+      {/* ── Móvil: una tarjeta por módulo, subitems como filas propias ── */}
       <div className="sm:hidden space-y-3">
-        {MODULES.map(({ key, label, subitems }) => {
-          const activeCount = PERM_COLS.filter((c) => perms[key][c.key]).length;
+        {MODULES.map((module) => {
+          const subitems = MODULE_SUBITEMS[module];
+          const isSplit = subitems.length > 1;
           return (
-            <div key={key} className="rounded-xl border p-3 space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm">{label}</p>
-                  {subitems && subitems.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground leading-snug">
-                      {subitems.join(" · ")}
-                    </p>
-                  )}
-                </div>
-                <Badge variant={activeCount > 0 ? "secondary" : "outline"} className="text-[10px] shrink-0">
-                  {activeCount}/{PERM_COLS.length}
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                {PERM_COLS.map((col) => (
-                  <label
-                    key={col.key}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm",
-                      !readOnly && "cursor-pointer active:bg-muted/50",
-                      perms[key][col.key] ? "border-primary/40 bg-primary/5" : "border-border",
+            <div key={module} className="rounded-xl border p-3 space-y-2.5">
+              <p className="font-semibold text-sm">{MODULE_LABELS[module]}</p>
+              {subitems.map(({ code, label }) => {
+                const p = perms[module][code];
+                const activeCount = PERM_COLS.filter((c) => p[c.key]).length;
+                return (
+                  <div key={code} className={cn(isSplit && "space-y-2 border-t pt-2")}>
+                    {isSplit && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <Badge variant={activeCount > 0 ? "secondary" : "outline"} className="text-[10px] shrink-0">
+                          {activeCount}/{PERM_COLS.length}
+                        </Badge>
+                      </div>
                     )}
-                  >
-                    <Checkbox
-                      checked={perms[key][col.key]}
-                      onCheckedChange={() => toggle(key, col.key)}
-                      disabled={readOnly}
-                    />
-                    <span className="leading-tight">{col.mobileLabel}</span>
-                  </label>
-                ))}
-              </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                      {PERM_COLS.map((col) => (
+                        <label
+                          key={col.key}
+                          className={cn(
+                            "flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm",
+                            !readOnly && "cursor-pointer active:bg-muted/50",
+                            p[col.key] ? "border-primary/40 bg-primary/5" : "border-border",
+                          )}
+                        >
+                          <Checkbox
+                            checked={p[col.key]}
+                            onCheckedChange={() => toggle(module, code, col.key)}
+                            disabled={readOnly}
+                          />
+                          <span className="leading-tight">{col.mobileLabel}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -187,32 +177,77 @@ function PermGrid({
             </tr>
           </thead>
           <tbody>
-            {MODULES.map(({ key, label, subitems }) => (
-              <tr key={key} className="border-b last:border-0 hover:bg-muted/30">
-                <td className="py-2.5 pr-3">
-                  <span className="font-medium text-sm">{label}</span>
-                  {subitems && subitems.length > 0 && (
-                    <ul className="mt-0.5 space-y-0.5">
-                      {subitems.map((s) => (
-                        <li key={s} className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <span className="opacity-50">›</span> {s}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </td>
-                {PERM_COLS.map((col) => (
-                  <td key={col.key} className="py-2.5 px-1 text-center align-top pt-3">
-                    <Checkbox
-                      checked={perms[key][col.key]}
-                      onCheckedChange={() => toggle(key, col.key)}
-                      disabled={readOnly}
-                      className="mx-auto"
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {MODULES.map((module) => {
+              const subitems = MODULE_SUBITEMS[module];
+
+              if (subitems.length === 1) {
+                const code = subitems[0].code;
+                const p = perms[module][code];
+                return (
+                  <tr key={module} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="py-2.5 pr-3">
+                      <span className="font-medium text-sm">{MODULE_LABELS[module]}</span>
+                    </td>
+                    {PERM_COLS.map((col) => (
+                      <td key={col.key} className="py-2.5 px-1 text-center align-top pt-3">
+                        <Checkbox
+                          checked={p[col.key]}
+                          onCheckedChange={() => toggle(module, code, col.key)}
+                          disabled={readOnly}
+                          className="mx-auto"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              }
+
+              return (
+                <Fragment key={module}>
+                  <tr className="border-b bg-muted/20">
+                    <td className="py-2 pr-3">
+                      <span className="font-semibold text-sm">{MODULE_LABELS[module]}</span>
+                    </td>
+                    {PERM_COLS.map((col) => {
+                      const allOn = subitems.every(({ code }) => perms[module][code][col.key]);
+                      return (
+                        <td key={col.key} className="py-2 px-1 text-center">
+                          <Checkbox
+                            checked={allOn}
+                            onCheckedChange={() => toggleAll(module, col.key)}
+                            disabled={readOnly}
+                            className="mx-auto"
+                            aria-label={`Todo ${MODULE_LABELS[module]} — ${col.label}`}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {subitems.map(({ code, label }) => {
+                    const p = perms[module][code];
+                    return (
+                      <tr key={`${module}-${code}`} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="py-2 pr-3 pl-4">
+                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                            <span className="opacity-50">›</span> {label}
+                          </span>
+                        </td>
+                        {PERM_COLS.map((col) => (
+                          <td key={col.key} className="py-2 px-1 text-center">
+                            <Checkbox
+                              checked={p[col.key]}
+                              onCheckedChange={() => toggle(module, code, col.key)}
+                              disabled={readOnly}
+                              className="mx-auto"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -355,11 +390,16 @@ export default function RolesPage() {
       <div className="space-y-3">
         {roles.map((role) => {
           const isExpanded = expandedId === role.id;
-          const ownerPerms = emptyPerms();
-          if (role.is_owner) {
-            for (const m of MODULES) ownerPerms[m.key] = { can_view: true, can_edit: true, can_delete: true, show_costs: true, show_profit: true };
-          }
-          const displayPerms = role.is_owner ? ownerPerms : roleToPerms(role);
+          const displayPerms = role.is_owner
+            ? Object.fromEntries(
+                MODULES.map((m) => [m, Object.fromEntries(
+                  MODULE_SUBITEMS[m].map(({ code }) => [code, {
+                    can_view: true, can_edit: true, can_delete: true,
+                    show_costs: true, show_profit: true,
+                  }])
+                )])
+              ) as PermState
+            : roleToPerms(role);
 
           return (
             <Card key={role.id}>

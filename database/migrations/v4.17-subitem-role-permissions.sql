@@ -1,6 +1,6 @@
 -- ============================================================
 -- MIGRACIÓN v4.17: PERMISOS DE ROL A NIVEL DE SUBITEM
--- Fecha: 2026-09-04
+-- Fecha: 2026-09-04 (corregida: ver nota de la línea 20)
 -- ============================================================
 -- org_role_permissions pasa de {role, module} (9 filas/rol) a
 -- {role, module, subitem} (18 filas/rol). Cada fila existente se
@@ -13,9 +13,22 @@
 -- decisiones pendientes (A2/A3/A6), y los cambios de código en
 -- lib/auth.ts, lib/permissions.ts y settings/roles/page.tsx que
 -- acompañan esta migración.
+--
+-- Todo el script es idempotente — seguro de volver a correr desde
+-- cualquier punto en que haya quedado a medias (cada paso usa
+-- IF NOT EXISTS / IF EXISTS / ON CONFLICT DO NOTHING / WHERE ... IS NULL).
 -- ============================================================
 
 ALTER TABLE org_role_permissions ADD COLUMN IF NOT EXISTS subitem VARCHAR(50);
+
+-- La restricción UNIQUE(role_id, module) se elimina AQUÍ, antes de
+-- insertar filas nuevas por subitem — y la nueva, que sí incluye
+-- subitem, se agrega de inmediato. Si esto se hace al final (como en
+-- la versión anterior de este archivo), cada INSERT de abajo viola la
+-- restricción vieja al intentar una segunda fila para el mismo
+-- {role_id, module} con distinto subitem (error 23505).
+ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_role_id_module_key;
+ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_role_module_subitem_key UNIQUE (role_id, module, subitem);
 
 UPDATE org_role_permissions SET subitem = module
 WHERE module IN ('DASHBOARD','PRODUCTS','SALES','CUSTOMERS','EVENTS') AND subitem IS NULL;
@@ -25,36 +38,35 @@ UPDATE org_role_permissions SET subitem = 'STOCK' WHERE module = 'INVENTORY' AND
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'INVENTORY', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('MOVEMENTS'),('INCOMING'),('SUPPLIES')) AS v(subitem)
-WHERE p.module = 'INVENTORY' AND p.subitem = 'STOCK';
+WHERE p.module = 'INVENTORY' AND p.subitem = 'STOCK'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- FINANCES → ACCOUNTS (reusa), + TRANSACTIONS, CREDIT_CARDS
 UPDATE org_role_permissions SET subitem = 'ACCOUNTS' WHERE module = 'FINANCES' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'FINANCES', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('TRANSACTIONS'),('CREDIT_CARDS')) AS v(subitem)
-WHERE p.module = 'FINANCES' AND p.subitem = 'ACCOUNTS';
+WHERE p.module = 'FINANCES' AND p.subitem = 'ACCOUNTS'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- REPORTS → SALES (reusa), + INVENTORY, PROFIT, EVENTS
 UPDATE org_role_permissions SET subitem = 'SALES' WHERE module = 'REPORTS' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'REPORTS', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('INVENTORY'),('PROFIT'),('EVENTS')) AS v(subitem)
-WHERE p.module = 'REPORTS' AND p.subitem = 'SALES';
+WHERE p.module = 'REPORTS' AND p.subitem = 'SALES'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- ADMIN → TEAM (reusa), + ROLES — solo por paridad con la UI, no aplicado hoy
 UPDATE org_role_permissions SET subitem = 'TEAM' WHERE module = 'ADMIN' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'ADMIN', 'ROLES', p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
-FROM org_role_permissions p WHERE p.module = 'ADMIN' AND p.subitem = 'TEAM';
+FROM org_role_permissions p WHERE p.module = 'ADMIN' AND p.subitem = 'TEAM'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 UPDATE org_role_permissions SET subitem = module WHERE subitem IS NULL; -- red de seguridad
 
 ALTER TABLE org_role_permissions ALTER COLUMN subitem SET NOT NULL;
-
--- Verificar el nombre real antes de correr:
--- SELECT conname FROM pg_constraint WHERE conrelid = 'org_role_permissions'::regclass AND contype = 'u';
-ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_role_id_module_key;
-ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_role_module_subitem_key UNIQUE (role_id, module, subitem);
 
 ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_module_check;
 ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_module_subitem_check CHECK (

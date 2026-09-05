@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function PUT(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'SUPPLIES');
   if (deny) return deny;
 
   try {
@@ -44,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete', 'SUPPLIES');
   if (deny) return deny;
 
   try {

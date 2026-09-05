@@ -9,7 +9,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canView');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
   if (deny) return deny;
 
   try {

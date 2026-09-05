@@ -212,6 +212,14 @@ const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS
 
 ALTER TABLE org_role_permissions ADD COLUMN IF NOT EXISTS subitem VARCHAR(50);
 
+-- La UNIQUE(role_id, module) se elimina AQUÍ, antes de insertar filas
+-- nuevas por subitem — y la nueva (que sí incluye subitem) se agrega
+-- de inmediato. Hacerlo al final rompe con error 23505: cada INSERT
+-- de abajo viola la restricción vieja al insertar una segunda fila
+-- para el mismo {role_id, module} con distinto subitem.
+ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_role_id_module_key;
+ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_role_module_subitem_key UNIQUE (role_id, module, subitem);
+
 UPDATE org_role_permissions SET subitem = module
 WHERE module IN ('DASHBOARD','PRODUCTS','SALES','CUSTOMERS','EVENTS') AND subitem IS NULL;
 
@@ -220,36 +228,35 @@ UPDATE org_role_permissions SET subitem = 'STOCK' WHERE module = 'INVENTORY' AND
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'INVENTORY', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('MOVEMENTS'),('INCOMING'),('SUPPLIES')) AS v(subitem)
-WHERE p.module = 'INVENTORY' AND p.subitem = 'STOCK';
+WHERE p.module = 'INVENTORY' AND p.subitem = 'STOCK'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- FINANCES → ACCOUNTS (reusa), + TRANSACTIONS, CREDIT_CARDS
 UPDATE org_role_permissions SET subitem = 'ACCOUNTS' WHERE module = 'FINANCES' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'FINANCES', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('TRANSACTIONS'),('CREDIT_CARDS')) AS v(subitem)
-WHERE p.module = 'FINANCES' AND p.subitem = 'ACCOUNTS';
+WHERE p.module = 'FINANCES' AND p.subitem = 'ACCOUNTS'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- REPORTS → SALES (reusa), + INVENTORY, PROFIT, EVENTS
 UPDATE org_role_permissions SET subitem = 'SALES' WHERE module = 'REPORTS' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'REPORTS', v.subitem, p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
 FROM org_role_permissions p CROSS JOIN (VALUES ('INVENTORY'),('PROFIT'),('EVENTS')) AS v(subitem)
-WHERE p.module = 'REPORTS' AND p.subitem = 'SALES';
+WHERE p.module = 'REPORTS' AND p.subitem = 'SALES'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 -- ADMIN → TEAM (reusa), + ROLES — solo por paridad con la UI, no aplicado hoy
 UPDATE org_role_permissions SET subitem = 'TEAM' WHERE module = 'ADMIN' AND subitem IS NULL;
 INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
 SELECT p.role_id, 'ADMIN', 'ROLES', p.can_view, p.can_edit, p.can_delete, p.show_costs, p.show_profit
-FROM org_role_permissions p WHERE p.module = 'ADMIN' AND p.subitem = 'TEAM';
+FROM org_role_permissions p WHERE p.module = 'ADMIN' AND p.subitem = 'TEAM'
+ON CONFLICT (role_id, module, subitem) DO NOTHING;
 
 UPDATE org_role_permissions SET subitem = module WHERE subitem IS NULL; -- red de seguridad
 
 ALTER TABLE org_role_permissions ALTER COLUMN subitem SET NOT NULL;
-
--- Verificar el nombre real antes de correr:
--- SELECT conname FROM pg_constraint WHERE conrelid = 'org_role_permissions'::regclass AND contype = 'u';
-ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_role_id_module_key;
-ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_role_module_subitem_key UNIQUE (role_id, module, subitem);
 
 ALTER TABLE org_role_permissions DROP CONSTRAINT IF EXISTS org_role_permissions_module_check;
 ALTER TABLE org_role_permissions ADD CONSTRAINT org_role_permissions_module_subitem_check CHECK (

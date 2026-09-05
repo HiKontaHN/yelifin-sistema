@@ -15,7 +15,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canView');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'INCOMING');
   if (deny) return deny;
 
   try {
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     };
 
     // Mismo patrón de ocultamiento de costos que GET /api/purchases
-    const perms = await getModulePermissions(auth.data, 'INVENTORY');
+    const perms = await getModulePermissions(auth.data, 'INVENTORY', 'INCOMING');
     if (!perms.showCosts) {
       nullifyKeysDeep(payload, new Set([
         "subtotal", "shipping", "total", "unit_cost", "unit_cost_usd",
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'INCOMING');
   if (deny) return deny;
 
   try {
@@ -313,7 +313,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete');
+  const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete', 'INCOMING');
   if (deny) return deny;
 
   try {

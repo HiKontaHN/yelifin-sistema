@@ -12,7 +12,7 @@ export async function GET(
 ) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canView');
+  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
   if (deny) return deny;
 
   try {

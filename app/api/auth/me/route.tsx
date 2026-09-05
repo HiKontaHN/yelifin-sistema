@@ -3,13 +3,9 @@ import { NextRequest } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-const ALL_MODULES = [
-  "PRODUCTS", "INVENTORY", "SALES", "CUSTOMERS",
-  "FINANCES", "EVENTS", "REPORTS", "ADMIN",
-] as const;
 
 export async function GET(request: NextRequest) {
   try {
@@ -108,27 +104,32 @@ export async function GET(request: NextRequest) {
     // Permisos por módulo del rol actual
     const isOwner = row.role_is_owner === true || row.owner_user_id === row.id;
 
-    let permissionsMap: Record<string, object>;
+    // Permisos anidados por módulo y luego por subitem — ver
+    // lib/permissions.ts (MODULE_SUBITEMS) para el catálogo completo.
+    let permissionsMap: Record<string, Record<string, object>>;
 
     if (isOwner) {
       permissionsMap = Object.fromEntries(
-        ALL_MODULES.map((m) => [m, {
-          can_view: true, can_edit: true, can_delete: true,
-          show_costs: true, show_profit: true,
-        }])
+        MODULES.map((m) => [m, Object.fromEntries(
+          MODULE_SUBITEMS[m].map(({ code }) => [code, {
+            can_view: true, can_edit: true, can_delete: true,
+            show_costs: true, show_profit: true,
+          }])
+        )])
       );
     } else {
       const perms = await sql`
-        SELECT module, can_view, can_edit, can_delete, show_costs, show_profit
+        SELECT module, subitem, can_view, can_edit, can_delete, show_costs, show_profit
         FROM org_role_permissions
         WHERE role_id = ${row.role_id}
       `;
-      permissionsMap = Object.fromEntries(
-        perms.map((p) => [p.module, {
+      permissionsMap = {};
+      for (const p of perms) {
+        (permissionsMap[p.module] ??= {})[p.subitem] = {
           can_view: p.can_view, can_edit: p.can_edit, can_delete: p.can_delete,
           show_costs: p.show_costs, show_profit: p.show_profit,
-        }])
-      );
+        };
+      }
     }
 
     return Response.json({

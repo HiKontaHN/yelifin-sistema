@@ -9,7 +9,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'REPORTS', 'canView');
+  const deny = await requireModule(auth.data, 'REPORTS', 'canView', 'INVENTORY');
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.inventory');
   if (denyFeature) return denyFeature;
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const summary = computeInventorySummary(products, lowStockThreshold);
 
     // Permisos atómicos del rol: anular costos/márgenes si no puede verlos
-    const perms = await getModulePermissions(auth.data, 'REPORTS');
+    const perms = await getModulePermissions(auth.data, 'REPORTS', 'INVENTORY');
     const payload = { summary, products, movements };
     if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["avg_cost", "stock_value", "total_stock_value"]));
     if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["margin_pct"]));

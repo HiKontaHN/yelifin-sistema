@@ -9,7 +9,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'REPORTS', 'canView');
+  const deny = await requireModule(auth.data, 'REPORTS', 'canView', 'EVENTS');
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.events');
   if (denyFeature) return denyFeature;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Permisos atómicos del rol: anular costos/ganancias si no puede verlos
-    const perms = await getModulePermissions(auth.data, 'REPORTS');
+    const perms = await getModulePermissions(auth.data, 'REPORTS', 'EVENTS');
     const payload = { summary, events, from, to };
     if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["total_cogs"]));
     if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["gross_profit", "net_profit"]));

@@ -13,7 +13,7 @@ export type OrgRole = {
   name:        string;
   is_owner:    boolean;
   created_at:  string;
-  permissions: Partial<Record<OrgModule, ModulePermissions>>;
+  permissions: Partial<Record<OrgModule, Record<string, ModulePermissions>>>;
 };
 
 // ── Auth fetch helper ──────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export function useCreateOrgRole() {
 
   const createRole = async (
     name: string,
-    permissions: Partial<Record<OrgModule, Partial<ModulePermissions>>>
+    permissions: Partial<Record<OrgModule, Record<string, Partial<ModulePermissions>>>>
   ) => {
     setIsCreating(true);
     try {
@@ -254,7 +254,7 @@ export function useUpdateOrgRole() {
 
   const updateRole = async (
     id: number,
-    payload: { name?: string; permissions?: Partial<Record<OrgModule, Partial<ModulePermissions>>> }
+    payload: { name?: string; permissions?: Partial<Record<OrgModule, Record<string, Partial<ModulePermissions>>>> }
   ) => {
     setIsUpdating(true);
     try {
