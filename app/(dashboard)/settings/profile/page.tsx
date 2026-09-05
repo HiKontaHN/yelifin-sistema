@@ -28,6 +28,7 @@ export default function ProfilePage() {
     onboardingCompleted,
     isTrial,
     hasActiveSubscription,
+    isOwner,
     isLoading,
     error,
     mutate,
@@ -283,16 +284,19 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <Separator />
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => push("/settings/organization")}
-                >
-                  Editar datos del negocio
-                </Button>
-              </div>
+              {isOwner && (
+                <>
+                  <Separator />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => push("/settings/organization")}
+                    >
+                      Editar datos del negocio
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -381,17 +385,20 @@ export default function ProfilePage() {
                 </p>
               )}
 
-              <Separator />
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => push("/settings/billing")}
-                >
-                  Administrar suscripción
-                </Button>
-              </div>
+              {isOwner && (
+                <>
+                  <Separator />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => push("/settings/billing")}
+                    >
+                      Administrar suscripción
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

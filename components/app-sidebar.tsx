@@ -4,7 +4,7 @@
 import {
   BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
   Home, ShoppingCart, Users, Package, PackageOpen, Settings,
-  User, Building2, Receipt,
+  User,
   Shield, Tags, Wallet, ArrowLeftRight, UserCog, Warehouse,
 } from "lucide-react"
 import Link from "next/link"
@@ -103,13 +103,15 @@ const settingsNavBase = [
 ]
 
 // Solo el propietario de la organización puede ver estas secciones —
-// tocan configuración estructural de la org (identidad legal, catálogo,
-// facturación) o la definición misma de los permisos, así que se quedan
-// fuera de la delegación por rol.
+// tocan configuración estructural de la org (catálogo) o la definición
+// misma de los permisos, así que se quedan fuera de la delegación por
+// rol. "Mi Negocio" y "Suscripción" NO van aquí — dejaron de ser módulos
+// aparte del sidebar, ahora se llega a ellos desde botones en Mi Perfil
+// (visibles solo para el dueño, ver app/(dashboard)/settings/profile),
+// pero las páginas en sí siguen existiendo bajo /settings/organization y
+// /settings/billing, cada una con su propio OwnerGuard.
 const settingsNavOwner = [
-  { title: "Mi Negocio",  url: "/settings/organization",  icon: Building2 },
   { title: "Categorías",  url: "/settings/categories",    icon: Tags },
-  { title: "Suscripción", url: "/settings/billing",       icon: Receipt },
   { title: "Roles",       url: "/settings/roles",         icon: UserCog },
 ]
 
