@@ -3,11 +3,11 @@
 // registrados) → subir archivo → preview del dry-run → confirmar → reporte.
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   FileSpreadsheet, Download, Upload, ArrowLeft, CheckCircle2,
-  XCircle, AlertTriangle, Clock, ExternalLink,
+  XCircle, AlertTriangle, Clock, ExternalLink, Warehouse as WarehouseIcon,
 } from "lucide-react";
 
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
@@ -18,10 +18,15 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import type { Product } from "@/types";
 import type { Account } from "@/hooks/swr/use-accounts";
 import type { CreditCard } from "@/hooks/swr/use-credit-cards";
@@ -92,12 +97,14 @@ export function ImportExcelModal({
 }: Props) {
   const { firebaseUser } = useAuth();
   const { format } = useCurrency();
+  const { activeWarehouses, defaultWarehouse } = useWarehouses();
 
   const [step, setStep] = useState<Step>("template");
   const [showSelector, setShowSelector] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [previewRows, setPreviewRows] = useState<DryRunRow[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [results, setResults] = useState<RowResult[]>([]);
@@ -154,6 +161,10 @@ export function ImportExcelModal({
     });
   };
 
+  useEffect(() => {
+    if (open) setWarehouseId(defaultWarehouse?.id ?? null);
+  }, [open, defaultWarehouse]);
+
   const templateAccounts = accounts.map((a) => ({ id: a.id, name: a.name }));
   const templateCards = creditCards.map((c) => ({ id: c.id, name: c.name }));
 
@@ -181,6 +192,7 @@ export function ImportExcelModal({
     if (!token) throw new Error("No autenticado");
     const formData = new FormData();
     formData.append("file", selectedFile);
+    if (warehouseId) formData.append("warehouse_id", String(warehouseId));
     const params = new URLSearchParams();
     if (opts.dryRun) params.set("dry_run", "true");
     if (opts.offset !== undefined) params.set("offset", String(opts.offset));
@@ -387,6 +399,27 @@ export function ImportExcelModal({
           {/* ── Paso 2: subir ─────────────────────────────────────────── */}
           {step === "upload" && (
             <div className="space-y-3">
+              {activeWarehouses.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <WarehouseIcon className="size-3.5 text-muted-foreground" />
+                    Bodega de destino
+                  </Label>
+                  <Select
+                    value={warehouseId ? String(warehouseId) : ""}
+                    onValueChange={(val) => setWarehouseId(Number(val))}
+                  >
+                    <SelectTrigger className="h-11 w-full">
+                      <SelectValue placeholder="Selecciona una bodega" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeWarehouses.map((w) => (
+                        <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <button
                 type="button"
                 disabled={isWorking}

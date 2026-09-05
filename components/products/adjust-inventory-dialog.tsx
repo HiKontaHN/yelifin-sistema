@@ -1,15 +1,19 @@
 ﻿// components/products/adjust-inventory-dialog.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, TrendingUp, TrendingDown, Layers } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Loader2, TrendingUp, TrendingDown, Layers, Warehouse as WarehouseIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { Product, ProductVariant } from "@/types";
 
 type AdjustType = "in" | "out";
@@ -24,12 +28,18 @@ type Props = {
 
 export function AdjustInventoryDialog({ product, variant, open, onOpenChange, onSuccess }: Props) {
   const { firebaseUser } = useAuth();
+  const { activeWarehouses, defaultWarehouse } = useWarehouses();
 
-  const [type,      setType]      = useState<AdjustType>("in");
-  const [quantity,  setQuantity]  = useState<string>("1");
-  const [notes,     setNotes]     = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [unitCost,  setUnitCost]  = useState<string>("0");
+  const [type,        setType]        = useState<AdjustType>("in");
+  const [quantity,    setQuantity]    = useState<string>("1");
+  const [notes,       setNotes]       = useState("");
+  const [isLoading,   setIsLoading]   = useState(false);
+  const [unitCost,    setUnitCost]    = useState<string>("0");
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (open) setWarehouseId(defaultWarehouse?.id ?? null);
+  }, [open, defaultWarehouse]);
 
   const handleClose = () => {
     setType("in");
@@ -59,6 +69,7 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
           quantity:   qty,
           notes:      notes.trim(),
           unit_cost:  type === "in" ? unitCost : 0,
+          ...(warehouseId ? { warehouse_id: warehouseId } : {}),
         }),
       });
 
@@ -168,6 +179,30 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
                 </button>
               </div>
             </div>
+
+            {/* Bodega — solo si hay más de una activa */}
+            {activeWarehouses.length > 1 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <WarehouseIcon className="size-3.5 text-muted-foreground" />
+                  Bodega
+                </Label>
+                <Select
+                  value={warehouseId ? String(warehouseId) : ""}
+                  onValueChange={(val) => setWarehouseId(Number(val))}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger className="h-11 w-full">
+                    <SelectValue placeholder="Selecciona una bodega" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeWarehouses.map((w) => (
+                      <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Cantidad */}
             <div className="space-y-2">

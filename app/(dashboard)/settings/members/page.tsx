@@ -1,13 +1,14 @@
 // app/(dashboard)/settings/members/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { useMe } from "@/hooks/swr/use-me";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import {
   useOrgMembers,
   useOrgRoles,
@@ -15,6 +16,7 @@ import {
   useUpdateOrgMember,
   useRemoveOrgMember,
 } from "@/hooks/swr/use-organization";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import type { OrgMember } from "@/types";
 
 import { Button }   from "@/components/ui/button";
@@ -40,6 +42,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, UserPlus, MoreHorizontal, Loader2, Crown, Users, Eye, EyeOff,
+  Warehouse as WarehouseIcon,
 } from "lucide-react";
 
 
@@ -61,18 +64,25 @@ function CreateMemberDialog({
 }) {
   const { roles } = useOrgRoles();
   const { createMemberUser, isCreating } = useCreateOrgMemberUser();
+  const { activeWarehouses, defaultWarehouse } = useWarehouses();
 
   const nonOwnerRoles = roles.filter((r) => !r.is_owner);
 
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [showPass, setShowPass] = useState(false);
-  const [name,     setName]     = useState("");
-  const [roleId,   setRoleId]   = useState("");
+  const [email,       setEmail]       = useState("");
+  const [password,    setPassword]    = useState("");
+  const [showPass,    setShowPass]    = useState(false);
+  const [name,        setName]        = useState("");
+  const [roleId,      setRoleId]      = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
 
   const reset = () => {
     setEmail(""); setPassword(""); setName(""); setRoleId(""); setShowPass(false);
+    setWarehouseId(defaultWarehouse ? String(defaultWarehouse.id) : "");
   };
+
+  useEffect(() => {
+    if (open) setWarehouseId(defaultWarehouse ? String(defaultWarehouse.id) : "");
+  }, [open, defaultWarehouse]);
 
   const handleClose = () => { reset(); onClose(); };
 
@@ -88,6 +98,7 @@ function CreateMemberDialog({
         password,
         display_name: name.trim() || undefined,
         role_id:      Number(roleId),
+        ...(warehouseId ? { default_warehouse_id: Number(warehouseId) } : {}),
       });
       toast.success("Usuario creado y agregado al equipo");
       onCreated();
@@ -164,6 +175,28 @@ function CreateMemberDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {activeWarehouses.length > 1 && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <WarehouseIcon className="size-3.5 text-muted-foreground" />
+                Bodega
+              </Label>
+              <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isCreating}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Seleccioná una bodega…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeWarehouses.map((w) => (
+                    <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Las ventas que registre este usuario descontarán de esta bodega.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -191,19 +224,26 @@ function ChangeRoleDialog({
 }) {
   const { roles } = useOrgRoles();
   const { updateMember, isUpdating } = useUpdateOrgMember();
+  const { activeWarehouses } = useWarehouses();
 
   const [roleId, setRoleId] = useState(member ? String(member.role_id) : "");
+  const [warehouseId, setWarehouseId] = useState(member?.default_warehouse_id ? String(member.default_warehouse_id) : "");
   const nonOwnerRoles = roles.filter((r) => !r.is_owner);
+
+  useEffect(() => {
+    setRoleId(member ? String(member.role_id) : "");
+    setWarehouseId(member?.default_warehouse_id ? String(member.default_warehouse_id) : "");
+  }, [member]);
 
   const handleSave = async () => {
     if (!member || !roleId) return;
     try {
-      await updateMember(member.id, Number(roleId));
-      toast.success("Rol actualizado");
+      await updateMember(member.id, Number(roleId), warehouseId ? Number(warehouseId) : null);
+      toast.success("Miembro actualizado");
       onChanged();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || "Error al actualizar rol");
+      toast.error(err.message || "Error al actualizar miembro");
     }
   };
 
@@ -211,7 +251,7 @@ function ChangeRoleDialog({
     <Dialog open={!!member} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Cambiar rol</DialogTitle>
+          <DialogTitle>Editar miembro</DialogTitle>
         </DialogHeader>
 
         {member && (
@@ -233,6 +273,25 @@ function ChangeRoleDialog({
                 </SelectContent>
               </Select>
             </div>
+
+            {activeWarehouses.length > 1 && (
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <WarehouseIcon className="size-3.5 text-muted-foreground" />
+                  Bodega
+                </Label>
+                <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isUpdating}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Seleccioná una bodega…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeWarehouses.map((w) => (
+                      <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         )}
 
@@ -252,7 +311,8 @@ function ChangeRoleDialog({
 
 export default function MembersPage() {
   const { back } = useRouter();
-  const { isOwner, isLoading: meLoading } = useMe();
+  const { isLoading: meLoading } = useMe();
+  const { can_edit: canEditTeam, can_delete: canDeleteTeam, isLoading: permLoading } = useModulePermissions("ADMIN", "TEAM");
   const { members, isLoading: membersLoading, mutate } = useOrgMembers();
   const { removeMember, isRemoving } = useRemoveOrgMember();
 
@@ -260,7 +320,7 @@ export default function MembersPage() {
   const [editMember, setEditMember] = useState<OrgMember | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
 
-  const isLoading = meLoading || membersLoading;
+  const isLoading = meLoading || membersLoading || permLoading;
 
   const handleRemove = async () => {
     if (!removingId) return;
@@ -299,7 +359,7 @@ export default function MembersPage() {
             </p>
           </div>
         </div>
-        {isOwner && (
+        {canEditTeam && (
           <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
             <UserPlus className="size-4" />
             Agregar al equipo
@@ -348,7 +408,7 @@ export default function MembersPage() {
                   </span>
                 )}
 
-                {isOwner && !m.is_owner_role && (
+                {(canEditTeam || canDeleteTeam) && !m.is_owner_role && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="size-8">
@@ -356,16 +416,20 @@ export default function MembersPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={() => setEditMember(m)}>
-                        Cambiar rol
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => setRemovingId(m.id)}
-                      >
-                        Revocar acceso
-                      </DropdownMenuItem>
+                      {canEditTeam && (
+                        <DropdownMenuItem onClick={() => setEditMember(m)}>
+                          Editar miembro
+                        </DropdownMenuItem>
+                      )}
+                      {canEditTeam && canDeleteTeam && <DropdownMenuSeparator />}
+                      {canDeleteTeam && (
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setRemovingId(m.id)}
+                        >
+                          Revocar acceso
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}

@@ -230,16 +230,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           const [lastBatch] = variantId !== null
             ? await sql`
                 SELECT id FROM inventory_batches
-                WHERE org_id     = ${orgId}
-                  AND product_id = ${item.product_id}
-                  AND variant_id = ${variantId}
+                WHERE org_id       = ${orgId}
+                  AND product_id   = ${item.product_id}
+                  AND variant_id   = ${variantId}
+                  AND warehouse_id = ${sale.warehouse_id}
                 ORDER BY received_at ASC LIMIT 1
               `
             : await sql`
                 SELECT id FROM inventory_batches
-                WHERE org_id     = ${orgId}
-                  AND product_id = ${item.product_id}
+                WHERE org_id       = ${orgId}
+                  AND product_id   = ${item.product_id}
                   AND variant_id IS NULL
+                  AND warehouse_id = ${sale.warehouse_id}
                 ORDER BY received_at ASC LIMIT 1
               `;
 
@@ -254,10 +256,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await sql`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
-              quantity, reference_type, reference_id
+              quantity, reference_type, reference_id, warehouse_id
             ) VALUES (
               ${orgId}, ${userId}, 'IN', ${item.product_id}, ${variantId},
-              ${item.quantity}, 'SALE_CANCELLED', ${saleId}
+              ${item.quantity}, 'SALE_CANCELLED', ${saleId}, ${sale.warehouse_id}
             )
           `;
         }
@@ -416,16 +418,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           ? await sql`
               SELECT COALESCE(SUM(qty_available), 0)::numeric AS available
               FROM inventory_batches
-              WHERE org_id     = ${orgId}
-                AND product_id = ${newData.product_id}
-                AND variant_id = ${newData.variant_id}
+              WHERE org_id       = ${orgId}
+                AND product_id   = ${newData.product_id}
+                AND variant_id   = ${newData.variant_id}
+                AND warehouse_id = ${sale.warehouse_id}
             `
           : await sql`
               SELECT COALESCE(SUM(qty_available), 0)::numeric AS available
               FROM inventory_batches
-              WHERE org_id     = ${orgId}
-                AND product_id = ${newData.product_id}
+              WHERE org_id       = ${orgId}
+                AND product_id   = ${newData.product_id}
                 AND variant_id IS NULL
+                AND warehouse_id = ${sale.warehouse_id}
             `;
 
         const available = Number(batchesSum?.available ?? 0);
@@ -467,18 +471,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               ? await sql`
                   SELECT id, qty_available, unit_cost
                   FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${data.product_id}
-                    AND variant_id = ${data.variant_id}
+                  WHERE org_id       = ${orgId}
+                    AND product_id   = ${data.product_id}
+                    AND variant_id   = ${data.variant_id}
+                    AND warehouse_id = ${sale.warehouse_id}
                     AND qty_available > 0
                   ORDER BY received_at ASC
                 `
               : await sql`
                   SELECT id, qty_available, unit_cost
                   FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${data.product_id}
+                  WHERE org_id       = ${orgId}
+                    AND product_id   = ${data.product_id}
                     AND variant_id IS NULL
+                    AND warehouse_id = ${sale.warehouse_id}
                     AND qty_available > 0
                   ORDER BY received_at ASC
                 `;
@@ -556,7 +562,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             // Necesita más stock → descuento FIFO atómico (ver lib/fifo.ts):
             // bajo concurrencia nunca sobregira el stock.
             const consumed = await consumeFifo(
-              sql, orgId, item.product_id, item.variant_id, item.delta, userId
+              sql, orgId, item.product_id, item.variant_id, item.delta, userId, sale.warehouse_id
             );
             if (!consumed) {
               throw new InsufficientStockError(`Producto #${item.product_id}`);
@@ -568,16 +574,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             const [lastBatch] = item.variant_id !== null
               ? await sql`
                   SELECT id FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${item.product_id}
-                    AND variant_id = ${item.variant_id}
+                  WHERE org_id       = ${orgId}
+                    AND product_id   = ${item.product_id}
+                    AND variant_id   = ${item.variant_id}
+                    AND warehouse_id = ${sale.warehouse_id}
                   ORDER BY received_at ASC LIMIT 1
                 `
               : await sql`
                   SELECT id FROM inventory_batches
-                  WHERE org_id     = ${orgId}
-                    AND product_id = ${item.product_id}
+                  WHERE org_id       = ${orgId}
+                    AND product_id   = ${item.product_id}
                     AND variant_id IS NULL
+                    AND warehouse_id = ${sale.warehouse_id}
                   ORDER BY received_at ASC LIMIT 1
                 `;
 
@@ -601,16 +609,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           const [lastBatch] = variantId !== null
             ? await sql`
                 SELECT id FROM inventory_batches
-                WHERE org_id     = ${orgId}
-                  AND product_id = ${productId}
-                  AND variant_id = ${variantId}
+                WHERE org_id       = ${orgId}
+                  AND product_id   = ${productId}
+                  AND variant_id   = ${variantId}
+                  AND warehouse_id = ${sale.warehouse_id}
                 ORDER BY received_at ASC LIMIT 1
               `
             : await sql`
                 SELECT id FROM inventory_batches
-                WHERE org_id     = ${orgId}
-                  AND product_id = ${productId}
+                WHERE org_id       = ${orgId}
+                  AND product_id   = ${productId}
                   AND variant_id IS NULL
+                  AND warehouse_id = ${sale.warehouse_id}
                 ORDER BY received_at ASC LIMIT 1
               `;
 
@@ -675,10 +685,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             await sql`
               INSERT INTO inventory_movements (
                 org_id, created_by, movement_type, product_id, variant_id,
-                quantity, reference_type, reference_id
+                quantity, reference_type, reference_id, warehouse_id
               ) VALUES (
                 ${orgId}, ${userId}, 'OUT', ${item.product_id}, ${item.variant_id},
-                ${item.quantity}, 'SALE', ${saleId}
+                ${item.quantity}, 'SALE', ${saleId}, ${sale.warehouse_id}
               )
             `;
           }
@@ -857,16 +867,18 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         const [lastBatch] = variantId !== null
           ? await sql`
               SELECT id FROM inventory_batches
-              WHERE org_id     = ${orgId}
-                AND product_id = ${item.product_id}
-                AND variant_id = ${variantId}
+              WHERE org_id       = ${orgId}
+                AND product_id   = ${item.product_id}
+                AND variant_id   = ${variantId}
+                AND warehouse_id = ${sale.warehouse_id}
               ORDER BY received_at ASC LIMIT 1
             `
           : await sql`
               SELECT id FROM inventory_batches
-              WHERE org_id     = ${orgId}
-                AND product_id = ${item.product_id}
+              WHERE org_id       = ${orgId}
+                AND product_id   = ${item.product_id}
                 AND variant_id IS NULL
+                AND warehouse_id = ${sale.warehouse_id}
               ORDER BY received_at ASC LIMIT 1
             `;
 
@@ -881,10 +893,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         await sql`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
-            quantity, reference_type, reference_id
+            quantity, reference_type, reference_id, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, 'IN', ${item.product_id}, ${variantId},
-            ${item.quantity}, 'SALE_CANCELLED', ${saleId}
+            ${item.quantity}, 'SALE_CANCELLED', ${saleId}, ${sale.warehouse_id}
           )
         `;
       }

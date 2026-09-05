@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
+import { resolveWarehouseId } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -16,7 +17,11 @@ export async function POST(request: NextRequest) {
     const { userId, orgId } = auth.data;
     const body              = await request.json();
 
-    const { product_id, variant_id, type, quantity, notes, unit_cost } = body;
+    const { product_id, variant_id, type, quantity, notes, unit_cost, warehouse_id } = body;
+
+    const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
+    if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
+    const warehouseId: number = wh.warehouseId;
 
     // ── Validaciones ───────────────────────────────────────────────
     if (!product_id)
@@ -65,16 +70,18 @@ export async function POST(request: NextRequest) {
         ? await sql`
             SELECT COALESCE(SUM(qty_available), 0)::numeric AS stock
             FROM inventory_batches
-            WHERE product_id = ${product_id}
-              AND variant_id = ${variantId}
-              AND org_id     = ${orgId}
+            WHERE product_id   = ${product_id}
+              AND variant_id   = ${variantId}
+              AND org_id       = ${orgId}
+              AND warehouse_id = ${warehouseId}
           `
         : await sql`
             SELECT COALESCE(SUM(qty_available), 0)::numeric AS stock
             FROM inventory_batches
-            WHERE product_id = ${product_id}
+            WHERE product_id   = ${product_id}
               AND variant_id IS NULL
-              AND org_id     = ${orgId}
+              AND org_id       = ${orgId}
+              AND warehouse_id = ${warehouseId}
           `;
 
       if (Number(stockRow.stock) < quantity) {
@@ -96,11 +103,11 @@ export async function POST(request: NextRequest) {
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id,
             purchase_batch_item_id,
-            qty_in, qty_available, unit_cost, received_at
+            qty_in, qty_available, unit_cost, received_at, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${product_id}, ${variantId},
             ${null},
-            ${quantity}, ${quantity}, ${unitCost}, NOW()
+            ${quantity}, ${quantity}, ${unitCost}, NOW(), ${warehouseId}
           )
           RETURNING id
         `;
@@ -108,10 +115,10 @@ export async function POST(request: NextRequest) {
         await sql`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
-            quantity, reference_type, reference_id, notes
+            quantity, reference_type, reference_id, notes, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${movementType}, ${product_id}, ${variantId},
-            ${quantity}, 'ADJUSTMENT', ${batch.id}, ${notes.trim()}
+            ${quantity}, 'ADJUSTMENT', ${batch.id}, ${notes.trim()}, ${warehouseId}
           )
         `;
 
@@ -119,7 +126,7 @@ export async function POST(request: NextRequest) {
         // ── Ajuste negativo: FIFO atómico por variante (ver lib/fifo.ts):
         // bajo concurrencia nunca sobregira el stock.
         const consumed = await consumeFifo(
-          sql, orgId, Number(product_id), variantId, Number(quantity), userId
+          sql, orgId, Number(product_id), variantId, Number(quantity), userId, warehouseId
         );
         if (!consumed) {
           throw new InsufficientStockError("el producto");
@@ -128,10 +135,10 @@ export async function POST(request: NextRequest) {
         await sql`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
-            quantity, reference_type, reference_id, notes
+            quantity, reference_type, reference_id, notes, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${movementType}, ${product_id}, ${variantId},
-            ${quantity}, 'ADJUSTMENT', ${null}, ${notes.trim()}
+            ${quantity}, 'ADJUSTMENT', ${null}, ${notes.trim()}, ${warehouseId}
           )
         `;
       }

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
+import { resolveWarehouseId } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -18,11 +19,15 @@ export async function POST(request: NextRequest) {
 
     const {
       account_id, credit_card_id, shipping_account_id, currency, exchange_rate,
-      shipping, notes, purchased_at, items,
+      shipping, notes, purchased_at, items, warehouse_id,
       status = "COMPLETED",
     } = body;
 
     const isCreditCard = !!credit_card_id && !account_id;
+
+    const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
+    if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
+    const warehouseId: number = wh.warehouseId;
 
     if (status !== "PENDING" && status !== "COMPLETED")
       return createErrorResponse("Estado inválido", 400);
@@ -143,12 +148,12 @@ export async function POST(request: NextRequest) {
         INSERT INTO purchase_batches (
           org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
           subtotal, shipping, tax, total,
-          is_paid, purchased_at, notes, status
+          is_paid, purchased_at, notes, status, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${isCreditCard ? null : account_id}, ${shippingAccId},
           ${curr}, ${rate},
           ${subtotal}, ${shippingTotal}, ${0}, ${total},
-          ${false}, ${occurredAt}, ${notes ?? null}, ${status}
+          ${false}, ${occurredAt}, ${notes ?? null}, ${status}, ${warehouseId}
         )
         RETURNING id
       `;
@@ -173,20 +178,20 @@ export async function POST(request: NextRequest) {
           await sql`
             INSERT INTO inventory_batches (
               org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-              qty_in, qty_available, unit_cost, received_at
+              qty_in, qty_available, unit_cost, received_at, warehouse_id
             ) VALUES (
               ${orgId}, ${userId}, ${item.product_id}, ${item.variant_id}, ${batchItem.id},
-              ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}
+              ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}, ${warehouseId}
             )
           `;
 
           await sql`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
-              quantity, reference_type, reference_id, notes
+              quantity, reference_type, reference_id, notes, warehouse_id
             ) VALUES (
               ${orgId}, ${userId}, 'IN', ${item.product_id}, ${item.variant_id},
-              ${item.quantity}, 'PURCHASE', ${purchaseBatchId}, ${notes ?? null}
+              ${item.quantity}, 'PURCHASE', ${purchaseBatchId}, ${notes ?? null}, ${warehouseId}
             )
           `;
         }

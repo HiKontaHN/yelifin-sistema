@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
+import { getDefaultWarehouseForUser } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -306,6 +307,10 @@ export async function POST(request: NextRequest) {
     `;
     if (!account) return createErrorResponse("Cuenta no encontrada", 404);
 
+    // Bodega de la que descuenta esta venta — la asignada a quien la
+    // registra, sin pedir selector (ver lib/warehouses.ts).
+    const warehouseId = await getDefaultWarehouseForUser(sql, orgId, userId);
+
     // ── Validar evento ──────────────────────────────────────────────────
     const eventIdNum = event_id ? Number(event_id) : null;
     if (eventIdNum) {
@@ -376,18 +381,20 @@ export async function POST(request: NextRequest) {
           ? await sql`
             SELECT id, qty_available, unit_cost
             FROM inventory_batches
-            WHERE org_id     = ${orgId}
-              AND product_id = ${item.product_id}
-              AND variant_id = ${variantId}
+            WHERE org_id       = ${orgId}
+              AND product_id   = ${item.product_id}
+              AND variant_id   = ${variantId}
+              AND warehouse_id = ${warehouseId}
               AND qty_available > 0
             ORDER BY received_at ASC
           `
           : await sql`
             SELECT id, qty_available, unit_cost
             FROM inventory_batches
-            WHERE org_id     = ${orgId}
-              AND product_id = ${item.product_id}
+            WHERE org_id       = ${orgId}
+              AND product_id   = ${item.product_id}
               AND variant_id IS NULL
+              AND warehouse_id = ${warehouseId}
               AND qty_available > 0
             ORDER BY received_at ASC
           `;
@@ -507,13 +514,13 @@ export async function POST(request: NextRequest) {
         INSERT INTO sales (
           org_id, created_by, sale_number, customer_id,
           subtotal, discount, tax_rate, tax, shipping_cost, total,
-          payment_method, account_id, event_id,
+          payment_method, account_id, event_id, warehouse_id,
           status, sold_at, notes
         ) VALUES (
           ${orgId}, ${userId}, ${saleNumber}, ${customer_id ?? null},
           ${subtotal}, ${totalDiscount}, ${taxRateNum}, ${taxAmount},
           ${shippingAmount}, ${grandTotal},
-          ${payment_method}, ${account_id}, ${eventIdNum},
+          ${payment_method}, ${account_id}, ${eventIdNum}, ${warehouseId},
           ${status}, ${occurredAt}::timestamptz, ${notes ?? null}
         )
         RETURNING id
@@ -527,7 +534,7 @@ export async function POST(request: NextRequest) {
       for (const item of processedItems) {
         if (!item.is_service) {
           const consumed = await consumeFifo(
-            sql, orgId, item.product_id, item.variant_id, item.quantity, userId
+            sql, orgId, item.product_id, item.variant_id, item.quantity, userId, warehouseId
           );
           if (!consumed) throw new InsufficientStockError(item.label);
           item.unit_cost = consumed.totalCost / item.quantity;
@@ -549,11 +556,11 @@ export async function POST(request: NextRequest) {
           await sql`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
-              quantity, reference_type, reference_id
+              quantity, reference_type, reference_id, warehouse_id
             ) VALUES (
               ${orgId}, ${userId}, 'OUT',
               ${item.product_id}, ${item.variant_id},
-              ${item.quantity}, 'SALE', ${saleId}
+              ${item.quantity}, 'SALE', ${saleId}, ${warehouseId}
             )
           `;
         }

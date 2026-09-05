@@ -155,6 +155,7 @@ export function useCreateOrgMemberUser() {
     password: string;
     display_name?: string;
     role_id: number;
+    default_warehouse_id?: number | null;
   }) => {
     setIsCreating(true);
     try {
@@ -175,12 +176,17 @@ export function useUpdateOrgMember() {
   const authFetch = useAuthFetch();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const updateMember = async (memberId: number, role_id: number) => {
+  const updateMember = async (
+    memberId: number, role_id: number, default_warehouse_id?: number | null
+  ) => {
     setIsUpdating(true);
     try {
       return await authFetch(`/api/organization/members/${memberId}`, {
         method: "PATCH",
-        body: JSON.stringify({ role_id }),
+        body: JSON.stringify({
+          role_id,
+          ...(default_warehouse_id !== undefined ? { default_warehouse_id } : {}),
+        }),
       });
     } finally {
       setIsUpdating(false);

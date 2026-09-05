@@ -13,11 +13,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, PackagePlus, Calculator, Wallet, Plus, Trash2, Clock, CreditCard, Truck } from "lucide-react";
+import { Loader2, PackagePlus, Calculator, Wallet, Plus, Trash2, Clock, CreditCard, Truck, Warehouse as WarehouseIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCreatePurchase } from "@/hooks/swr/use-purchases";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useCurrency } from "@/hooks/swr/use-currency";
@@ -79,11 +80,13 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const { createPurchase, isCreating } = useCreatePurchase();
   const { accounts } = useAccounts();
   const { creditCards } = useCreditCards();
+  const { activeWarehouses, defaultWarehouse } = useWarehouses();
   const { format, symbol, currency: businessCurrency } = useCurrency();
 
   const [paymentMode, setPaymentMode] = useState<"account" | "credit_card">("account");
   const [creditCardId, setCreditCardId] = useState<number | null>(null);
   const [shippingAccountId, setShippingAccountId] = useState<number | null>(null);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [items, setItems] = useState<LineItem[]>([
     { key: uid(), variant_key: "base", quantity: "1", unit_cost: "0" },
@@ -126,6 +129,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       setPaymentMode("account");
       setCreditCardId(null);
       setShippingAccountId(null);
+      setWarehouseId(defaultWarehouse?.id ?? null);
       reset({
         currency: "USD",
         exchange_rate: TASA_DEFAULT,
@@ -133,7 +137,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
         purchased_at: toLocalDateInput(new Date()),
       });
     }
-  }, [open, reset]);
+  }, [open, reset, defaultWarehouse]);
 
   // ── Manejo de items ────────────────────────────────────────────────
 
@@ -174,6 +178,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       await createPurchase({
         ...(isCreditCard ? { credit_card_id: creditCardId! } : { account_id: data.account_id! }),
         ...(shippingAccountId && data.shipping > 0 ? { shipping_account_id: shippingAccountId } : {}),
+        ...(warehouseId ? { warehouse_id: warehouseId } : {}),
         currency: data.currency,
         exchange_rate: data.exchange_rate,
         shipping: data.shipping,
@@ -384,6 +389,30 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
               </div>
             )}
           </div>
+
+          {/* Bodega — solo si hay más de una activa */}
+          {activeWarehouses.length > 1 && (
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <WarehouseIcon className="size-3.5 text-muted-foreground" />
+                Bodega de destino
+              </Label>
+              <Select
+                value={warehouseId ? String(warehouseId) : ""}
+                onValueChange={(val) => setWarehouseId(Number(val))}
+                disabled={isCreating}
+              >
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="Selecciona una bodega" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeWarehouses.map((w) => (
+                    <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <Separator />
 

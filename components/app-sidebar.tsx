@@ -5,7 +5,7 @@ import {
   BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
   Home, ShoppingCart, Users, Package, PackageOpen, Settings,
   User, Building2, Receipt,
-  Shield, Tags, Wallet, ArrowLeftRight, UserCog,
+  Shield, Tags, Wallet, ArrowLeftRight, UserCog, Warehouse,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -102,13 +102,23 @@ const settingsNavBase = [
   { title: "Mi Perfil",   url: "/settings/profile",       icon: User },
 ]
 
-// Solo el propietario de la organización puede ver estas secciones.
+// Solo el propietario de la organización puede ver estas secciones —
+// tocan configuración estructural de la org (identidad legal, catálogo,
+// facturación) o la definición misma de los permisos, así que se quedan
+// fuera de la delegación por rol.
 const settingsNavOwner = [
   { title: "Mi Negocio",  url: "/settings/organization",  icon: Building2 },
   { title: "Categorías",  url: "/settings/categories",    icon: Tags },
   { title: "Suscripción", url: "/settings/billing",       icon: Receipt },
-  { title: "Equipo",      url: "/settings/members",       icon: Users },
   { title: "Roles",       url: "/settings/roles",         icon: UserCog },
+]
+
+// Delegable vía permisos de rol (ADMIN.TEAM / ADMIN.WAREHOUSES) — el dueño
+// siempre las ve (getModulePermissions ya le da acceso total), y un
+// miembro no-dueño las ve si su rol tiene can_view en el subitem.
+const settingsNavDelegable: NavItemDef[] = [
+  { title: "Equipo",  url: "/settings/members",    icon: Users,     module: "ADMIN", subitem: "TEAM" },
+  { title: "Bodegas", url: "/settings/warehouses", icon: Warehouse, module: "ADMIN", subitem: "WAREHOUSES" },
 ]
 
 // ── Icon-only item (collapsed) ─────────────────────────────────────────
@@ -361,6 +371,7 @@ export function AppSidebar() {
                   submenu: [
                     ...settingsNavBase,
                     ...(isOwner ? settingsNavOwner : []),
+                    ...settingsNavDelegable.filter(item => canViewModule(item.module, item.subitem)),
                   ],
                 }])}
               </SidebarMenu>

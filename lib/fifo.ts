@@ -33,7 +33,8 @@ export async function consumeFifo(
   productId: number,
   variantId: number | null,
   quantity: number,
-  userId?: number | null
+  userId?: number | null,
+  warehouseId?: number | null
 ): Promise<FifoResult | null> {
   let remaining = quantity;
   let totalCost = 0;
@@ -50,6 +51,7 @@ export async function consumeFifo(
               AND product_id = ${productId}
               AND variant_id = ${variantId}
               AND qty_available > 0
+              AND (${warehouseId ?? null}::bigint IS NULL OR warehouse_id = ${warehouseId ?? null})
             ORDER BY received_at ASC
           `
         : await sql`
@@ -58,6 +60,7 @@ export async function consumeFifo(
               AND product_id = ${productId}
               AND variant_id IS NULL
               AND qty_available > 0
+              AND (${warehouseId ?? null}::bigint IS NULL OR warehouse_id = ${warehouseId ?? null})
             ORDER BY received_at ASC
           `;
 

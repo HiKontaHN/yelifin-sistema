@@ -1,7 +1,7 @@
 // app/api/organization/members/create-user/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, verifyResourceLimit } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, verifyResourceLimit, requireModule } from "@/lib/auth";
 import { adminAuth } from "@/lib/firebase-admin";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -10,9 +10,8 @@ export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede crear miembros", 403);
-  }
+  const denyTeam = await requireModule(auth.data, 'ADMIN', 'canEdit', 'TEAM');
+  if (denyTeam) return denyTeam;
 
   const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
   if (denyFeature) return denyFeature;
@@ -24,12 +23,22 @@ export async function POST(request: NextRequest) {
 
   try {
     const { orgId } = auth.data;
-    const { email, password, display_name, role_id } = await request.json();
+    const { email, password, display_name, role_id, default_warehouse_id } = await request.json();
 
     if (!email?.trim())    return createErrorResponse("El email es requerido", 400);
     if (!password?.trim()) return createErrorResponse("La contraseña es requerida", 400);
     if (password.length < 6) return createErrorResponse("La contraseña debe tener al menos 6 caracteres", 400);
     if (!role_id)          return createErrorResponse("El rol es requerido", 400);
+
+    let defaultWarehouseId: number | null = null;
+    if (default_warehouse_id) {
+      const [w] = await sql`
+        SELECT id FROM warehouses
+        WHERE id = ${Number(default_warehouse_id)} AND org_id = ${orgId} AND is_active = TRUE
+      `;
+      if (!w) return createErrorResponse("Bodega no encontrada o inactiva", 400);
+      defaultWarehouseId = Number(w.id);
+    }
 
     // Verificar que el rol pertenece a esta org y no es el rol owner
     const [role] = await sql`
@@ -96,10 +105,10 @@ export async function POST(request: NextRequest) {
         )
       `;
 
-      // Agregar como miembro de la org con el rol seleccionado
+      // Agregar como miembro de la org con el rol y bodega seleccionados
       [member] = await sql`
-        INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
-        VALUES (${orgId}, ${user.id}, ${role_id}, NOW())
+        INSERT INTO organization_members (org_id, user_id, role_id, default_warehouse_id, joined_at)
+        VALUES (${orgId}, ${user.id}, ${role_id}, ${defaultWarehouseId}, NOW())
         RETURNING id
       `;
     } catch (pgError: any) {
@@ -113,12 +122,14 @@ export async function POST(request: NextRequest) {
     // Devolver el miembro completo
     const [result] = await sql`
       SELECT
-        om.id, om.user_id, om.role_id, om.is_active, om.joined_at,
+        om.id, om.user_id, om.role_id, om.is_active, om.joined_at, om.default_warehouse_id,
         u.email, u.display_name,
-        r.name AS role_name, r.is_owner AS is_owner_role
+        r.name AS role_name, r.is_owner AS is_owner_role,
+        w.name AS default_warehouse_name
       FROM organization_members om
       JOIN users     u ON u.id = om.user_id
       JOIN org_roles r ON r.id = om.role_id
+      LEFT JOIN warehouses w ON w.id = om.default_warehouse_id
       WHERE om.id = ${member.id}
     `;
 

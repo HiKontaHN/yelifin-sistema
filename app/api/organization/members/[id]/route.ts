@@ -1,7 +1,7 @@
 // app/api/organization/members/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -13,17 +13,34 @@ export async function PATCH(
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede modificar miembros", 403);
-  }
+  const denyTeam = await requireModule(auth.data, 'ADMIN', 'canEdit', 'TEAM');
+  if (denyTeam) return denyTeam;
 
   try {
     const { orgId } = auth.data;
     const { id } = await params;
     const memberId = Number(id);
-    const { role_id } = await request.json();
+    const body = await request.json();
+    const { role_id } = body;
 
     if (!role_id) return createErrorResponse("role_id es requerido", 400);
+
+    // Bodega asignada a este miembro (de dónde descuentan sus ventas) — solo
+    // se toca si el body trae la clave explícitamente. null la desasigna
+    // (cae a la bodega default de la org).
+    let defaultWarehouseId: number | null | undefined = undefined;
+    if ("default_warehouse_id" in body) {
+      if (body.default_warehouse_id === null) {
+        defaultWarehouseId = null;
+      } else {
+        const [w] = await sql`
+          SELECT id FROM warehouses
+          WHERE id = ${Number(body.default_warehouse_id)} AND org_id = ${orgId} AND is_active = TRUE
+        `;
+        if (!w) return createErrorResponse("Bodega no encontrada o inactiva", 400);
+        defaultWarehouseId = Number(w.id);
+      }
+    }
 
     // Verificar que el rol pertenece a esta org
     const [role] = await sql`
@@ -50,19 +67,22 @@ export async function PATCH(
 
     const [updated] = await sql`
       UPDATE organization_members
-      SET role_id = ${role_id}
+      SET role_id = ${role_id},
+          default_warehouse_id = CASE WHEN ${defaultWarehouseId !== undefined} THEN ${defaultWarehouseId ?? null} ELSE default_warehouse_id END
       WHERE id = ${memberId} AND org_id = ${orgId}
       RETURNING id, user_id, role_id, is_active, joined_at
     `;
 
     const [result] = await sql`
       SELECT
-        om.id, om.user_id, om.role_id, om.is_active, om.joined_at,
+        om.id, om.user_id, om.role_id, om.is_active, om.joined_at, om.default_warehouse_id,
         u.email, u.display_name,
-        r.name AS role_name, r.is_owner AS is_owner_role
+        r.name AS role_name, r.is_owner AS is_owner_role,
+        w.name AS default_warehouse_name
       FROM organization_members om
       JOIN users u     ON u.id = om.user_id
       JOIN org_roles r ON r.id = om.role_id
+      LEFT JOIN warehouses w ON w.id = om.default_warehouse_id
       WHERE om.id = ${updated.id}
     `;
 
@@ -81,9 +101,8 @@ export async function DELETE(
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede revocar acceso", 403);
-  }
+  const denyTeam = await requireModule(auth.data, 'ADMIN', 'canDelete', 'TEAM');
+  if (denyTeam) return denyTeam;
 
   try {
     const { orgId, userId } = auth.data;

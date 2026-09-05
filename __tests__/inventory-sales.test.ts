@@ -623,6 +623,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // 1. Account validation
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // 1b. getDefaultWarehouseForUser: organization_members join warehouses
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // 2. Product lookup
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // 3. FIFO batches pre-check (no variant)
@@ -728,6 +730,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     // Account valid
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product found
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // Only 2 units in stock but we request 5
@@ -806,6 +810,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account valid
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product is_service = true
     mockSqlImpl.mockResolvedValueOnce([{ id: 2, name: "Consultoría", is_service: true }]);
     // BEGIN
@@ -877,6 +883,8 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Pantalón", is_service: false }]);
     // Batches pre-check (stock check still runs to verify availability)
@@ -926,6 +934,8 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Zapatos", is_service: false }]);
     // Batches pre-check
@@ -1230,6 +1240,8 @@ describe("POST /api/sales – FIFO with variant_id", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product (physical)
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // Variant lookup → not found
@@ -1256,6 +1268,8 @@ describe("POST /api/sales – FIFO with variant_id", () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // getDefaultWarehouseForUser
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // Variant found

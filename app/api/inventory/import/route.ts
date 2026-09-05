@@ -20,6 +20,7 @@ import {
   type ResolvedRow,
 } from "@/lib/import-inventory";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
+import { resolveWarehouseId } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -53,6 +54,10 @@ export async function POST(request: NextRequest) {
     if (!file) return createErrorResponse("No se recibió ningún archivo", 400);
     if (file.size > MAX_FILE_BYTES)
       return createErrorResponse("El archivo no puede superar 5 MB", 400);
+
+    const wh = await resolveWarehouseId(sql, orgId, formData.get("warehouse_id") as string | null);
+    if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
+    const warehouseId: number = wh.warehouseId;
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const { rows, error: parseError } = parseWorkbook(buffer);
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
       try {
-        const purchaseId = await executeRow(row, orgId, userId, importBatchId);
+        const purchaseId = await executeRow(row, orgId, userId, importBatchId, warehouseId);
         results.push({ ...rowResult(row, "ok"), ...(purchaseId ? { purchaseId } : {}) });
       } catch (rowError) {
         console.error(`Import fila ${row.rowNumber}:`, rowError);
@@ -224,7 +229,8 @@ async function executeRow(
   row: ResolvedRow,
   orgId: number,
   userId: number,
-  importBatchId: string | null
+  importBatchId: string | null,
+  warehouseId: number
 ): Promise<number | null> {
   let productId = row.productId;
 
@@ -264,13 +270,13 @@ async function executeRow(
     const [batch] = await sql`
       INSERT INTO purchase_batches (
         org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
-        subtotal, shipping, tax, total, is_paid, purchased_at, notes, status, import_batch_id
+        subtotal, shipping, tax, total, is_paid, purchased_at, notes, status, import_batch_id, warehouse_id
       ) VALUES (
         ${orgId}, ${userId},
         ${hasPayment && !isCreditCard ? row.account!.id : null}, ${null},
         ${"HNL"}, ${1},
         ${totalCost}, ${0}, ${0}, ${totalCost},
-        ${false}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}, ${importBatchId}
+        ${false}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}, ${importBatchId}, ${warehouseId}
       )
       RETURNING id
     `;
@@ -325,19 +331,19 @@ async function executeRow(
       await sql`
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-          qty_in, qty_available, unit_cost, received_at
+          qty_in, qty_available, unit_cost, received_at, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${productId}, ${row.variantId}, ${batchItem.id},
-          ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}
+          ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
         )
       `;
       await sql`
         INSERT INTO inventory_movements (
           org_id, created_by, movement_type, product_id, variant_id,
-          quantity, reference_type, reference_id, notes
+          quantity, reference_type, reference_id, notes, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, 'IN', ${productId}, ${row.variantId},
-          ${quantity}, 'PURCHASE', ${purchaseId}, ${"Importación Excel"}
+          ${quantity}, 'PURCHASE', ${purchaseId}, ${"Importación Excel"}, ${warehouseId}
         )
       `;
     }
@@ -346,19 +352,19 @@ async function executeRow(
     await sql`
       INSERT INTO inventory_batches (
         org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-        qty_in, qty_available, unit_cost, received_at
+        qty_in, qty_available, unit_cost, received_at, warehouse_id
       ) VALUES (
         ${orgId}, ${userId}, ${productId}, ${row.variantId}, ${null},
-        ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}
+        ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
       )
     `;
     await sql`
       INSERT INTO inventory_movements (
         org_id, created_by, movement_type, product_id, variant_id,
-        quantity, reference_type, reference_id, notes
+        quantity, reference_type, reference_id, notes, warehouse_id
       ) VALUES (
         ${orgId}, ${userId}, 'IN', ${productId}, ${row.variantId},
-        ${quantity}, 'INITIAL', ${null}, ${"Importación Excel"}
+        ${quantity}, 'INITIAL', ${null}, ${"Importación Excel"}, ${warehouseId}
       )
     `;
   }

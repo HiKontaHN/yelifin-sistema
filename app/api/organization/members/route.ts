@@ -20,13 +20,16 @@ export async function GET(request: NextRequest) {
         om.is_active,
         om.joined_at,
         om.created_at,
+        om.default_warehouse_id,
         u.email,
         u.display_name,
         r.name     AS role_name,
-        r.is_owner AS is_owner_role
+        r.is_owner AS is_owner_role,
+        w.name     AS default_warehouse_name
       FROM organization_members om
       JOIN users     u ON u.id = om.user_id
       JOIN org_roles r ON r.id = om.role_id
+      LEFT JOIN warehouses w ON w.id = om.default_warehouse_id
       WHERE om.org_id = ${orgId}
       ORDER BY om.joined_at ASC
     `;

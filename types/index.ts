@@ -159,6 +159,8 @@ export interface OrgMember {
   display_name:  string | null;
   role_name:     string;
   is_owner_role: boolean;
+  default_warehouse_id:   number | null;
+  default_warehouse_name: string | null;
 }
 
 // Permisos por módulo, y dentro de cada módulo por subitem (ver

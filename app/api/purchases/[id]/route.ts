@@ -111,7 +111,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     // ── Validar que la compra existe y está PENDING ─────────────────
     const [purchase] = await sql`
-      SELECT id, account_id, shipping_account_id, status, shipping, subtotal, total, purchased_at, notes
+      SELECT id, account_id, shipping_account_id, status, shipping, subtotal, total, purchased_at, notes, warehouse_id
       FROM purchase_batches
       WHERE id = ${purchaseId} AND org_id = ${orgId}
     `;
@@ -268,20 +268,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         await sql`
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-            qty_in, qty_available, unit_cost, received_at
+            qty_in, qty_available, unit_cost, received_at, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${item.product_id}, ${item.variant_id}, ${item.id},
-            ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}
+            ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}, ${purchase.warehouse_id}
           )
         `;
 
         await sql`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
-            quantity, reference_type, reference_id, notes
+            quantity, reference_type, reference_id, notes, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, 'IN', ${item.product_id}, ${item.variant_id},
-            ${item.quantity}, 'PURCHASE', ${purchaseId}, ${purchase.notes ?? null}
+            ${item.quantity}, 'PURCHASE', ${purchaseId}, ${purchase.notes ?? null}, ${purchase.warehouse_id}
           )
         `;
       }

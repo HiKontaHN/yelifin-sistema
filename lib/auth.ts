@@ -372,7 +372,7 @@ export async function getModulePermissions(
 
 export async function verifyResourceLimit(
   orgId: number,
-  resourceType: "products" | "sales" | "transactions" | "accounts" | "supplies" | "users"
+  resourceType: "products" | "sales" | "transactions" | "accounts" | "supplies" | "users" | "warehouses"
 ) {
   try {
     const limits: Record<string, { column: string; countQuery: () => Promise<number> }> = {
@@ -381,6 +381,16 @@ export async function verifyResourceLimit(
         countQuery: async () => {
           const [r] = await sql`
             SELECT COUNT(*) AS count FROM organization_members
+            WHERE org_id = ${orgId} AND is_active = TRUE
+          `;
+          return Number(r.count);
+        },
+      },
+      warehouses: {
+        column: "max_warehouses",
+        countQuery: async () => {
+          const [r] = await sql`
+            SELECT COUNT(*) AS count FROM warehouses
             WHERE org_id = ${orgId} AND is_active = TRUE
           `;
           return Number(r.count);
@@ -444,7 +454,7 @@ export async function verifyResourceLimit(
 
     const [plan] = await sql`
       SELECT sp.max_products, sp.max_sales_per_month, sp.max_transactions_per_month,
-             sp.max_accounts, sp.max_supplies, sp.max_users
+             sp.max_accounts, sp.max_supplies, sp.max_users, sp.max_warehouses
       FROM org_subscriptions os
       JOIN subscription_plans sp ON sp.id = os.plan_id
       WHERE os.org_id = ${orgId}
@@ -470,6 +480,7 @@ export async function verifyResourceLimit(
         accounts: "Has alcanzado el límite de cuentas para tu plan",
         supplies: "Has alcanzado el límite de suministros para tu plan",
         users: "Has alcanzado el límite de usuarios de tu equipo para tu plan",
+        warehouses: "Has alcanzado el límite de bodegas para tu plan",
       };
 
       return {
