@@ -34,7 +34,7 @@ function ProfitReportPageInner() {
   const { firebaseUser }             = useAuth();
   const { summary, byMonth, byProduct, expenses, isLoading } = useProfitReport(from, to);
   const [productPage, setProductPage] = useState(1);
-  const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("REPORTS");
+  const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("REPORTS", "PROFIT");
 
   useEffect(() => { setProductPage(1); }, [from, to]);
 

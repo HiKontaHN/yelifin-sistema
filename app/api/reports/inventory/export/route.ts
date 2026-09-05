@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
-import { getInventoryProducts, getInventoryMovements, computeInventorySummary } from "@/lib/reports/queries";
+import { getInventoryProducts, getInventoryMovements, computeInventorySummary, getInventorySalesVelocity, computeInventoryVelocity } from "@/lib/reports/queries";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -21,7 +21,10 @@ async function generatePDF(
   summary: any,
   products: any[],
   movements: any[],
+  velocity: any,
   symbol: string,
+  showCosts: boolean,
+  showProfit: boolean,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -87,15 +90,16 @@ async function generatePDF(
   drawPageFooter();
   let y = 24;
 
-  // KPI boxes
+  // KPI boxes — "Valor en inventario" solo si el rol puede ver costos
   const alertCount = summary.low_stock_count + summary.zero_stock_count;
-  const kpiW = (CONTENT_W - 9) / 4;
   const kpis = [
     { label: "Productos activos",     value: String(summary.total_products),            bg: C_KPI_BLUE,  tc: C_PRIMARY as [number,number,number] },
     { label: "Unidades en stock",     value: summary.total_stock.toLocaleString("es-HN"), bg: C_KPI_BLUE,  tc: C_PRIMARY as [number,number,number] },
-    { label: "Valor en inventario",   value: fmtHNL(summary.total_stock_value, symbol), bg: C_KPI_GREEN, tc: C_GREEN   as [number,number,number] },
+    ...(showCosts ? [{ label: "Valor en inventario", value: fmtHNL(summary.total_stock_value, symbol), bg: C_KPI_GREEN, tc: C_GREEN as [number,number,number] }] : []),
     { label: "Stock bajo / agotado",  value: `${summary.low_stock_count} / ${summary.zero_stock_count}`, bg: alertCount > 0 ? C_KPI_RED : C_KPI_GREEN, tc: (alertCount > 0 ? C_RED : C_GREEN) as [number,number,number] },
+    ...(showCosts && velocity ? [{ label: "Valor sin movimiento", value: fmtHNL(velocity.dead_stock_value, symbol), bg: velocity.dead_stock_value > 0 ? C_KPI_AMBER : C_KPI_GREEN, tc: (velocity.dead_stock_value > 0 ? C_AMBER : C_GREEN) as [number,number,number] }] : []),
   ];
+  const kpiW = (CONTENT_W - (kpis.length - 1) * 3) / kpis.length;
   kpis.forEach((kpi, i) => {
     const x = MARGIN + i * (kpiW + 3);
     doc.setFillColor(...kpi.bg);
@@ -111,8 +115,8 @@ async function generatePDF(
   });
   y += 28;
 
-  // Barra visual de stock por valor (top 10)
-  const top10 = products.slice(0, 10);
+  // Barra visual de stock por valor (top 10) — requiere ver costos/valor
+  const top10 = showCosts ? products.slice(0, 10) : [];
   if (top10.length > 0) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
@@ -159,39 +163,43 @@ async function generatePDF(
   doc.text("Stock por producto", MARGIN, y);
   y += 5;
 
+  // Columnas condicionadas por permiso — igual que la vista en pantalla:
+  // costo/valor requieren showCosts, margen requiere showProfit.
+  const stockCols: { key: string; header: string; align: "left" | "right" | "center"; width?: number; get: (p: any) => any }[] = [
+    { key: "name",  header: "Producto",             align: "left",  get: p => p.name },
+    { key: "sku",   header: "SKU",                  align: "left",  width: 22, get: p => p.sku || "—" },
+    { key: "stock", header: "Stock",                align: "right", width: 14, get: p => p.stock },
+    { key: "price", header: `Precio (${symbol})`,   align: "right", width: 28, get: p => fmtHNL(p.price, symbol) },
+    ...(showCosts ? [
+      { key: "avg_cost",    header: `Costo prom. (${symbol})`, align: "right" as const, width: 28, get: (p: any) => fmtHNL(p.avg_cost, symbol) },
+      { key: "stock_value", header: `Valor inv. (${symbol})`,  align: "right" as const, width: 30, get: (p: any) => fmtHNL(p.stock_value, symbol) },
+    ] : []),
+    ...(showProfit ? [
+      { key: "margin_pct", header: "Margen %", align: "center" as const, width: 18, get: (p: any) => p.margin_pct != null ? `${fmtN(p.margin_pct, 1)}%` : "—" },
+    ] : []),
+  ];
+  const stockColIdx  = stockCols.findIndex(c => c.key === "stock");
+  const marginColIdx = stockCols.findIndex(c => c.key === "margin_pct");
+
   autoTable(doc, {
     startY: y,
-    head:   [["Producto", "SKU", "Stock", `Precio (${symbol})`, `Costo prom. (${symbol})`, `Valor inv. (${symbol})`, "Margen %"]],
-    body:   products.map(p => [
-      p.name,
-      p.sku || "—",
-      p.stock,
-      fmtHNL(p.price, symbol),
-      fmtHNL(p.avg_cost, symbol),
-      fmtHNL(p.stock_value, symbol),
-      p.margin_pct != null ? `${fmtN(p.margin_pct, 1)}%` : "—",
-    ]),
+    head:   [stockCols.map(c => c.header)],
+    body:   products.map(p => stockCols.map(c => c.get(p))),
     styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
     headStyles:         cleanHeadStyles,
-    columnStyles: {
-      0: { halign: "left"   },
-      1: { halign: "left",   cellWidth: 22 },
-      2: { halign: "right",  cellWidth: 14 },
-      3: { halign: "right",  cellWidth: 28 },
-      4: { halign: "right",  cellWidth: 28 },
-      5: { halign: "right",  cellWidth: 30, fontStyle: "bold" },
-      6: { halign: "center", cellWidth: 18 },
-    },
+    columnStyles: Object.fromEntries(
+      stockCols.map((c, i) => [i, { halign: c.align, ...(c.width ? { cellWidth: c.width } : {}), ...(c.key === "stock_value" ? { fontStyle: "bold" as const } : {}) }])
+    ),
     alternateRowStyles: { fillColor: C_BG_SUBTLE },
     margin:             { left: MARGIN, right: MARGIN },
     didParseCell: (data: any) => {
-      if (data.section === "body" && data.column.index === 2) {
+      if (data.section === "body" && data.column.index === stockColIdx) {
         const stock = Number(data.cell.raw);
         if (stock === 0)      data.cell.styles.textColor = C_RED;
         else if (stock <= 5)  data.cell.styles.textColor = C_AMBER;
         if (stock <= 5) data.cell.styles.fontStyle = "bold";
       }
-      if (data.section === "body" && data.column.index === 6 && data.cell.raw !== "—") {
+      if (marginColIdx >= 0 && data.section === "body" && data.column.index === marginColIdx && data.cell.raw !== "—") {
         const pct = parseFloat(String(data.cell.raw));
         if (pct >= 30)      data.cell.styles.textColor = C_GREEN;
         else if (pct >= 10) data.cell.styles.textColor = C_AMBER;
@@ -269,6 +277,82 @@ async function generatePDF(
     });
   }
 
+  // ── Página: Rotación (más vendidos / sin movimiento) ─────────────────
+  if (velocity && (velocity.top_movers.length > 0 || velocity.slow_movers.length > 0)) {
+    doc.addPage();
+    page++;
+    drawPageHeader(page);
+    drawPageFooter();
+    y = 28;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...C_PRIMARY);
+    doc.text(`Productos más vendidos — últimos ${velocity.window_days} días`, MARGIN, y);
+    y += 5;
+
+    autoTable(doc, {
+      startY: y,
+      head:   [["Producto", "SKU", "Vendidos", `Ingresos (${symbol})`]],
+      body:   velocity.top_movers.length > 0
+        ? velocity.top_movers.map((p: any) => [p.name, p.sku || "—", p.qty_sold, fmtHNL(p.revenue, symbol)])
+        : [["Sin ventas en el período", "", "", ""]],
+      styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
+      headStyles:         cleanHeadStyles,
+      columnStyles: {
+        0: { halign: "left"  },
+        1: { halign: "left",  cellWidth: 22 },
+        2: { halign: "right", cellWidth: 20, fontStyle: "bold", textColor: C_GREEN },
+        3: { halign: "right", cellWidth: 30 },
+      },
+      alternateRowStyles: { fillColor: C_BG_SUBTLE },
+      margin:             { left: MARGIN, right: MARGIN },
+      didDrawPage: (data: any) => {
+        if (data.pageNumber > 1) {
+          page++;
+          drawPageHeader(page);
+          drawPageFooter();
+        }
+      },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...C_PRIMARY);
+    doc.text(`Productos sin movimiento — últimos ${velocity.window_days} días`, MARGIN, y);
+    y += 5;
+
+    const slowCols = showCosts ? ["Producto", "SKU", "Stock", `Valor en stock (${symbol})`] : ["Producto", "SKU", "Stock"];
+    autoTable(doc, {
+      startY: y,
+      head:   [slowCols],
+      body:   velocity.slow_movers.length > 0
+        ? velocity.slow_movers.map((p: any) => showCosts
+            ? [p.name, p.sku || "—", p.stock, fmtHNL(p.stock_value, symbol)]
+            : [p.name, p.sku || "—", p.stock])
+        : [showCosts ? ["Todo el stock tuvo ventas en el período", "", "", ""] : ["Todo el stock tuvo ventas en el período", "", ""]],
+      styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
+      headStyles:         cleanHeadStyles,
+      columnStyles: {
+        0: { halign: "left"  },
+        1: { halign: "left",  cellWidth: 22 },
+        2: { halign: "right", cellWidth: 20 },
+        ...(showCosts ? { 3: { halign: "right" as const, cellWidth: 34, fontStyle: "bold" as const, textColor: C_AMBER } } : {}),
+      },
+      alternateRowStyles: { fillColor: C_BG_SUBTLE },
+      margin:             { left: MARGIN, right: MARGIN },
+      didDrawPage: (data: any) => {
+        if (data.pageNumber > 1) {
+          page++;
+          drawPageHeader(page);
+          drawPageFooter();
+        }
+      },
+    });
+  }
+
   return new Uint8Array(doc.output("arraybuffer"));
 }
 
@@ -281,25 +365,25 @@ export async function POST(request: NextRequest) {
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.inventory');
   if (denyFeature) return denyFeature;
 
-  // El documento exportado incluye costos y márgenes — requiere ambos permisos
+  // Costos/márgenes se redactan del documento igual que en pantalla —
+  // no se bloquea la exportación completa por no tener uno de los dos.
   const perms = await getModulePermissions(auth.data, 'REPORTS', 'INVENTORY');
-  if (!perms.showCosts || !perms.showProfit) {
-    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y márgenes)", 403);
-  }
 
   try {
     const { orgId } = auth.data;
     const body       = await request.json();
     const symbol     = (body.symbol ?? "L") as string;
 
-    const [products, movements] = await Promise.all([
+    const [products, movements, velocityRows] = await Promise.all([
       getInventoryProducts(sql, orgId),
       getInventoryMovements(sql, orgId),
+      getInventorySalesVelocity(sql, orgId),
     ]);
 
-    const summary = computeInventorySummary(products, 5);
+    const summary  = computeInventorySummary(products, 5);
+    const velocity = computeInventoryVelocity(products, velocityRows);
 
-    const pdfBuf = await generatePDF(summary, products, movements, symbol);
+    const pdfBuf = await generatePDF(summary, products, movements, velocity, symbol, perms.showCosts, perms.showProfit);
     const today  = new Date().toISOString().slice(0, 10);
 
     return new Response(pdfBuf.buffer as ArrayBuffer, {

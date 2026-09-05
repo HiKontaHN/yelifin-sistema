@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
-import { getInventoryProducts, getInventoryMovements, computeInventorySummary } from "@/lib/reports/queries";
+import { getInventoryProducts, getInventoryMovements, computeInventorySummary, getInventorySalesVelocity, computeInventoryVelocity } from "@/lib/reports/queries";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -19,17 +19,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const lowStockThreshold = Number(searchParams.get("low_stock") ?? "5") || 5;
 
-    const [products, movements] = await Promise.all([
+    const [products, movements, velocityRows] = await Promise.all([
       getInventoryProducts(sql, orgId),
       getInventoryMovements(sql, orgId),
+      getInventorySalesVelocity(sql, orgId),
     ]);
 
-    const summary = computeInventorySummary(products, lowStockThreshold);
+    const summary  = computeInventorySummary(products, lowStockThreshold);
+    const velocity = computeInventoryVelocity(products, velocityRows);
 
     // Permisos atómicos del rol: anular costos/márgenes si no puede verlos
     const perms = await getModulePermissions(auth.data, 'REPORTS', 'INVENTORY');
-    const payload = { summary, products, movements };
-    if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["avg_cost", "stock_value", "total_stock_value"]));
+    const payload = { summary, products, movements, velocity };
+    if (!perms.showCosts)  nullifyKeysDeep(payload, new Set(["avg_cost", "stock_value", "total_stock_value", "dead_stock_value"]));
     if (!perms.showProfit) nullifyKeysDeep(payload, new Set(["margin_pct"]));
 
     return Response.json(payload);

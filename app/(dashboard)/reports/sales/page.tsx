@@ -34,7 +34,7 @@ function SalesReportPageInner() {
   const { firebaseUser }             = useAuth();
   const { summary, byDay, byProduct, isLoading } = useSalesReport(from, to);
   const [productPage, setProductPage] = useState(1);
-  const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("REPORTS");
+  const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("REPORTS", "SALES");
 
   useEffect(() => { setProductPage(1); }, [from, to]);
 

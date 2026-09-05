@@ -29,6 +29,7 @@ async function generatePDF(
   symbol: string,
   from: string,
   to: string,
+  showCosts: boolean,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -100,7 +101,7 @@ async function generatePDF(
     const AXIS_W  = 18;
     const plotW   = CONTENT_W - AXIS_W;
     const plotH   = CHART_H - 8;
-    const maxVal  = byMonth.reduce((m, d) => Math.max(m, d.revenue, d.cogs, d.profit), 0);
+    const maxVal  = byMonth.reduce((m, d) => Math.max(m, d.revenue, showCosts ? d.cogs : 0, d.profit), 0);
     if (maxVal === 0) return startY;
 
     const TICKS   = 4;
@@ -126,13 +127,15 @@ async function generatePDF(
     byMonth.forEach((d, i) => {
       const cx    = plotX + i * groupW + groupW / 2;
       const hRev  = (d.revenue / maxVal) * plotH;
-      const hCogs = (d.cogs / maxVal) * plotH;
+      const hCogs = showCosts ? (d.cogs / maxVal) * plotH : 0;
       const hProf = Math.max((d.profit / maxVal) * plotH, 0);
 
       doc.setFillColor(...C_BAR_REV);
       doc.rect(cx - BAR_W - GAP, baseY - hRev, BAR_W, Math.max(hRev, 0.3), "F");
-      doc.setFillColor(...C_BAR_COGS);
-      doc.rect(cx,               baseY - hCogs, BAR_W, Math.max(hCogs, 0.3), "F");
+      if (showCosts) {
+        doc.setFillColor(...C_BAR_COGS);
+        doc.rect(cx,               baseY - hCogs, BAR_W, Math.max(hCogs, 0.3), "F");
+      }
       doc.setFillColor(...C_BAR_PROF);
       doc.rect(cx + BAR_W + GAP, baseY - hProf, BAR_W, Math.max(hProf, 0.3), "F");
 
@@ -153,10 +156,12 @@ async function generatePDF(
     doc.setTextColor(...C_GRAY_SEC);
     doc.setFillColor(...C_BAR_REV);  doc.rect(plotX, legY - 2.5, 5, 2.5, "F");
     doc.text("Ingresos", plotX + 6.5, legY);
-    doc.setFillColor(...C_BAR_COGS); doc.rect(plotX + 34, legY - 2.5, 5, 2.5, "F");
-    doc.text("Costo", plotX + 40.5, legY);
-    doc.setFillColor(...C_BAR_PROF); doc.rect(plotX + 68, legY - 2.5, 5, 2.5, "F");
-    doc.text("Utilidad", plotX + 74.5, legY);
+    if (showCosts) {
+      doc.setFillColor(...C_BAR_COGS); doc.rect(plotX + 34, legY - 2.5, 5, 2.5, "F");
+      doc.text("Costo", plotX + 40.5, legY);
+    }
+    doc.setFillColor(...C_BAR_PROF); doc.rect(plotX + (showCosts ? 68 : 34), legY - 2.5, 5, 2.5, "F");
+    doc.text("Utilidad", plotX + (showCosts ? 74.5 : 40.5), legY);
 
     doc.setTextColor(0, 0, 0);
     return startY + CHART_H + 4;
@@ -168,11 +173,10 @@ async function generatePDF(
   drawPageFooter();
   let y = 24;
 
-  // KPI boxes
-  const kpiW = (CONTENT_W - 9) / 4;
+  // KPI boxes — "Costo mercancía" requiere showCosts, igual que en pantalla
   const kpis = [
     { label: "Ingresos brutos",  value: fmtHNL(summary.revenue, symbol),       bg: C_KPI_BLUE,  tc: C_PRIMARY as [number,number,number] },
-    { label: "Costo mercancía",  value: fmtHNL(summary.cogs, symbol),           bg: C_KPI_RED,   tc: C_RED     as [number,number,number] },
+    ...(showCosts ? [{ label: "Costo mercancía",  value: fmtHNL(summary.cogs, symbol),           bg: C_KPI_RED,   tc: C_RED     as [number,number,number] }] : []),
     { label: "Utilidad bruta",   value: fmtHNL(summary.gross_profit, symbol),   bg: C_KPI_GREEN, tc: C_GREEN   as [number,number,number] },
     {
       label: "Margen bruto",
@@ -181,6 +185,7 @@ async function generatePDF(
       tc: (summary.margin_pct >= 20 ? C_GREEN : summary.margin_pct >= 10 ? C_AMBER : C_RED) as [number,number,number],
     },
   ];
+  const kpiW = (CONTENT_W - (kpis.length - 1) * 3) / kpis.length;
   kpis.forEach((kpi, i) => {
     const x = MARGIN + i * (kpiW + 3);
     doc.setFillColor(...kpi.bg);
@@ -226,27 +231,32 @@ async function generatePDF(
     doc.text("Rentabilidad mensual", MARGIN, y);
     y += 5;
 
+    const monthCols: { key: string; header: string; align: "left" | "right" | "center"; width?: number; get: (m: any) => any }[] = [
+      { key: "month",   header: "Mes",    align: "left",  get: m => m.month_label },
+      { key: "sales",   header: "Ventas", align: "right", width: 18, get: m => m.sales_count },
+      { key: "revenue", header: `Ingresos (${symbol})`, align: "right", get: m => fmtHNL(m.revenue, symbol) },
+      ...(showCosts ? [{ key: "cogs", header: `Costo (${symbol})`, align: "right" as const, get: (m: any) => fmtHNL(m.cogs, symbol) }] : []),
+      { key: "profit",  header: `Utilidad (${symbol})`, align: "right", get: m => fmtHNL(m.profit, symbol) },
+      { key: "margin",  header: "Margen %", align: "right", width: 18, get: m => {
+        const pct = m.revenue > 0 ? 100 * m.profit / m.revenue : 0;
+        return `${fmtN(pct, 1)}%`;
+      } },
+    ];
+    const monthMarginColIdx = monthCols.findIndex(c => c.key === "margin");
+
     autoTable(doc, {
       startY: y,
-      head:   [["Mes", "Ventas", `Ingresos (${symbol})`, `Costo (${symbol})`, `Utilidad (${symbol})`, "Margen %"]],
-      body:   byMonth.map(m => {
-        const pct = m.revenue > 0 ? 100 * m.profit / m.revenue : 0;
-        return [m.month_label, m.sales_count, fmtHNL(m.revenue, symbol), fmtHNL(m.cogs, symbol), fmtHNL(m.profit, symbol), `${fmtN(pct, 1)}%`];
-      }),
+      head:   [monthCols.map(c => c.header)],
+      body:   byMonth.map(m => monthCols.map(c => c.get(m))),
       styles:             { fontSize: 8, cellPadding: 2.5, font: "helvetica" },
       headStyles:         cleanHeadStyles,
-      columnStyles: {
-        0: { halign: "left"  },
-        1: { halign: "right", cellWidth: 18 },
-        2: { halign: "right" },
-        3: { halign: "right" },
-        4: { halign: "right", fontStyle: "bold" },
-        5: { halign: "right", cellWidth: 18 },
-      },
+      columnStyles: Object.fromEntries(
+        monthCols.map((c, i) => [i, { halign: c.align, ...(c.width ? { cellWidth: c.width } : {}), ...(c.key === "profit" ? { fontStyle: "bold" as const } : {}) }])
+      ),
       alternateRowStyles: { fillColor: C_BG_SUBTLE },
       margin:             { left: MARGIN, right: MARGIN },
       didParseCell: (data: any) => {
-        if (data.section === "body" && data.column.index === 5) {
+        if (data.section === "body" && data.column.index === monthMarginColIdx) {
           const pct = parseFloat(String(data.cell.raw));
           if (pct >= 30)      data.cell.styles.textColor = C_GREEN;
           else if (pct >= 10) data.cell.styles.textColor = C_AMBER;
@@ -277,33 +287,31 @@ async function generatePDF(
   doc.text("Rentabilidad por producto", MARGIN, y);
   y += 5;
 
+  const productCols: { key: string; header: string; align: "left" | "right" | "center"; width?: number; get: (p: any) => any }[] = [
+    { key: "name", header: "Producto", align: "left",  get: p => p.product_name },
+    { key: "sku",  header: "SKU",      align: "left",  width: 22, get: p => p.sku || "—" },
+    { key: "qty",  header: "Cant.",    align: "right", width: 14, get: p => p.qty_sold },
+    { key: "revenue", header: `Ingresos (${symbol})`, align: "right", get: p => fmtHNL(p.revenue, symbol) },
+    ...(showCosts ? [{ key: "cogs", header: `Costo (${symbol})`, align: "right" as const, get: (p: any) => fmtHNL(p.cogs, symbol) }] : []),
+    { key: "profit", header: `Utilidad (${symbol})`, align: "right", get: p => fmtHNL(p.profit, symbol) },
+    { key: "margin", header: "Margen %", align: "center", width: 18, get: p => `${fmtN(p.margin_pct, 1)}%` },
+  ];
+  const productProfitColIdx = productCols.findIndex(c => c.key === "profit");
+  const productMarginColIdx = productCols.findIndex(c => c.key === "margin");
+
   autoTable(doc, {
     startY: y,
-    head:   [["Producto", "SKU", "Cant.", `Ingresos (${symbol})`, `Costo (${symbol})`, `Utilidad (${symbol})`, "Margen %"]],
-    body:   byProduct.map(p => [
-      p.product_name,
-      p.sku || "—",
-      p.qty_sold,
-      fmtHNL(p.revenue, symbol),
-      fmtHNL(p.cogs, symbol),
-      fmtHNL(p.profit, symbol),
-      `${fmtN(p.margin_pct, 1)}%`,
-    ]),
+    head:   [productCols.map(c => c.header)],
+    body:   byProduct.map(p => productCols.map(c => c.get(p))),
     styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
     headStyles:         cleanHeadStyles,
-    columnStyles: {
-      0: { halign: "left"  },
-      1: { halign: "left",   cellWidth: 22 },
-      2: { halign: "right",  cellWidth: 14 },
-      3: { halign: "right"  },
-      4: { halign: "right"  },
-      5: { halign: "right",  fontStyle: "bold", textColor: C_GREEN },
-      6: { halign: "center", cellWidth: 18 },
-    },
+    columnStyles: Object.fromEntries(
+      productCols.map((c, i) => [i, { halign: c.align, ...(c.width ? { cellWidth: c.width } : {}), ...(i === productProfitColIdx ? { fontStyle: "bold" as const, textColor: C_GREEN } : {}) }])
+    ),
     alternateRowStyles: { fillColor: C_BG_SUBTLE },
     margin:             { left: MARGIN, right: MARGIN },
     didParseCell: (data: any) => {
-      if (data.section === "body" && data.column.index === 6) {
+      if (data.section === "body" && data.column.index === productMarginColIdx) {
         const pct = parseFloat(String(data.cell.raw));
         if (pct >= 30)      data.cell.styles.textColor = C_GREEN;
         else if (pct >= 10) data.cell.styles.textColor = C_AMBER;
@@ -332,11 +340,12 @@ export async function POST(request: NextRequest) {
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.profit');
   if (denyFeature) return denyFeature;
 
+  // Este reporte es 100% costos/ganancias — igual que el GET, requiere
+  // showProfit para exportar en absoluto; showCosts solo redacta el costo
+  // (cogs) dentro del documento, igual que en pantalla.
   const perms = await getModulePermissions(auth.data, 'REPORTS', 'PROFIT');
-  // El documento exportado incluye costos junto con las ganancias — requiere
-  // ambos permisos (a diferencia del GET, que puede degradar sin costos).
-  if (!perms.showProfit || !perms.showCosts) {
-    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y ganancias)", 403);
+  if (!perms.showProfit) {
+    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye ganancias)", 403);
   }
 
   try {
@@ -354,7 +363,7 @@ export async function POST(request: NextRequest) {
       getOperatingExpenses(sql, orgId, from, to),
     ]);
 
-    const pdfBuf = await generatePDF(summary, byMonth, byProduct, expenses, symbol, from, to);
+    const pdfBuf = await generatePDF(summary, byMonth, byProduct, expenses, symbol, from, to, perms.showCosts);
 
     return new Response(pdfBuf.buffer as ArrayBuffer, {
       headers: {

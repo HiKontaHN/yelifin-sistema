@@ -54,6 +54,12 @@ const COLORS = {
   barBlue:     "DBEAFe",
 };
 
+// Placeholder neutro para costos/ganancias cuando el rol no tiene el
+// permiso — mantiene la estructura de columnas/merges intacta (a
+// diferencia de omitir la columna), evitando romper los rangos de celdas
+// combinadas de este archivo, calculados a mano por índice de columna.
+const REDACTED = "—";
+
 function marginColor(pct: number) {
   if (pct >= 30) return { fg: COLORS.green,  bg: COLORS.greenBg };
   if (pct >= 10) return { fg: COLORS.amber,  bg: COLORS.amberBg };
@@ -198,6 +204,8 @@ function buildDashboardSheet(
   from: string,
   to: string,
   periodLabel: string,
+  showCosts: boolean,
+  showProfit: boolean,
 ): Record<string, any> {
   const ws: Record<string, any> = {};
   let r = 1;
@@ -226,8 +234,8 @@ function buildDashboardSheet(
   const kpis = [
     { label: "Total ventas",    value: String(summary.total_sales),                bg: COLORS.kpiBlue,  col: 0 },
     { label: "Ingresos brutos", value: fmtHNL(summary.total_revenue, symbol),     bg: COLORS.kpiBlue,  col: 2 },
-    { label: "Utilidad bruta",  value: fmtHNL(summary.gross_profit,  symbol),     bg: COLORS.kpiGreen, col: 4 },
-    { label: "Margen bruto",    value: `${fmtN(marginPct, 1)}%`,                  bg: marginPct >= 20 ? COLORS.kpiGreen : COLORS.kpiAmber, col: 6 },
+    { label: "Utilidad bruta",  value: showProfit ? fmtHNL(summary.gross_profit, symbol) : REDACTED,     bg: COLORS.kpiGreen, col: 4 },
+    { label: "Margen bruto",    value: showProfit ? `${fmtN(marginPct, 1)}%` : REDACTED,                  bg: marginPct >= 20 ? COLORS.kpiGreen : COLORS.kpiAmber, col: 6 },
   ];
 
   for (const kpi of kpis) {
@@ -248,7 +256,7 @@ function buildDashboardSheet(
   // ── Métricas adicionales (filas 9-11) ────────────────────────────────
   const extras = [
     { label: "Descuentos otorgados", value: fmtHNL(summary.total_discount, symbol), col: 0 },
-    { label: "Costo mercancía",      value: fmtHNL(summary.total_cogs,     symbol), col: 2 },
+    { label: "Costo mercancía",      value: showCosts ? fmtHNL(summary.total_cogs, symbol) : REDACTED, col: 2 },
     { label: "Promedio x venta",     value: summary.total_sales > 0 ? fmtHNL(summary.total_revenue / summary.total_sales, symbol) : "—", col: 4 },
     { label: "Período",              value: `${from} → ${to}`, col: 6 },
   ];
@@ -285,8 +293,8 @@ function buildDashboardSheet(
     setCell(ws, 0, r, cell(fmtDate(d.date),           { bg, border: true }));
     setCell(ws, 1, r, cell(d.sales_count,              { bg, border: true, align: "right" }));
     setCell(ws, 2, r, cell(fmtHNL(d.revenue, symbol), { bg, border: true, align: "right" }));
-    setCell(ws, 3, r, cell(fmtHNL(d.profit,  symbol), { bg, border: true, align: "right" }));
-    setCell(ws, 4, r, cell(`${fmtN(dPct, 1)}%`,       { bg, border: true, align: "right" }));
+    setCell(ws, 3, r, cell(showProfit ? fmtHNL(d.profit, symbol) : REDACTED, { bg, border: true, align: "right" }));
+    setCell(ws, 4, r, cell(showProfit ? `${fmtN(dPct, 1)}%` : REDACTED,     { bg, border: true, align: "right" }));
     setCell(ws, 5, r, cell(fmtHNL(acum,      symbol), { bg, border: true, align: "right", bold: true }));
     r++;
   });
@@ -304,7 +312,7 @@ function buildDashboardSheet(
 }
 
 // ── Hoja 2: Productos ──────────────────────────────────────────────────
-function buildProductsSheet(byProduct: any[], symbol: string): Record<string, any> {
+function buildProductsSheet(byProduct: any[], symbol: string, showCosts: boolean, showProfit: boolean): Record<string, any> {
   const ws: Record<string, any> = {};
   let r = 1;
 
@@ -334,9 +342,11 @@ function buildProductsSheet(byProduct: any[], symbol: string): Record<string, an
     setCell(ws, 2, r, cell(p.sku || "—",                   { bg, border: true, fg: COLORS.textMid }));
     setCell(ws, 3, r, cell(p.qty_sold,                     { bg, border: true, align: "right" }));
     setCell(ws, 4, r, cell(fmtHNL(p.revenue, symbol),     { bg, border: true, align: "right" }));
-    setCell(ws, 5, r, cell(fmtHNL(p.cogs,    symbol),     { bg, border: true, align: "right", fg: COLORS.textMid }));
-    setCell(ws, 6, r, cell(fmtHNL(p.profit,  symbol),     { bg, border: true, align: "right", bold: true, fg: COLORS.secondary }));
-    setCell(ws, 7, r, cell(`${fmtN(p.margin_pct, 1)}%`,   { bg: mc.bg, border: true, align: "center", bold: true, fg: mc.fg }));
+    setCell(ws, 5, r, cell(showCosts  ? fmtHNL(p.cogs,   symbol) : REDACTED, { bg, border: true, align: "right", fg: COLORS.textMid }));
+    setCell(ws, 6, r, cell(showProfit ? fmtHNL(p.profit, symbol) : REDACTED, { bg, border: true, align: "right", bold: true, fg: COLORS.secondary }));
+    setCell(ws, 7, r, showProfit
+      ? cell(`${fmtN(p.margin_pct, 1)}%`, { bg: mc.bg, border: true, align: "center", bold: true, fg: mc.fg })
+      : cell(REDACTED,                    { bg,        border: true, align: "center" }));
     setCell(ws, 8, r, cell(`${fmtN(participacion, 1)}%`,  { bg, border: true, align: "right" }));
     setCell(ws, 9, r, cell(barStr,                         { bg: "DBEAFE", border: true, fg: "1A56DB", sz: 8 }));
     r++;
@@ -351,7 +361,7 @@ function buildProductsSheet(byProduct: any[], symbol: string): Record<string, an
 }
 
 // ── Hoja 3: Detalle ventas ─────────────────────────────────────────────
-function buildDetailSheet(detail: any[], symbol: string): Record<string, any> {
+function buildDetailSheet(detail: any[], symbol: string, showProfit: boolean): Record<string, any> {
   const ws: Record<string, any> = {};
   let r = 1;
 
@@ -375,7 +385,7 @@ function buildDetailSheet(detail: any[], symbol: string): Record<string, any> {
     setCell(ws, 5, r, cell(s.items_count,                              { bg, border: true, align: "right" }));
     setCell(ws, 6, r, cell(fmtHNL(s.discount, symbol),                { bg, border: true, align: "right", fg: COLORS.textMid }));
     setCell(ws, 7, r, cell(fmtHNL(s.total,    symbol),                { bg, border: true, align: "right", bold: true }));
-    setCell(ws, 8, r, cell(fmtHNL(s.profit,   symbol),                { bg, border: true, align: "right", fg: COLORS.secondary }));
+    setCell(ws, 8, r, cell(showProfit ? fmtHNL(s.profit, symbol) : REDACTED, { bg, border: true, align: "right", fg: COLORS.secondary }));
     r++;
   });
 
@@ -387,7 +397,7 @@ function buildDetailSheet(detail: any[], symbol: string): Record<string, any> {
 }
 
 // ── Hoja 4: Por día ────────────────────────────────────────────────────
-function buildByDaySheet(byDay: any[], symbol: string): Record<string, any> {
+function buildByDaySheet(byDay: any[], symbol: string, showProfit: boolean): Record<string, any> {
   const ws: Record<string, any> = {};
   let r = 1;
 
@@ -420,8 +430,8 @@ function buildByDaySheet(byDay: any[], symbol: string): Record<string, any> {
     setCell(ws, 1, r, cell(dayStr,                     { bg, border: true, align: "center" }));
     setCell(ws, 2, r, cell(d.sales_count,              { bg, border: true, align: "right" }));
     setCell(ws, 3, r, cell(fmtHNL(d.revenue, symbol), { bg, border: true, align: "right" }));
-    setCell(ws, 4, r, cell(fmtHNL(d.profit,  symbol), { bg, border: true, align: "right" }));
-    setCell(ws, 5, r, cell(`${fmtN(dPct, 1)}%`,       { bg, border: true, align: "right" }));
+    setCell(ws, 4, r, cell(showProfit ? fmtHNL(d.profit, symbol) : REDACTED, { bg, border: true, align: "right" }));
+    setCell(ws, 5, r, cell(showProfit ? `${fmtN(dPct, 1)}%` : REDACTED,     { bg, border: true, align: "right" }));
     setCell(ws, 6, r, cell(fmtHNL(acum,      symbol), { bg, border: true, align: "right", bold: true }));
     r++;
   });
@@ -433,8 +443,8 @@ function buildByDaySheet(byDay: any[], symbol: string): Record<string, any> {
   setCell(ws, 1, r, cell("",                             { bg: totalBg, border: true }));
   setCell(ws, 2, r, cell(totalSales,                     { bg: totalBg, border: true, align: "right", bold: true }));
   setCell(ws, 3, r, cell(fmtHNL(totalRevenue, symbol),  { bg: totalBg, border: true, align: "right", bold: true }));
-  setCell(ws, 4, r, cell(fmtHNL(totalProfit,  symbol),  { bg: totalBg, border: true, align: "right", bold: true }));
-  setCell(ws, 5, r, cell(`${fmtN(totalPct, 1)}%`,       { bg: totalBg, border: true, align: "right", bold: true }));
+  setCell(ws, 4, r, cell(showProfit ? fmtHNL(totalProfit, symbol) : REDACTED, { bg: totalBg, border: true, align: "right", bold: true }));
+  setCell(ws, 5, r, cell(showProfit ? `${fmtN(totalPct, 1)}%` : REDACTED,     { bg: totalBg, border: true, align: "right", bold: true }));
   setCell(ws, 6, r, cell(fmtHNL(totalRevenue, symbol),  { bg: totalBg, border: true, align: "right", bold: true }));
 
   ws["!cols"] = [
@@ -459,7 +469,7 @@ function canvasShort(v: number): string {
   return String(Math.round(v));
 }
 
-async function pngRevenueByDay(byDay: any[], symbol: string): Promise<Buffer> {
+async function pngRevenueByDay(byDay: any[], symbol: string, showProfit: boolean): Promise<Buffer> {
   const { createCanvas } = await import("@napi-rs/canvas");
   const W = 960, H = 340;
   const ML = 72, MR = 20, MT = 48, MB = 52;
@@ -499,12 +509,14 @@ async function pngRevenueByDay(byDay: any[], symbol: string): Promise<Buffer> {
   byDay.forEach((d, i) => {
     const cx   = ML + i * GW + GW / 2;
     const hRev = Math.max((d.revenue / maxV) * PH, 1);
-    const hPrf = Math.max((d.profit  / maxV) * PH, 0);
+    const hPrf = showProfit ? Math.max((d.profit / maxV) * PH, 0) : 0;
 
     ctx.fillStyle = CBR;
-    ctx.fillRect(cx - BW - GAP, MT + PH - hRev, BW, hRev);
-    ctx.fillStyle = CBP;
-    ctx.fillRect(cx + GAP,       MT + PH - hPrf, BW, hPrf);
+    ctx.fillRect(cx - (showProfit ? BW + GAP : BW / 2), MT + PH - hRev, BW, hRev);
+    if (showProfit) {
+      ctx.fillStyle = CBP;
+      ctx.fillRect(cx + GAP, MT + PH - hPrf, BW, hPrf);
+    }
 
     const step = n > 20 ? Math.ceil(n / 15) : n > 10 ? 2 : 1;
     if (i % step === 0) {
@@ -521,14 +533,16 @@ async function pngRevenueByDay(byDay: any[], symbol: string): Promise<Buffer> {
   ctx.fillStyle = CBR; ctx.fillRect(ML, LY - 11, 14, 11);
   ctx.fillStyle = CTX; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
   ctx.fillText("Ingresos", ML + 18, LY - 1);
-  ctx.fillStyle = CBP; ctx.fillRect(ML + 100, LY - 11, 14, 11);
-  ctx.fillStyle = CTX;
-  ctx.fillText("Utilidad", ML + 118, LY - 1);
+  if (showProfit) {
+    ctx.fillStyle = CBP; ctx.fillRect(ML + 100, LY - 11, 14, 11);
+    ctx.fillStyle = CTX;
+    ctx.fillText("Utilidad", ML + 118, LY - 1);
+  }
 
   return canvas.encode("png");
 }
 
-async function pngProductsHorizontal(byProduct: any[], symbol: string): Promise<Buffer> {
+async function pngProductsHorizontal(byProduct: any[], symbol: string, showProfit: boolean): Promise<Buffer> {
   const { createCanvas } = await import("@napi-rs/canvas");
   const top10 = byProduct.slice(0, 10);
   if (top10.length === 0) return (await import("@napi-rs/canvas")).createCanvas(1, 1).encode("png");
@@ -576,7 +590,7 @@ async function pngProductsHorizontal(byProduct: any[], symbol: string): Promise<
     ctx.fillText(name, ML + LBL_W - 8, midY + 4);
 
     const wRev  = maxV > 0 ? (p.revenue / maxV) * BAR_W : 0;
-    const wProf = maxV > 0 ? (p.profit  / maxV) * BAR_W : 0;
+    const wProf = showProfit && maxV > 0 ? (p.profit / maxV) * BAR_W : 0;
     const barX  = ML + LBL_W + 4;
     const BH    = ROW_H * 0.42;
     const barY  = midY - BH / 2;
@@ -584,9 +598,11 @@ async function pngProductsHorizontal(byProduct: any[], symbol: string): Promise<
     // Barra ingreso
     ctx.fillStyle = CBR;
     ctx.fillRect(barX, barY, Math.max(wRev, 2), BH);
-    // Barra utilidad (más delgada, centrada)
-    ctx.fillStyle = CBP;
-    ctx.fillRect(barX, midY - BH * 0.28, Math.max(wProf, 1), BH * 0.55);
+    // Barra utilidad (más delgada, centrada) — requiere showProfit
+    if (showProfit) {
+      ctx.fillStyle = CBP;
+      ctx.fillRect(barX, midY - BH * 0.28, Math.max(wProf, 1), BH * 0.55);
+    }
 
     // Valor
     ctx.fillStyle  = CP;
@@ -600,20 +616,22 @@ async function pngProductsHorizontal(byProduct: any[], symbol: string): Promise<
   ctx.fillStyle = CBR; ctx.fillRect(ML, LY - 11, 14, 11);
   ctx.fillStyle = CTX; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
   ctx.fillText("Ingresos", ML + 18, LY - 1);
-  ctx.fillStyle = CBP; ctx.fillRect(ML + 100, LY - 11, 14, 11);
-  ctx.fillStyle = CTX;
-  ctx.fillText("Utilidad", ML + 118, LY - 1);
+  if (showProfit) {
+    ctx.fillStyle = CBP; ctx.fillRect(ML + 100, LY - 11, 14, 11);
+    ctx.fillStyle = CTX;
+    ctx.fillText("Utilidad", ML + 118, LY - 1);
+  }
 
   return canvas.encode("png");
 }
 
 // ── Hoja "Gráfico": PNG reales incrustados ─────────────────────────────
-async function buildChartSheet(byDay: any[], byProduct: any[], symbol: string): Promise<Record<string, any>> {
+async function buildChartSheet(byDay: any[], byProduct: any[], symbol: string, showProfit: boolean): Promise<Record<string, any>> {
   const ws: Record<string, any> = {};
 
   const [imgRevenue, imgProducts] = await Promise.all([
-    pngRevenueByDay(byDay, symbol),
-    pngProductsHorizontal(byProduct, symbol),
+    pngRevenueByDay(byDay, symbol, showProfit),
+    pngProductsHorizontal(byProduct, symbol, showProfit),
   ]);
 
   // Posiciones en pixels: cada fila ~15px, cada col ~64px aprox.
@@ -642,7 +660,7 @@ async function buildChartSheet(byDay: any[], byProduct: any[], symbol: string): 
 // ── Generar Excel en servidor ──────────────────────────────────────────
 async function generateExcel(
   summary: any, byDay: any[], byProduct: any[], detail: any[],
-  symbol: string, from: string, to: string
+  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean
 ): Promise<Uint8Array> {
   const XLSX = await import("xlsx");
 
@@ -651,11 +669,11 @@ async function generateExcel(
   const wb = XLSX.utils.book_new();
   (wb as any).Props = { Title: "Reporte de Ventas — HiKonta", Author: "HiKonta SaaS" };
 
-  const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel);
-  const wsGrafico    = await buildChartSheet(byDay, byProduct, symbol);
-  const wsProductos  = buildProductsSheet(byProduct, symbol);
-  const wsDetalle    = buildDetailSheet(detail, symbol);
-  const wsByDay      = buildByDaySheet(byDay, symbol);
+  const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel, showCosts, showProfit);
+  const wsGrafico    = await buildChartSheet(byDay, byProduct, symbol, showProfit);
+  const wsProductos  = buildProductsSheet(byProduct, symbol, showCosts, showProfit);
+  const wsDetalle    = buildDetailSheet(detail, symbol, showProfit);
+  const wsByDay      = buildByDaySheet(byDay, symbol, showProfit);
 
   XLSX.utils.book_append_sheet(wb, wsDashboard,  "Dashboard");
   XLSX.utils.book_append_sheet(wb, wsGrafico,    "Gráfico");
@@ -670,7 +688,7 @@ async function generateExcel(
 // ── Generar PDF en servidor ────────────────────────────────────────────
 async function generatePDF(
   summary: any, byDay: any[], byProduct: any[], detail: any[],
-  symbol: string, from: string, to: string
+  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -756,7 +774,7 @@ async function generatePDF(
     const plotW    = CONTENT_W - AXIS_W;
     const plotH    = CHART_H - 8;  // reservar 8mm para eje X
 
-    const maxVal   = byDay.reduce((m, d) => Math.max(m, d.revenue, d.profit), 0);
+    const maxVal   = byDay.reduce((m, d) => Math.max(m, d.revenue, showProfit ? d.profit : 0), 0);
     if (maxVal === 0) return startY;
 
     const TICKS    = 4;
@@ -789,15 +807,17 @@ async function generatePDF(
       const cx = plotX + i * groupW + groupW / 2;
 
       const hRev  = maxVal > 0 ? (d.revenue / maxVal) * plotH : 0;
-      const hProf = maxVal > 0 ? (d.profit  / maxVal) * plotH : 0;
+      const hProf = showProfit && maxVal > 0 ? (d.profit / maxVal) * plotH : 0;
 
       // Barra ingresos (izquierda)
       doc.setFillColor(...C_BAR_REV);
-      doc.rect(cx - BAR_W - GAP / 2, baseY - hRev, BAR_W, Math.max(hRev, 0.3), "F");
+      doc.rect(cx - (showProfit ? BAR_W + GAP / 2 : BAR_W / 2), baseY - hRev, BAR_W, Math.max(hRev, 0.3), "F");
 
-      // Barra utilidad (derecha)
-      doc.setFillColor(...C_BAR_PROF);
-      doc.rect(cx + GAP / 2, baseY - hProf, BAR_W, Math.max(hProf, 0.3), "F");
+      // Barra utilidad (derecha) — requiere showProfit
+      if (showProfit) {
+        doc.setFillColor(...C_BAR_PROF);
+        doc.rect(cx + GAP / 2, baseY - hProf, BAR_W, Math.max(hProf, 0.3), "F");
+      }
     });
 
     // Eje X: fechas abreviadas
@@ -826,9 +846,11 @@ async function generatePDF(
     doc.rect(legX, legY - 2.5, 5, 2.5, "F");
     doc.text("Ingresos", legX + 6.5, legY);
 
-    doc.setFillColor(...C_BAR_PROF);
-    doc.rect(legX + 30, legY - 2.5, 5, 2.5, "F");
-    doc.text("Utilidad", legX + 36.5, legY);
+    if (showProfit) {
+      doc.setFillColor(...C_BAR_PROF);
+      doc.rect(legX + 30, legY - 2.5, 5, 2.5, "F");
+      doc.text("Utilidad", legX + 36.5, legY);
+    }
 
     doc.setTextColor(0, 0, 0);
     return startY + CHART_H + 4;
@@ -858,7 +880,7 @@ async function generatePDF(
       const barX   = MARGIN + LABEL_W;
 
       const wRev  = maxVal > 0 ? (p.revenue / maxVal) * barAreaW : 0;
-      const wProf = maxVal > 0 ? (p.profit  / maxVal) * barAreaW : 0;
+      const wProf = showProfit && maxVal > 0 ? (p.profit / maxVal) * barAreaW : 0;
 
       // Fondo alternado muy sutil
       if (i % 2 === 1) {
@@ -876,9 +898,11 @@ async function generatePDF(
       doc.setFillColor(...C_BAR_REV);
       doc.rect(barX, barY, Math.max(wRev, 0.5), BAR_H, "F");
 
-      // Barra utilidad superpuesta (más delgada, centrada verticalmente)
-      doc.setFillColor(...C_BAR_PROF);
-      doc.rect(barX, barY2, Math.max(wProf, 0.5), BAR_H2, "F");
+      // Barra utilidad superpuesta (más delgada, centrada verticalmente) — requiere showProfit
+      if (showProfit) {
+        doc.setFillColor(...C_BAR_PROF);
+        doc.rect(barX, barY2, Math.max(wProf, 0.5), BAR_H2, "F");
+      }
 
       // Valor a la derecha
       doc.setFontSize(6.5);
@@ -898,9 +922,11 @@ async function generatePDF(
     doc.setFillColor(...C_BAR_REV);
     doc.rect(MARGIN, legY - 2.5, 5, 2.5, "F");
     doc.text("Ingresos", MARGIN + 6.5, legY);
-    doc.setFillColor(...C_BAR_PROF);
-    doc.rect(MARGIN + 30, legY - 2.5, 5, 2.5, "F");
-    doc.text("Utilidad", MARGIN + 36.5, legY);
+    if (showProfit) {
+      doc.setFillColor(...C_BAR_PROF);
+      doc.rect(MARGIN + 30, legY - 2.5, 5, 2.5, "F");
+      doc.text("Utilidad", MARGIN + 36.5, legY);
+    }
 
     doc.setTextColor(0, 0, 0);
     return startY + CHART_H + 8;
@@ -918,10 +944,10 @@ async function generatePDF(
   const kpis = [
     { label: "Total ventas",    value: String(summary.total_sales),              bg: C_KPI_BLUE,  textColor: C_PRIMARY as [number,number,number] },
     { label: "Ingresos brutos", value: fmtHNL(summary.total_revenue, symbol),   bg: C_KPI_BLUE,  textColor: C_PRIMARY as [number,number,number] },
-    { label: "Utilidad bruta",  value: fmtHNL(summary.gross_profit,  symbol),   bg: C_KPI_GREEN, textColor: C_GREEN   as [number,number,number] },
+    { label: "Utilidad bruta",  value: showProfit ? fmtHNL(summary.gross_profit, symbol) : REDACTED,   bg: C_KPI_GREEN, textColor: C_GREEN   as [number,number,number] },
     {
       label: "Margen bruto",
-      value: `${fmtN(marginPct, 1)}%`,
+      value: showProfit ? `${fmtN(marginPct, 1)}%` : REDACTED,
       bg: marginPct >= 20 ? C_KPI_GREEN : C_KPI_AMBER,
       textColor: (marginPct >= 20 ? C_GREEN : C_AMBER) as [number,number,number],
     },
@@ -945,7 +971,7 @@ async function generatePDF(
   // Métricas secundarias
   const metas = [
     `Descuentos: ${fmtHNL(summary.total_discount, symbol)}`,
-    `Costo mercancía: ${fmtHNL(summary.total_cogs, symbol)}`,
+    `Costo mercancía: ${showCosts ? fmtHNL(summary.total_cogs, symbol) : REDACTED}`,
     `Ventas: ${summary.total_sales > 0 ? fmtHNL(summary.total_revenue / summary.total_sales, symbol) + " promedio" : "—"}`,
   ];
   doc.setFontSize(8);
@@ -974,7 +1000,11 @@ async function generatePDF(
     head:   [["Fecha", "Ventas", `Ingresos (${symbol})`, `Utilidad (${symbol})`, "Margen %"]],
     body:   byDay.map(d => {
       const dp = d.revenue > 0 ? 100 * d.profit / d.revenue : 0;
-      return [fmtDate(d.date), d.sales_count, fmtHNL(d.revenue, symbol), fmtHNL(d.profit, symbol), `${fmtN(dp, 1)}%`];
+      return [
+        fmtDate(d.date), d.sales_count, fmtHNL(d.revenue, symbol),
+        showProfit ? fmtHNL(d.profit, symbol) : REDACTED,
+        showProfit ? `${fmtN(dp, 1)}%` : REDACTED,
+      ];
     }),
     styles:             { fontSize: 8, cellPadding: 2.5, font: "helvetica" },
     headStyles:         cleanHeadStyles,
@@ -988,7 +1018,7 @@ async function generatePDF(
     alternateRowStyles: { fillColor: C_BG_SUBTLE },
     margin:             { left: MARGIN, right: MARGIN },
     didParseCell: (data: any) => {
-      if (data.section === "body" && data.column.index === 4) {
+      if (data.section === "body" && data.column.index === 4 && data.cell.raw !== REDACTED) {
         const pct = parseFloat(String(data.cell.raw));
         if (pct >= 30)      data.cell.styles.textColor = C_GREEN;
         else if (pct >= 10) data.cell.styles.textColor = C_AMBER;
@@ -1028,9 +1058,9 @@ async function generatePDF(
       p.sku || "—",
       p.qty_sold,
       fmtHNL(p.revenue, symbol),
-      fmtHNL(p.cogs,    symbol),
-      fmtHNL(p.profit,  symbol),
-      `${fmtN(p.margin_pct, 1)}%`,
+      showCosts  ? fmtHNL(p.cogs,   symbol) : REDACTED,
+      showProfit ? fmtHNL(p.profit, symbol) : REDACTED,
+      showProfit ? `${fmtN(p.margin_pct, 1)}%` : REDACTED,
     ]),
     styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
     headStyles:         cleanHeadStyles,
@@ -1047,7 +1077,7 @@ async function generatePDF(
     alternateRowStyles: { fillColor: C_BG_SUBTLE },
     margin:             { left: MARGIN, right: MARGIN },
     didParseCell: (data: any) => {
-      if (data.section === "body" && data.column.index === 7) {
+      if (data.section === "body" && data.column.index === 7 && data.cell.raw !== REDACTED) {
         const pct = parseFloat(String(data.cell.raw));
         if (pct >= 30) {
           data.cell.styles.textColor = C_GREEN;
@@ -1088,7 +1118,7 @@ async function generatePDF(
       s.items_count,
       fmtHNL(s.discount, symbol),
       fmtHNL(s.total,    symbol),
-      fmtHNL(s.profit,   symbol),
+      showProfit ? fmtHNL(s.profit, symbol) : REDACTED,
     ]),
     styles:             { fontSize: 7.5, cellPadding: 2, font: "helvetica" },
     headStyles:         cleanHeadStyles,
@@ -1126,11 +1156,9 @@ export async function POST(request: NextRequest) {
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.sales');
   if (denyFeature) return denyFeature;
 
-  // El documento exportado incluye costos y utilidades — requiere ambos permisos
-  const perms = await getModulePermissions(auth.data, 'REPORTS');
-  if (!perms.showCosts || !perms.showProfit) {
-    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y ganancias)", 403);
-  }
+  // Costos/utilidades se redactan del documento igual que en pantalla —
+  // no se bloquea la exportación completa por no tener uno de los dos.
+  const perms = await getModulePermissions(auth.data, 'REPORTS', 'SALES');
 
   try {
     const { orgId } = auth.data;
@@ -1149,7 +1177,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (format === "pdf") {
-      const pdfBuf = await generatePDF(summary, byDay, byProduct, detail, symbol, from, to);
+      const pdfBuf = await generatePDF(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit);
       return new Response(pdfBuf.buffer as ArrayBuffer, {
         headers: {
           "Content-Type":        "application/pdf",
@@ -1158,7 +1186,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const xlsBuf = await generateExcel(summary, byDay, byProduct, detail, symbol, from, to);
+    const xlsBuf = await generateExcel(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit);
     return new Response(xlsBuf.buffer as ArrayBuffer, {
       headers: {
         "Content-Type":        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

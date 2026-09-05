@@ -15,6 +15,7 @@ import type { NeonQueryFunction } from "@neondatabase/serverless";
 import type {
   SalesSummary, SalesByDay, SalesByProduct, SaleDetail,
   InventorySummary, InventoryProduct, InventoryMovement,
+  InventoryVelocityRow, InventoryVelocityItem,
   ProfitSummary, ProfitByMonth, ProfitByProduct,
   EventRow,
 } from "@/hooks/swr/use-reports";
@@ -26,6 +27,8 @@ export const PROFIT_BY_PRODUCT_LIMIT  = 100;
 export const SALES_DETAIL_LIMIT       = 1000;
 export const INVENTORY_MOVEMENTS_LIMIT = 200;
 export const INVENTORY_MOVEMENTS_DAYS  = 30;
+export const INVENTORY_VELOCITY_DAYS   = 30;
+export const INVENTORY_VELOCITY_LIMIT  = 8;
 
 // Transacciones que representan adquisición de activo (inventario, insumos)
 // o traslado de deuda (pago de tarjeta) — no son gasto operativo del período
@@ -422,4 +425,76 @@ export function computeInventorySummary(
     low_stock_count:   products.filter(p => Number(p.stock) > 0 && Number(p.stock) <= lowStockThreshold).length,
     zero_stock_count:  products.filter(p => Number(p.stock) === 0).length,
   };
+}
+
+// Unidades vendidas e ingresos por producto en la ventana reciente — para
+// TODOS los productos activos (incluso los que no vendieron nada), así se
+// puede identificar tanto lo más vendido como lo estancado. Pre-agrega
+// sale_items por venta COMPLETED dentro de la ventana antes del LEFT JOIN
+// a products, evitando el fan-out de sumar sobre un JOIN 1:N directo.
+export async function getInventorySalesVelocity(
+  sql: Sql, orgId: number, days = INVENTORY_VELOCITY_DAYS
+): Promise<InventoryVelocityRow[]> {
+  const rows = await sql`
+    SELECT
+      p.id,
+      COALESCE(recent.qty_sold, 0)::int    AS qty_sold,
+      COALESCE(recent.revenue, 0)::float   AS revenue
+    FROM products p
+    LEFT JOIN (
+      SELECT si.product_id, SUM(si.quantity)::int AS qty_sold, SUM(si.line_total)::float AS revenue
+      FROM sale_items si
+      JOIN sales s ON s.id = si.sale_id
+      WHERE si.org_id    = ${orgId}
+        AND s.status     = 'COMPLETED'
+        AND s.sold_at    >= NOW() - (${days}::text || ' days')::interval
+      GROUP BY si.product_id
+    ) recent ON recent.product_id = p.id
+    WHERE p.org_id = ${orgId}
+      AND p.is_active  = TRUE
+      AND p.is_service = FALSE
+  `;
+  return rows as unknown as InventoryVelocityRow[];
+}
+
+// Cruza el stock/valor de cada producto con su velocidad de venta reciente
+// para separar lo más vendido de lo que no se ha movido (dinero estancado
+// en inventario). "Sin movimiento" = stock > 0 y cero unidades vendidas en
+// la ventana — el valor de esas filas es la cifra que más le importa al
+// dueño: cuánto capital tiene inmóvil en productos que no rotan.
+export function computeInventoryVelocity(
+  products: InventoryProduct[],
+  velocity: InventoryVelocityRow[],
+  days = INVENTORY_VELOCITY_DAYS,
+  limit = INVENTORY_VELOCITY_LIMIT
+): { top_movers: InventoryVelocityItem[]; slow_movers: InventoryVelocityItem[]; slow_movers_count: number; dead_stock_value: number; window_days: number } {
+  const stockById = new Map(products.map(p => [p.id, p]));
+
+  const merged: InventoryVelocityItem[] = velocity
+    .filter(v => stockById.has(v.id))
+    .map(v => {
+      const p = stockById.get(v.id)!;
+      return {
+        id: v.id,
+        name: p.name,
+        sku: p.sku,
+        stock: Number(p.stock),
+        stock_value: Number(p.stock_value),
+        qty_sold: Number(v.qty_sold),
+        revenue: Number(v.revenue),
+      };
+    });
+
+  const top_movers = merged
+    .filter(m => m.qty_sold > 0)
+    .sort((a, b) => b.qty_sold - a.qty_sold)
+    .slice(0, limit);
+
+  const stagnant = merged.filter(m => m.stock > 0 && m.qty_sold === 0);
+  const slow_movers = [...stagnant]
+    .sort((a, b) => b.stock_value - a.stock_value)
+    .slice(0, limit);
+  const dead_stock_value = stagnant.reduce((a, m) => a + m.stock_value, 0);
+
+  return { top_movers, slow_movers, slow_movers_count: stagnant.length, dead_stock_value, window_days: days };
 }

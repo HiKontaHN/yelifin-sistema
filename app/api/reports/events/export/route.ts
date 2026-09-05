@@ -27,6 +27,8 @@ async function generatePDF(
   symbol: string,
   from: string,
   to: string,
+  showCosts: boolean,
+  showProfit: boolean,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -134,8 +136,10 @@ async function generatePDF(
       doc.setFillColor(...C_BAR_REV);
       doc.rect(barX, midY - BAR_H / 2, Math.max(wRev, 0.5), BAR_H, "F");
 
-      doc.setFillColor(...C_BAR_EXP);
-      doc.rect(barX, midY - BAR_H2 / 2, Math.max(wExp, 0.5), BAR_H2, "F");
+      if (showProfit) {
+        doc.setFillColor(...C_BAR_EXP);
+        doc.rect(barX, midY - BAR_H2 / 2, Math.max(wExp, 0.5), BAR_H2, "F");
+      }
 
       doc.setFontSize(6.5);
       doc.setTextColor(...C_PRIMARY);
@@ -168,19 +172,21 @@ async function generatePDF(
   drawPageFooter();
   let y = 24;
 
-  // KPI boxes
-  const kpiW = (CONTENT_W - 9) / 4;
+  // KPI boxes — gastos/utilidad requieren showProfit, igual que en pantalla
   const kpis = [
     { label: "Eventos",         value: String(summary.total_events),             bg: C_KPI_BLUE,  tc: C_PRIMARY as [number,number,number] },
     { label: "Ingresos totales", value: fmtHNL(summary.total_revenue, symbol),   bg: C_KPI_BLUE,  tc: C_PRIMARY as [number,number,number] },
-    { label: "Gastos totales",   value: fmtHNL(summary.total_expenses, symbol),  bg: C_KPI_AMBER, tc: C_AMBER   as [number,number,number] },
-    {
-      label: "Utilidad neta",
-      value: fmtHNL(Math.abs(summary.net_profit), symbol),
-      bg: summary.net_profit >= 0 ? C_KPI_GREEN : C_KPI_RED,
-      tc: (summary.net_profit >= 0 ? C_GREEN : C_RED) as [number,number,number],
-    },
+    ...(showProfit ? [
+      { label: "Gastos totales",   value: fmtHNL(summary.total_expenses, symbol),  bg: C_KPI_AMBER, tc: C_AMBER   as [number,number,number] },
+      {
+        label: "Utilidad neta",
+        value: fmtHNL(Math.abs(summary.net_profit), symbol),
+        bg: summary.net_profit >= 0 ? C_KPI_GREEN : C_KPI_RED,
+        tc: (summary.net_profit >= 0 ? C_GREEN : C_RED) as [number,number,number],
+      },
+    ] : []),
   ];
+  const kpiW = (CONTENT_W - (kpis.length - 1) * 3) / kpis.length;
   kpis.forEach((kpi, i) => {
     const x = MARGIN + i * (kpiW + 3);
     doc.setFillColor(...kpi.bg);
@@ -196,13 +202,13 @@ async function generatePDF(
   });
   y += 28;
 
-  // Métricas secundarias
+  // Métricas secundarias — costo mercancía requiere showCosts, utilidad bruta requiere showProfit
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(`Total ventas: ${summary.total_sales}`, MARGIN, y);
-  doc.text(`Costo mercancía: ${fmtHNL(summary.total_cogs, symbol)}`, MARGIN + CONTENT_W / 3, y);
-  doc.text(`Utilidad bruta: ${fmtHNL(summary.gross_profit, symbol)}`, MARGIN + (CONTENT_W * 2) / 3, y);
+  if (showCosts)  doc.text(`Costo mercancía: ${fmtHNL(summary.total_cogs, symbol)}`, MARGIN + CONTENT_W / 3, y);
+  if (showProfit) doc.text(`Utilidad bruta: ${fmtHNL(summary.gross_profit, symbol)}`, MARGIN + (CONTENT_W * 2) / 3, y);
   y += 8;
 
   // Gráfico
@@ -220,43 +226,42 @@ async function generatePDF(
   doc.text("Detalle por evento", MARGIN, y);
   y += 5;
 
+  // Columnas de gastos/utilidad requieren showProfit — igual que en pantalla
+  const eventCols: { key: string; header: string; align: "left" | "right" | "center"; width?: number; get: (e: any) => any }[] = [
+    { key: "name",     header: "Evento",  align: "left",  get: e => e.name },
+    { key: "location", header: "Lugar",   align: "left",  width: 28, get: e => e.location || "—" },
+    { key: "date",     header: "Fecha",   align: "left",  width: 22, get: e => fmtDate(e.starts_at) },
+    { key: "sales",    header: "Ventas",  align: "right", width: 14, get: e => e.sales_count },
+    { key: "revenue",  header: `Ingresos (${symbol})`, align: "right", width: 28, get: e => fmtHNL(e.total_revenue, symbol) },
+    ...(showProfit ? [
+      { key: "fixed_cost",     header: `Gastos fijos (${symbol})`, align: "right" as const, width: 28, get: (e: any) => fmtHNL(e.fixed_cost, symbol) },
+      { key: "extra_expenses", header: `Gastos extra (${symbol})`, align: "right" as const, width: 28, get: (e: any) => fmtHNL(e.extra_expenses, symbol) },
+      { key: "net_profit",     header: `Utilidad neta (${symbol})`, align: "right" as const, width: 28, get: (e: any) => fmtHNL(Math.abs(Number(e.net_profit)), symbol) },
+    ] : []),
+    { key: "status", header: "Estado", align: "center", width: 22, get: e => STATUS_LABEL[e.status] ?? e.status },
+  ];
+  const netProfitColIdx = eventCols.findIndex(c => c.key === "net_profit");
+  const statusColIdx    = eventCols.findIndex(c => c.key === "status");
+
   autoTable(doc, {
     startY: y,
-    head:   [["Evento", "Lugar", "Fecha", "Ventas", `Ingresos (${symbol})`, `Gastos fijos (${symbol})`, `Gastos extra (${symbol})`, `Utilidad neta (${symbol})`, "Estado"]],
-    body:   events.map(e => [
-      e.name,
-      e.location || "—",
-      fmtDate(e.starts_at),
-      e.sales_count,
-      fmtHNL(e.total_revenue, symbol),
-      fmtHNL(e.fixed_cost, symbol),
-      fmtHNL(e.extra_expenses, symbol),
-      fmtHNL(Math.abs(Number(e.net_profit)), symbol),
-      STATUS_LABEL[e.status] ?? e.status,
-    ]),
+    head:   [eventCols.map(c => c.header)],
+    body:   events.map(e => eventCols.map(c => c.get(e))),
     styles:             { fontSize: 7.5, cellPadding: 2.2, font: "helvetica" },
     headStyles:         cleanHeadStyles,
-    columnStyles: {
-      0: { halign: "left"   },
-      1: { halign: "left",   cellWidth: 28 },
-      2: { halign: "left",   cellWidth: 22 },
-      3: { halign: "right",  cellWidth: 14 },
-      4: { halign: "right",  cellWidth: 28 },
-      5: { halign: "right",  cellWidth: 28 },
-      6: { halign: "right",  cellWidth: 28 },
-      7: { halign: "right",  cellWidth: 28, fontStyle: "bold" },
-      8: { halign: "center", cellWidth: 22 },
-    },
+    columnStyles: Object.fromEntries(
+      eventCols.map((c, i) => [i, { halign: c.align, ...(c.width ? { cellWidth: c.width } : {}), ...(c.key === "net_profit" ? { fontStyle: "bold" as const } : {}) }])
+    ),
     alternateRowStyles: { fillColor: C_BG_SUBTLE },
     margin:             { left: MARGIN, right: MARGIN },
     didParseCell: (data: any) => {
       if (data.section === "body") {
-        if (data.column.index === 7) {
+        if (data.column.index === netProfitColIdx) {
           const rawEvent = events[data.row.index];
           if (rawEvent && Number(rawEvent.net_profit) < 0) data.cell.styles.textColor = C_RED;
           else data.cell.styles.textColor = C_GREEN;
         }
-        if (data.column.index === 8) {
+        if (data.column.index === statusColIdx) {
           const status = String(data.cell.raw);
           if (status === "Completado")    data.cell.styles.textColor = C_GREEN;
           else if (status === "En curso") data.cell.styles.textColor = C_AMBER;
@@ -286,11 +291,9 @@ export async function POST(request: NextRequest) {
   const denyFeature = await requireFeature(auth.data.orgId, 'reports.events');
   if (denyFeature) return denyFeature;
 
-  // El documento exportado incluye costos y utilidades — requiere ambos permisos
+  // Costos/utilidades se redactan del documento igual que en pantalla —
+  // no se bloquea la exportación completa por no tener uno de los dos.
   const perms = await getModulePermissions(auth.data, 'REPORTS', 'EVENTS');
-  if (!perms.showCosts || !perms.showProfit) {
-    return createErrorResponse("Tu rol no tiene permiso para exportar este reporte (incluye costos y ganancias)", 403);
-  }
 
   try {
     const { orgId } = auth.data;
@@ -318,7 +321,7 @@ export async function POST(request: NextRequest) {
       total_sales:    totalSales,
     };
 
-    const pdfBuf = await generatePDF(summary, events, symbol, from, to);
+    const pdfBuf = await generatePDF(summary, events, symbol, from, to, perms.showCosts, perms.showProfit);
 
     return new Response(pdfBuf.buffer as ArrayBuffer, {
       headers: {

@@ -66,6 +66,33 @@ export type InventorySummary = {
   zero_stock_count: number;
 };
 
+// Fila cruda de velocidad de venta por producto (query) — antes de cruzar
+// con stock/valor.
+export type InventoryVelocityRow = {
+  id:       number;
+  qty_sold: number;
+  revenue:  number;
+};
+
+// Producto ya cruzado con su stock/valor — lo que consume la UI.
+export type InventoryVelocityItem = {
+  id:          number;
+  name:        string;
+  sku:         string;
+  stock:       number;
+  stock_value: number;
+  qty_sold:    number;
+  revenue:     number;
+};
+
+export type InventoryVelocity = {
+  top_movers:        InventoryVelocityItem[];
+  slow_movers:       InventoryVelocityItem[];
+  slow_movers_count: number;
+  dead_stock_value:  number;
+  window_days:       number;
+};
+
 export type InventoryProduct = {
   id:          number;
   name:        string;
@@ -171,6 +198,7 @@ export function useInventoryReport() {
     summary:   (data?.summary   ?? null) as InventorySummary | null,
     products:  (data?.products  ?? [])   as InventoryProduct[],
     movements: (data?.movements ?? [])   as InventoryMovement[],
+    velocity:  (data?.velocity  ?? null) as InventoryVelocity | null,
     isLoading, error: (error as any)?.message ?? null, mutate,
   };
 }

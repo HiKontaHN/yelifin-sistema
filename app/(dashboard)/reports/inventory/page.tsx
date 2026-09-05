@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
-import { Package, Boxes, DollarSign, AlertTriangle, ArrowLeftRight, Search } from "lucide-react";
+import { Package, Boxes, DollarSign, AlertTriangle, ArrowLeftRight, Search, TrendingUp, TrendingDown } from "lucide-react";
 
 const MOVE_LABEL: Record<string, string> = { IN: "Entrada", OUT: "Salida", ADJUST: "Ajuste" };
 const MOVE_COLOR: Record<string, string> = {
@@ -38,10 +38,10 @@ export default function InventoryReportPage() {
 function InventoryReportPageInner() {
   const { format, symbol }                          = useCurrency();
   const { firebaseUser }                            = useAuth();
-  const { summary, products, movements, isLoading } = useInventoryReport();
-  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("REPORTS");
+  const { summary, products, movements, velocity, isLoading } = useInventoryReport();
+  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("REPORTS", "INVENTORY");
   const [search,       setSearch]       = useState("");
-  const [tab,          setTab]          = useState<"stock" | "movements">("stock");
+  const [tab,          setTab]          = useState<"stock" | "movements" | "velocity">("stock");
   const [productPage,  setProductPage]  = useState(1);
   const [movementPage, setMovementPage] = useState(1);
 
@@ -106,6 +106,14 @@ function InventoryReportPageInner() {
             accent={summary.low_stock_count + summary.zero_stock_count > 0 ? "red" : "green"}
             icon={AlertTriangle}
           />
+          {showCosts && velocity && (
+            <StatCard label="Valor sin movimiento"
+              value={format(velocity.dead_stock_value)}
+              sub={`${velocity.slow_movers_count} producto${velocity.slow_movers_count === 1 ? "" : "s"} sin ventas en ${velocity.window_days}d`}
+              accent={velocity.dead_stock_value > 0 ? "amber" : "green"}
+              icon={TrendingDown}
+            />
+          )}
         </div>
       )}
 
@@ -118,6 +126,10 @@ function InventoryReportPageInner() {
         <Button variant={tab === "movements" ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setTab("movements")}>
           <ArrowLeftRight className="size-3.5" />
           Movimientos (30 días)
+        </Button>
+        <Button variant={tab === "velocity" ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setTab("velocity")}>
+          <TrendingUp className="size-3.5" />
+          Rotación (30 días)
         </Button>
       </div>
 
@@ -240,6 +252,67 @@ function InventoryReportPageInner() {
             label="movimientos"
             onPageChange={setMovementPage}
           />
+        </div>
+      )}
+
+      {/* Rotación: más vendidos y sin movimiento */}
+      {tab === "velocity" && !isLoading && velocity && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ReportSection title="Productos más vendidos" icon={TrendingUp} noPadding>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
+                    <th className="text-left px-4 py-2">Producto</th>
+                    <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
+                    <th className="text-right px-4 py-2">Vendidos</th>
+                    <th className="text-right px-4 py-2">Ingresos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {velocity.top_movers.map((p) => (
+                    <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 font-medium max-w-[180px] truncate">{p.name}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{p.sku || "—"}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-green-700 dark:text-green-400">{p.qty_sold}</td>
+                      <td className="px-4 py-2.5 text-right">{format(p.revenue)}</td>
+                    </tr>
+                  ))}
+                  {velocity.top_movers.length === 0 && (
+                    <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">Sin ventas en los últimos {velocity.window_days} días</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </ReportSection>
+
+          <ReportSection title="Productos sin movimiento" icon={TrendingDown} noPadding>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
+                    <th className="text-left px-4 py-2">Producto</th>
+                    <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
+                    <th className="text-right px-4 py-2">Stock</th>
+                    {showCosts && <th className="text-right px-4 py-2">Valor en stock</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {velocity.slow_movers.map((p) => (
+                    <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 font-medium max-w-[180px] truncate">{p.name}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{p.sku || "—"}</td>
+                      <td className="px-4 py-2.5 text-right">{p.stock}</td>
+                      {showCosts && <td className="px-4 py-2.5 text-right font-medium text-amber-700 dark:text-amber-400">{format(p.stock_value)}</td>}
+                    </tr>
+                  ))}
+                  {velocity.slow_movers.length === 0 && (
+                    <tr><td colSpan={showCosts ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">Todo el stock tuvo ventas en los últimos {velocity.window_days} días</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </ReportSection>
         </div>
       )}
     </ReportShell>

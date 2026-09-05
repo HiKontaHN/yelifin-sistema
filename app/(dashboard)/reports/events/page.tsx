@@ -45,7 +45,7 @@ function EventsReportPageInner() {
   const { firebaseUser }             = useAuth();
   const { summary, events, isLoading } = useEventsReport(from, to);
   const [eventPage, setEventPage] = useState(1);
-  const { show_profit: showProfit } = useModulePermissions("REPORTS");
+  const { show_profit: showProfit } = useModulePermissions("REPORTS", "EVENTS");
 
   useEffect(() => { setEventPage(1); }, [from, to]);
 
