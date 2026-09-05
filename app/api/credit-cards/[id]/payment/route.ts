@@ -79,7 +79,7 @@ export async function POST(
       // 2. Descontar de la cuenta
       await sql`
         UPDATE accounts
-        SET balance = balance - ${localDeduction}
+        SET balance = balance - ${localDeduction}, updated_by = ${userId}
         WHERE id = ${Number(account_id)} AND org_id = ${orgId}
       `;
 
@@ -102,14 +102,16 @@ export async function POST(
         await sql`
           UPDATE credit_cards
           SET balance_usd = GREATEST(0, balance_usd - ${amountNum}),
-              updated_at  = NOW()
+              updated_at  = NOW(),
+              updated_by  = ${userId}
           WHERE id = ${Number(id)} AND org_id = ${orgId}
         `;
       } else {
         await sql`
           UPDATE credit_cards
           SET balance    = GREATEST(0, balance - ${amountNum}),
-              updated_at = NOW()
+              updated_at = NOW(),
+              updated_by = ${userId}
           WHERE id = ${Number(id)} AND org_id = ${orgId}
         `;
       }

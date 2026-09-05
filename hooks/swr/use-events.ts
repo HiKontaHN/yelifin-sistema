@@ -7,6 +7,7 @@ export type EventStatus = "PLANNED" | "ACTIVE" | "COMPLETED";
 
 export interface Event {
   id:             number;
+  public_id:      string;
   name:           string;
   location:       string | null;
   starts_at:      string;

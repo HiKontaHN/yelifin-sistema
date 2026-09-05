@@ -187,7 +187,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           )
         `;
         await sql`
-          UPDATE accounts SET balance = balance + ${sale.total}
+          UPDATE accounts SET balance = balance + ${sale.total}, updated_by = ${userId}
           WHERE id = ${sale.account_id} AND org_id = ${orgId}
         `;
         if (sale.customer_id) {
@@ -246,7 +246,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           if (lastBatch) {
             await sql`
               UPDATE inventory_batches
-              SET qty_available = qty_available + ${item.quantity}
+              SET qty_available = qty_available + ${item.quantity}, updated_by = ${userId}
               WHERE id = ${lastBatch.id} AND org_id = ${orgId}
             `;
           }
@@ -269,7 +269,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         for (const s of supplies) {
           const supplyQty = Math.round(Number(s.quantity));
           await sql`
-            UPDATE supplies SET stock = stock + ${supplyQty}
+            UPDATE supplies SET stock = stock + ${supplyQty}, updated_by = ${userId}
             WHERE id = ${s.supply_id} AND org_id = ${orgId}
           `;
           await sql`
@@ -285,8 +285,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
         // Soft-delete: se marcan como canceladas en vez de borrarse, para
         // conservar trazabilidad (quién, cuándo, por qué).
-        await sql`UPDATE sale_supplies SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-        await sql`UPDATE sale_items    SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+        await sql`UPDATE sale_supplies SET deleted_at = NOW(), updated_by = ${userId} WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+        await sql`UPDATE sale_items    SET deleted_at = NOW(), updated_by = ${userId} WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
         await sql`
           UPDATE sales SET
             status               = 'CANCELLED',
@@ -556,7 +556,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             // Necesita más stock → descuento FIFO atómico (ver lib/fifo.ts):
             // bajo concurrencia nunca sobregira el stock.
             const consumed = await consumeFifo(
-              sql, orgId, item.product_id, item.variant_id, item.delta
+              sql, orgId, item.product_id, item.variant_id, item.delta, userId
             );
             if (!consumed) {
               throw new InsufficientStockError(`Producto #${item.product_id}`);
@@ -583,7 +583,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
             if (lastBatch) {
               await sql`
-                UPDATE inventory_batches SET qty_available = qty_available + ${Math.abs(item.delta)}
+                UPDATE inventory_batches SET qty_available = qty_available + ${Math.abs(item.delta)}, updated_by = ${userId}
                 WHERE id = ${lastBatch.id} AND org_id = ${orgId}
               `;
             }
@@ -617,7 +617,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           if (lastBatch) {
             await sql`
               UPDATE inventory_batches
-              SET qty_available = qty_available + ${current.quantity}
+              SET qty_available = qty_available + ${current.quantity}, updated_by = ${userId}
               WHERE id = ${lastBatch.id} AND org_id = ${orgId}
             `;
           }
@@ -653,7 +653,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             if (item.variant_id !== null) {
               await sql`
                 UPDATE inventory_movements
-                SET quantity = ${item.quantity}
+                SET quantity = ${item.quantity}, updated_by = ${userId}
                 WHERE org_id         = ${orgId}
                   AND reference_type = 'SALE'
                   AND reference_id   = ${saleId}
@@ -663,7 +663,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             } else {
               await sql`
                 UPDATE inventory_movements
-                SET quantity = ${item.quantity}
+                SET quantity = ${item.quantity}, updated_by = ${userId}
                 WHERE org_id         = ${orgId}
                   AND reference_type = 'SALE'
                   AND reference_id   = ${saleId}
@@ -734,7 +734,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             const delta = newData.quantity - currentQty;
             if (delta > 0) {
               await sql`
-                UPDATE supplies SET stock = GREATEST(0, stock - ${delta})
+                UPDATE supplies SET stock = GREATEST(0, stock - ${delta}), updated_by = ${userId}
                 WHERE id = ${supplyId} AND org_id = ${orgId}
               `;
               await sql`
@@ -743,7 +743,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               `;
             } else if (delta < 0) {
               await sql`
-                UPDATE supplies SET stock = stock + ${Math.abs(delta)}
+                UPDATE supplies SET stock = stock + ${Math.abs(delta)}, updated_by = ${userId}
                 WHERE id = ${supplyId} AND org_id = ${orgId}
               `;
               await sql`
@@ -757,7 +757,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           for (const [supplyId, currentQty] of currentSupplyMap.entries()) {
             if (!newSupplyMap.has(supplyId)) {
               await sql`
-                UPDATE supplies SET stock = stock + ${currentQty}
+                UPDATE supplies SET stock = stock + ${currentQty}, updated_by = ${userId}
                 WHERE id = ${supplyId} AND org_id = ${orgId}
               `;
               await sql`
@@ -873,7 +873,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         if (lastBatch) {
           await sql`
             UPDATE inventory_batches
-            SET qty_available = qty_available + ${item.quantity}
+            SET qty_available = qty_available + ${item.quantity}, updated_by = ${userId}
             WHERE id = ${lastBatch.id} AND org_id = ${orgId}
           `;
         }
@@ -893,7 +893,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       for (const s of supplies) {
         const supplyQty = Math.round(Number(s.quantity));
         await sql`
-          UPDATE supplies SET stock = stock + ${supplyQty}
+          UPDATE supplies SET stock = stock + ${supplyQty}, updated_by = ${userId}
           WHERE id = ${s.supply_id} AND org_id = ${orgId}
         `;
         await sql`
@@ -919,12 +919,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         if (linkedTx) {
           await sql`
             UPDATE transactions
-            SET deleted_at = NOW(), deleted_by = ${userId}
+            SET deleted_at = NOW(), deleted_by = ${userId}, updated_by = ${userId}
             WHERE id = ${linkedTx.id} AND org_id = ${orgId}
           `;
           await sql`
             UPDATE accounts
-            SET balance = balance - ${linkedTx.amount}
+            SET balance = balance - ${linkedTx.amount}, updated_by = ${userId}
             WHERE id = ${sale.account_id} AND org_id = ${orgId}
           `;
         }
@@ -943,8 +943,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
       // 4. Soft-delete: se marca como cancelada en vez de borrarse, para
       // conservar trazabilidad (quién, cuándo, por qué).
-      await sql`UPDATE sale_supplies SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
-      await sql`UPDATE sale_items    SET deleted_at = NOW() WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+      await sql`UPDATE sale_supplies SET deleted_at = NOW(), updated_by = ${userId} WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
+      await sql`UPDATE sale_items    SET deleted_at = NOW(), updated_by = ${userId} WHERE sale_id = ${saleId} AND org_id = ${orgId}`;
       await sql`
         UPDATE sales SET
           status               = 'CANCELLED',

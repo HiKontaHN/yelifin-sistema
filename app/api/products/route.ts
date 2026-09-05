@@ -98,34 +98,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [limitCheck] = await sql`
-      SELECT
-        sp.max_products,
-        (
-          SELECT COUNT(*)
-          FROM products p
-          WHERE p.org_id   = ${orgId}
-            AND p.is_active = TRUE
-        )::int AS current_count
-      FROM org_subscriptions us
-      JOIN subscription_plans sp ON sp.id = us.plan_id
-      WHERE us.org_id = ${orgId}
-      ORDER BY us.created_at DESC
-      LIMIT 1
-    `;
-
-    if (
-      limitCheck &&
-      limitCheck.max_products !== null &&
-      Number(limitCheck.current_count) >= Number(limitCheck.max_products)
-    ) {
-      return createErrorResponse(
-        "Has alcanzado el límite de productos para tu plan",
-        403,
-        true
-      );
-    }
-
     // SKU: el enviado (verificado) o el siguiente disponible según las
     // iniciales del nombre (PHK-001, PHK-002, ... rellenando huecos)
     let finalSku = sku?.trim() || null;

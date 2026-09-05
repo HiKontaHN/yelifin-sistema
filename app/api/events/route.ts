@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const rows = await sql`
       SELECT
         e.id,
+        e.public_id,
         e.name,
         e.location,
         e.starts_at,
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
 
       return {
         id:             e.id,
+        public_id:      e.public_id,
         name:           e.name,
         location:       e.location,
         starts_at:      e.starts_at,

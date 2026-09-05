@@ -45,13 +45,13 @@ export async function PATCH(
     if (oldCurrency === "USD") {
       await sql`
         UPDATE credit_cards
-        SET balance_usd = balance_usd - ${oldAmount}
+        SET balance_usd = balance_usd - ${oldAmount}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     } else {
       await sql`
         UPDATE credit_cards
-        SET balance = balance - ${oldAmount}
+        SET balance = balance - ${oldAmount}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     }
@@ -60,13 +60,13 @@ export async function PATCH(
     if (newCurrency === "USD") {
       await sql`
         UPDATE credit_cards
-        SET balance_usd = balance_usd + ${newAmount}
+        SET balance_usd = balance_usd + ${newAmount}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     } else {
       await sql`
         UPDATE credit_cards
-        SET balance = balance + ${newAmount}
+        SET balance = balance + ${newAmount}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     }
@@ -124,13 +124,13 @@ export async function DELETE(
     if (existing.currency === "USD") {
       await sql`
         UPDATE credit_cards
-        SET balance_usd = balance_usd - ${Number(existing.amount)}
+        SET balance_usd = balance_usd - ${Number(existing.amount)}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     } else {
       await sql`
         UPDATE credit_cards
-        SET balance = balance - ${Number(existing.amount)}
+        SET balance = balance - ${Number(existing.amount)}, updated_by = ${userId}
         WHERE id = ${existing.credit_card_id} AND org_id = ${orgId}
       `;
     }

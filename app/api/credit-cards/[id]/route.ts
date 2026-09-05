@@ -21,7 +21,7 @@ export async function GET(
 
     const [card] = await sql`
       SELECT
-        id, name, last_four, credit_limit,
+        id, public_id, name, last_four, credit_limit,
         statement_closing_day, payment_due_day,
         balance, balance_usd, is_active, created_at, updated_at
       FROM credit_cards

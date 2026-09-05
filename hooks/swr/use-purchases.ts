@@ -31,6 +31,7 @@ export type CreatePurchaseInput = {
 
 export type Purchase = {
   id: number;
+  public_id: string;
   account_id: number | null;
   account_name: string | null;
   shipping_account_id: number | null;

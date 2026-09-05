@@ -8,7 +8,7 @@ import { useCurrency }        from "@/hooks/swr/use-currency";
 import { useAuth }            from "@/hooks/use-auth";
 import { fmtN } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,7 +128,7 @@ function InventoryReportPageInner() {
           <Input
             placeholder="Buscar producto o SKU..."
             value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-8"
+            className="h-8 text-xs pl-8"
           />
         </div>
       )}
@@ -136,7 +136,7 @@ function InventoryReportPageInner() {
       {/* Stock table */}
       {tab === "stock" && !isLoading && (
         <div className="space-y-2">
-          <div className="rounded-xl border overflow-hidden">
+          <ReportSection title="Stock por producto" icon={Package} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -182,7 +182,7 @@ function InventoryReportPageInner() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </ReportSection>
           <PaginationControls
             page={productPage}
             totalPages={Math.ceil(filtered.length / PRODUCT_PAGE_SIZE)}
@@ -196,7 +196,7 @@ function InventoryReportPageInner() {
       {/* Movements table */}
       {tab === "movements" && !isLoading && (
         <div className="space-y-2">
-          <div className="rounded-xl border overflow-hidden">
+          <ReportSection title="Movimientos (30 días)" icon={ArrowLeftRight} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -232,7 +232,7 @@ function InventoryReportPageInner() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </ReportSection>
           <PaginationControls
             page={movementPage}
             totalPages={Math.ceil(movements.length / MOVEMENT_PAGE_SIZE)}

@@ -22,7 +22,7 @@ export async function GET(
 
     // ── Evento base ────────────────────────────────────────────────────
     const [event] = await sql`
-      SELECT id, name, location, starts_at, ends_at, fixed_cost, notes, created_at
+      SELECT id, public_id, name, location, starts_at, ends_at, fixed_cost, notes, created_at
       FROM events
       WHERE id = ${eventId} AND org_id = ${orgId}
     `;
@@ -92,6 +92,7 @@ export async function GET(
     const payload = {
       data: {
         id:          event.id,
+        public_id:   event.public_id,
         name:        event.name,
         location:    event.location,
         starts_at:   event.starts_at,

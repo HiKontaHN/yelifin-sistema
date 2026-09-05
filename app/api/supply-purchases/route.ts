@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
 
         await sql`
           UPDATE supplies
-          SET stock = stock + ${it.quantity}, unit_cost = ${it.unit_cost}
+          SET stock = stock + ${it.quantity}, unit_cost = ${it.unit_cost}, updated_by = ${userId}
           WHERE id = ${it.supply_id} AND org_id = ${orgId}
         `;
       }
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       // 4. Descontar balance de la cuenta
       await sql`
         UPDATE accounts
-        SET balance = balance - ${total}
+        SET balance = balance - ${total}, updated_by = ${userId}
         WHERE id = ${account_id} AND org_id = ${orgId}
       `;
 

@@ -328,8 +328,9 @@ describe("POST /api/products", () => {
   });
 
   it("returns 403 when product limit is reached", async () => {
-    // limit check: max_products=5, current_count=5
-    mockSqlImpl.mockResolvedValueOnce([{ max_products: 5, current_count: 5 }]);
+    // verifyResourceLimit: plan query (max_products=5), then count query (5)
+    mockSqlImpl.mockResolvedValueOnce([{ max_products: 5 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ count: 5 }]);
 
     const { POST } = await import("@/app/api/products/route");
     const req = makeRequest("http://localhost/api/products", {
@@ -358,9 +359,10 @@ describe("POST /api/products", () => {
   });
 
   it("creates a product successfully and returns 201 with variants:[]", async () => {
-    // 1. limit check
-    mockSqlImpl.mockResolvedValueOnce([{ max_products: null, current_count: 1 }]);
-    // 2. no SKU check needed (no sku in body)
+    // 1. verifyResourceLimit: plan query (no limit)
+    mockSqlImpl.mockResolvedValueOnce([{ max_products: null }]);
+    // 2. nextProductSkus: no taken skus (no sku in body)
+    mockSqlImpl.mockResolvedValueOnce([]);
     // 3. INSERT RETURNING
     const createdProduct = {
       id: 10,
@@ -391,7 +393,8 @@ describe("POST /api/products", () => {
   });
 
   it("creates a service product (is_service=true) successfully", async () => {
-    mockSqlImpl.mockResolvedValueOnce([{ max_products: null, current_count: 0 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ max_products: null }]); // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([]); // nextProductSkus: no taken skus
     const createdService = {
       id: 20,
       user_id: 42,
@@ -492,7 +495,10 @@ describe("POST /api/products/[id]/variants", () => {
   it("creates a variant successfully and returns 201", async () => {
     // parent product exists
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
-    // No sku in body → sku uniqueness check is skipped entirely
+    // No sku in body → nextVariantSkus runs instead (no taken skus)
+    mockSqlImpl.mockResolvedValueOnce([]);
+    // BEGIN
+    mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT RETURNING
     const newVariant = {
       id: 5,
@@ -508,6 +514,8 @@ describe("POST /api/products/[id]/variants", () => {
       updated_at: new Date().toISOString(),
     };
     mockSqlImpl.mockResolvedValueOnce([newVariant]);
+    // COMMIT
+    mockSqlImpl.mockResolvedValueOnce([]);
 
     const { POST } = await import("@/app/api/products/[id]/variants/route");
     const req = makeRequest(
@@ -526,7 +534,10 @@ describe("POST /api/products/[id]/variants", () => {
 
   it("creates a variant with price_override and attributes", async () => {
     mockSqlImpl.mockResolvedValueOnce([{ id: 2 }]); // parent exists
-    // No sku in body → sku check is skipped (inside `if (sku)`)
+    // No sku in body → nextVariantSkus runs instead (no taken skus)
+    mockSqlImpl.mockResolvedValueOnce([]);
+    // BEGIN
+    mockSqlImpl.mockResolvedValueOnce([]);
     const newVariant = {
       id: 9,
       product_id: 2,
@@ -537,6 +548,8 @@ describe("POST /api/products/[id]/variants", () => {
       is_active: true,
     };
     mockSqlImpl.mockResolvedValueOnce([newVariant]);
+    // COMMIT
+    mockSqlImpl.mockResolvedValueOnce([]);
 
     const { POST } = await import("@/app/api/products/[id]/variants/route");
     const req = makeRequest(
@@ -606,11 +619,13 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   } = {}) {
     const { batchQty = 10, unitCost = 50 } = opts;
 
+    // 0. verifyResourceLimit: plan query (no limit)
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // 1. Account validation
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // 2. Product lookup
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
-    // 3. FIFO batches (no variant)
+    // 3. FIFO batches pre-check (no variant)
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, qty_available: batchQty, unit_cost: unitCost }]);
     // 4. BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -620,21 +635,26 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 0 }]);
     // 7. INSERT sales RETURNING
     mockSqlImpl.mockResolvedValueOnce([{ id: 100 }]);
-    // 8. INSERT sale_items
+    // 8. consumeFifo: SELECT id FROM inventory_batches
+    mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // 9. consumeFifo: atomic UPDATE ... RETURNING take, unit_cost (take is
+    //    large enough to always satisfy the requested quantity in one pass,
+    //    regardless of which test calls this helper)
+    mockSqlImpl.mockResolvedValueOnce([{ take: 999, unit_cost: unitCost }]);
+    // 10. INSERT sale_items
     mockSqlImpl.mockResolvedValueOnce([]);
-    // 9. UPDATE inventory_batches
+    // 11. INSERT inventory_movements
     mockSqlImpl.mockResolvedValueOnce([]);
-    // 10. INSERT inventory_movements
+    // 12. INSERT transactions
     mockSqlImpl.mockResolvedValueOnce([]);
-    // 11. INSERT transactions
+    // 13. UPDATE accounts balance
     mockSqlImpl.mockResolvedValueOnce([]);
-    // 12. UPDATE accounts balance
-    mockSqlImpl.mockResolvedValueOnce([]);
-    // 13. COMMIT
+    // 14. COMMIT
     mockSqlImpl.mockResolvedValueOnce([]);
   }
 
   it("returns 400 when items array is empty", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     const { POST } = await import("@/app/api/sales/route");
     const req = makeRequest("http://localhost/api/sales", {
       method: "POST",
@@ -652,6 +672,7 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 
   it("returns 400 when payment_method is missing", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     const { POST } = await import("@/app/api/sales/route");
     const req = makeRequest("http://localhost/api/sales", {
       method: "POST",
@@ -669,6 +690,7 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 
   it("returns 400 when status is invalid", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     const { POST } = await import("@/app/api/sales/route");
     const req = makeRequest("http://localhost/api/sales", {
       method: "POST",
@@ -684,6 +706,7 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 
   it("returns 400 when tax_rate is not 0, 15 or 18", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     const { POST } = await import("@/app/api/sales/route");
     const req = makeRequest("http://localhost/api/sales", {
       method: "POST",
@@ -702,16 +725,13 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 
   it("returns 400 when stock is insufficient", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]); // verifyResourceLimit
     // Account valid
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product found
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // Only 2 units in stock but we request 5
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, qty_available: 2, unit_cost: 50 }]);
-    // The handler has a redundant `const [product] = await sql\`SELECT name…\`` inside the
-    // `if (totalAvailable < item.quantity)` guard (dead code — the label is already computed
-    // above it). The query still fires, so we must consume it.
-    mockSqlImpl.mockResolvedValueOnce([{ name: "Camiseta" }]);
 
     const { POST } = await import("@/app/api/sales/route");
     const req = makeRequest("http://localhost/api/sales", {
@@ -782,6 +802,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 
   it("service products do NOT trigger inventory batch update", async () => {
+    // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account valid
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product is_service = true
@@ -851,11 +873,13 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
   });
 
   it("registers a PENDING sale and returns 201 without updating inventory_batches", async () => {
+    // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Pantalón", is_service: false }]);
-    // Batches (stock check still runs to verify availability)
+    // Batches pre-check (stock check still runs to verify availability)
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, qty_available: 10, unit_cost: 80 }]);
     // BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -865,9 +889,12 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 3 }]);
     // INSERT sales RETURNING
     mockSqlImpl.mockResolvedValueOnce([{ id: 300 }]);
+    // consumeFifo: SELECT id FROM inventory_batches
+    mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost (FIFO
+    // deduction — happens for PENDING too per current implementation)
+    mockSqlImpl.mockResolvedValueOnce([{ take: 999, unit_cost: 80 }]);
     // INSERT sale_items
-    mockSqlImpl.mockResolvedValueOnce([]);
-    // UPDATE inventory_batches (FIFO deduction — happens for PENDING too per current implementation)
     mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT inventory_movements
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -895,11 +922,13 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
   });
 
   it("PENDING sale does NOT insert a transaction record", async () => {
+    // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Zapatos", is_service: false }]);
-    // Batches
+    // Batches pre-check
     mockSqlImpl.mockResolvedValueOnce([{ id: 2, qty_available: 20, unit_cost: 200 }]);
     // BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -909,9 +938,11 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 10 }]);
     // INSERT sales
     mockSqlImpl.mockResolvedValueOnce([{ id: 400 }]);
+    // consumeFifo: SELECT id FROM inventory_batches
+    mockSqlImpl.mockResolvedValueOnce([{ id: 2 }]);
+    // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost
+    mockSqlImpl.mockResolvedValueOnce([{ take: 999, unit_cost: 200 }]);
     // INSERT sale_items
-    mockSqlImpl.mockResolvedValueOnce([]);
-    // UPDATE batch
     mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT movement
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -1195,6 +1226,8 @@ describe("POST /api/sales – FIFO with variant_id", () => {
   });
 
   it("returns 404 when variant does not belong to the product", async () => {
+    // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product (physical)
@@ -1219,13 +1252,15 @@ describe("POST /api/sales – FIFO with variant_id", () => {
   });
 
   it("selects batches filtered by variant_id when variant is provided", async () => {
+    // verifyResourceLimit
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // Product
     mockSqlImpl.mockResolvedValueOnce([{ id: 1, name: "Camiseta", is_service: false }]);
     // Variant found
     mockSqlImpl.mockResolvedValueOnce([{ id: 3, variant_name: "Talla L", price_override: null }]);
-    // Batches for variant_id=3
+    // Batches pre-check for variant_id=3
     mockSqlImpl.mockResolvedValueOnce([{ id: 5, qty_available: 8, unit_cost: 60 }]);
     // BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
@@ -1235,9 +1270,11 @@ describe("POST /api/sales – FIFO with variant_id", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 0 }]);
     // INSERT sales
     mockSqlImpl.mockResolvedValueOnce([{ id: 900 }]);
+    // consumeFifo: SELECT id FROM inventory_batches (variant)
+    mockSqlImpl.mockResolvedValueOnce([{ id: 5 }]);
+    // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost
+    mockSqlImpl.mockResolvedValueOnce([{ take: 999, unit_cost: 60 }]);
     // INSERT sale_items
-    mockSqlImpl.mockResolvedValueOnce([]);
-    // UPDATE batch (variant batch id=5)
     mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT movement
     mockSqlImpl.mockResolvedValueOnce([]);

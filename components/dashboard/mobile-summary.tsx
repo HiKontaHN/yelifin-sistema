@@ -58,7 +58,7 @@ export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = t
             {isLoading
               ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)
               : !recentSales.length
-                ? <p className="text-sm text-muted-foreground text-center py-3">Sin ventas en este período</p>
+                ? <p className="text-sm text-muted-foreground text-center py-8">Sin ventas en este período</p>
                 : recentSales.slice(0, 4).map((sale: any) => (
                   <div
                     key={sale.id}

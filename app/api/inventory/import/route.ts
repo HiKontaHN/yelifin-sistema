@@ -301,7 +301,7 @@ async function executeRow(
         )
       `;
       await sql`
-        UPDATE credit_cards SET balance = balance + ${totalCost}, updated_at = NOW()
+        UPDATE credit_cards SET balance = balance + ${totalCost}, updated_at = NOW(), updated_by = ${userId}
         WHERE id = ${row.account!.id} AND org_id = ${orgId}
       `;
     } else if (hasPayment) {
@@ -315,7 +315,7 @@ async function executeRow(
         )
       `;
       await sql`
-        UPDATE accounts SET balance = balance - ${totalCost}
+        UPDATE accounts SET balance = balance - ${totalCost}, updated_by = ${userId}
         WHERE id = ${row.account!.id} AND org_id = ${orgId}
       `;
     }

@@ -10,6 +10,7 @@ const KEY = '/api/credit-cards';
 
 export type CreditCard = {
   id: number;
+  public_id: string;
   name: string;
   last_four: string | null;
   credit_limit: number | null;

@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
         // ── Ajuste negativo: FIFO atómico por variante (ver lib/fifo.ts):
         // bajo concurrencia nunca sobregira el stock.
         const consumed = await consumeFifo(
-          sql, orgId, Number(product_id), variantId, Number(quantity)
+          sql, orgId, Number(product_id), variantId, Number(quantity), userId
         );
         if (!consumed) {
           throw new InsufficientStockError("el producto");

@@ -209,9 +209,9 @@ export async function POST(request: NextRequest) {
           )
         `;
         if (isUsd) {
-          await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${ccAmount}, updated_at = NOW() WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+          await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
         } else {
-          await sql`UPDATE credit_cards SET balance = balance + ${ccAmount}, updated_at = NOW() WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+          await sql`UPDATE credit_cards SET balance = balance + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
         }
         if (hasShippingAccount) {
           await sql`
@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
               ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
             )
           `;
-          await sql`UPDATE accounts SET balance = balance - ${shippingTotal} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
+          await sql`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
         }
       } else if (hasShippingAccount) {
         // Productos desde cuenta principal; envío desde cuenta separada
@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
             ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${productsLocal} WHERE id = ${account_id} AND org_id = ${orgId}`;
+        await sql`UPDATE accounts SET balance = balance - ${productsLocal}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
         await sql`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
             ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${shippingTotal} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
+        await sql`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
       } else {
         await sql`
           INSERT INTO transactions (
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
             ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${total} WHERE id = ${account_id} AND org_id = ${orgId}`;
+        await sql`UPDATE accounts SET balance = balance - ${total}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
       }
 
       await sql`COMMIT`;
@@ -302,6 +302,7 @@ export async function GET(request: NextRequest) {
     const purchases = await sql`
       SELECT
         pb.id,
+        pb.public_id,
         pb.account_id,
         a.name   AS account_name,
         pb.shipping_account_id,

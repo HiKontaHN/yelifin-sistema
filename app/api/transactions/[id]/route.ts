@@ -36,23 +36,23 @@ export async function DELETE(
     if (transaction.type === "INCOME") {
       // Se sumó al account → restar
       await sql`
-        UPDATE accounts SET balance = balance - ${amt}
+        UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
         WHERE id = ${transaction.account_id} AND org_id = ${orgId}
       `;
     } else if (transaction.type === "EXPENSE") {
       // Se restó del account → sumar de vuelta
       await sql`
-        UPDATE accounts SET balance = balance + ${amt}
+        UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
         WHERE id = ${transaction.account_id} AND org_id = ${orgId}
       `;
     } else if (transaction.type === "TRANSFER") {
       // Se restó del origen y se sumó al destino → invertir ambos
       await sql`
-        UPDATE accounts SET balance = balance + ${amt}
+        UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
         WHERE id = ${transaction.account_id} AND org_id = ${orgId}
       `;
       await sql`
-        UPDATE accounts SET balance = balance - ${amt}
+        UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
         WHERE id = ${transaction.to_account_id} AND org_id = ${orgId}
       `;
     }
@@ -116,12 +116,12 @@ export async function PATCH(
 
     // 2. Revertir efecto de la transacción VIEJA
     if (old.type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance - ${oldAmt} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
     } else if (old.type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance + ${oldAmt} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
     } else if (old.type === "TRANSFER") {
-      await sql`UPDATE accounts SET balance = balance + ${oldAmt} WHERE id = ${old.account_id}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance - ${oldAmt} WHERE id = ${old.to_account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id}    AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.to_account_id} AND org_id = ${orgId}`;
     }
 
     // 3. Validar cuentas nuevas
@@ -142,12 +142,12 @@ export async function PATCH(
 
     // 4. Aplicar efecto de la transacción NUEVA
     if (old.type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance + ${newAmt} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
     } else if (old.type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance - ${newAmt} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
     } else if (old.type === "TRANSFER") {
-      await sql`UPDATE accounts SET balance = balance - ${newAmt} WHERE id = ${newAccountId}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance + ${newAmt} WHERE id = ${newToAccountId} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId}    AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newToAccountId} AND org_id = ${orgId}`;
     }
 
     // 5. Actualizar la transacción

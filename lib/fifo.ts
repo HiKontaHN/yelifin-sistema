@@ -32,7 +32,8 @@ export async function consumeFifo(
   orgId: number,
   productId: number,
   variantId: number | null,
-  quantity: number
+  quantity: number,
+  userId?: number | null
 ): Promise<FifoResult | null> {
   let remaining = quantity;
   let totalCost = 0;
@@ -73,7 +74,7 @@ export async function consumeFifo(
           WHERE id = ${b.id} AND org_id = ${orgId} AND qty_available > 0
         )
         UPDATE inventory_batches ib
-        SET qty_available = ib.qty_available - t.take
+        SET qty_available = ib.qty_available - t.take, updated_by = ${userId ?? null}
         FROM t
         WHERE ib.id = t.id AND ib.qty_available >= t.take
         RETURNING t.take AS take, t.unit_cost AS unit_cost
@@ -93,18 +94,18 @@ export async function consumeFifo(
   }
 
   if (remaining > 0) {
-    await restoreTakes(sql, orgId, takes);
+    await restoreTakes(sql, orgId, takes, userId);
     return null;
   }
   return { takes, totalCost };
 }
 
 /** Devuelve al inventario lo tomado por un consumeFifo fallido/revertido. */
-export async function restoreTakes(sql: any, orgId: number, takes: FifoTake[]) {
+export async function restoreTakes(sql: any, orgId: number, takes: FifoTake[], userId?: number | null) {
   for (const t of takes) {
     await sql`
       UPDATE inventory_batches
-      SET qty_available = qty_available + ${t.take}
+      SET qty_available = qty_available + ${t.take}, updated_by = ${userId ?? null}
       WHERE id = ${t.batch_id} AND org_id = ${orgId}
     `;
   }

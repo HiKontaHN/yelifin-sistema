@@ -53,6 +53,7 @@ export type PatchSaleInput = ConfirmSaleInput | CancelSaleInput | EditSaleInput;
 
 export type Sale = {
   id:             number;
+  public_id:      string;
   sale_number:    string;
   customer_id:    number | null;
   customer_name:  string | null;

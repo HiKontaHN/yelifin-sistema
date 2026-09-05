@@ -73,6 +73,7 @@ type MovementRow = {
   reference_type: string | null;
   reference_id: number | null;
   sale_number: string | null;
+  purchase_public_id: string | null;
   variant_id: number | null;
   variant_name: string | null;
   created_at: string;
@@ -184,11 +185,15 @@ function movementBadge(type: string) {
 function referenceLabel(
   type: string | null,
   id: number | null,
-  saleNumber: string | null
+  saleNumber: string | null,
+  purchasePublicId: string | null
 ): string {
   if (!type || type === "ADJUSTMENT" || type === "INITIAL") return "Ajuste";
   if (type === "SALE") return `Venta ${saleNumber ?? `#${id ?? ""}`}`;
-  if (type === "PURCHASE") return `Compra #${id ?? ""}`;
+  if (type === "PURCHASE") {
+    const shortId = purchasePublicId ? purchasePublicId.slice(0, 8) : (id ?? "");
+    return `Compra #${shortId}`;
+  }
   return type;
 }
 
@@ -792,7 +797,7 @@ export default function ProductDetailPage({ params }: Props) {
                       <TableCell>{movementBadge(m.movement_type)}</TableCell>
                       <TableCell className="text-right text-sm font-medium">{m.quantity}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {referenceLabel(m.reference_type, m.reference_id, m.sale_number)}
+                        {referenceLabel(m.reference_type, m.reference_id, m.sale_number, m.purchase_public_id)}
                       </TableCell>
                       {hasVariants && (
                         <TableCell className="text-sm text-muted-foreground">

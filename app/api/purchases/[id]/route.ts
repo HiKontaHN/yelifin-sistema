@@ -169,7 +169,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await sql`
             UPDATE purchase_batch_items
             SET unit_cost  = ${item.unit_cost},
-                total_cost = ${item.total_cost}
+                total_cost = ${item.total_cost},
+                updated_by = ${userId}
             WHERE id = ${item.id} AND org_id = ${orgId}
           `;
         }
@@ -177,9 +178,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         // Actualizar la compra (shipping y total)
         await sql`
           UPDATE purchase_batches
-          SET shipping = ${shippingFinal},
-              subtotal = ${newTotal},
-              total    = ${newTotal}
+          SET shipping   = ${shippingFinal},
+              subtotal   = ${newTotal},
+              total      = ${newTotal},
+              updated_by = ${userId}
           WHERE id = ${purchaseId} AND org_id = ${orgId}
         `;
 
@@ -194,12 +196,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           if (existingShippingTx) {
             await sql`
               UPDATE transactions
-              SET amount = amount + ${shippingDelta}
-              WHERE id = ${existingShippingTx.id}
+              SET amount = amount + ${shippingDelta}, updated_by = ${userId}
+              WHERE id = ${existingShippingTx.id} AND org_id = ${orgId}
             `;
             await sql`
               UPDATE accounts
-              SET balance = balance - ${shippingDelta}
+              SET balance = balance - ${shippingDelta}, updated_by = ${userId}
               WHERE id = ${shippingAccId} AND org_id = ${orgId}
             `;
           } else {
@@ -215,7 +217,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             `;
             await sql`
               UPDATE accounts
-              SET balance = balance - ${shippingFinal}
+              SET balance = balance - ${shippingFinal}, updated_by = ${userId}
               WHERE id = ${shippingAccId} AND org_id = ${orgId}
             `;
           }
@@ -223,14 +225,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           // Envío incluido en la transacción principal
           await sql`
             UPDATE transactions
-            SET amount = ${newTotal}
+            SET amount = ${newTotal}, updated_by = ${userId}
             WHERE reference_type = 'PURCHASE'
               AND reference_id   = ${purchaseId}
               AND org_id         = ${orgId}
           `;
           await sql`
             UPDATE accounts
-            SET balance = balance - ${shippingDelta}
+            SET balance = balance - ${shippingDelta}, updated_by = ${userId}
             WHERE id = ${purchase.account_id} AND org_id = ${orgId}
           `;
         }
@@ -255,7 +257,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           `;
           await sql`
             UPDATE accounts
-            SET balance = balance - ${shippingFinal}
+            SET balance = balance - ${shippingFinal}, updated_by = ${userId}
             WHERE id = ${shippingAccId} AND org_id = ${orgId}
           `;
         }
@@ -287,7 +289,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       // 3. Marcar como completada
       await sql`
         UPDATE purchase_batches
-        SET status = 'COMPLETED'
+        SET status = 'COMPLETED', updated_by = ${userId}
         WHERE id = ${purchaseId} AND org_id = ${orgId}
       `;
 
@@ -317,7 +319,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (deny) return deny;
 
   try {
-    const { orgId }   = auth.data;
+    const { userId, orgId } = auth.data;
     const { id }       = await params;
     const purchaseId   = Number(id);
 
@@ -360,7 +362,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       for (const tx of txs) {
         await sql`DELETE FROM transactions WHERE id = ${tx.id} AND org_id = ${orgId}`;
         await sql`
-          UPDATE accounts SET balance = balance + ${tx.amount}
+          UPDATE accounts SET balance = balance + ${tx.amount}, updated_by = ${userId}
           WHERE id = ${tx.account_id} AND org_id = ${orgId}
         `;
       }
@@ -379,12 +381,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             await sql`DELETE FROM credit_card_transactions WHERE id = ${ccTx.id} AND org_id = ${orgId}`;
             if (ccTx.currency === "USD") {
               await sql`
-                UPDATE credit_cards SET balance_usd = balance_usd - ${ccTx.amount}, updated_at = NOW()
+                UPDATE credit_cards SET balance_usd = balance_usd - ${ccTx.amount}, updated_at = NOW(), updated_by = ${userId}
                 WHERE id = ${ccTx.credit_card_id} AND org_id = ${orgId}
               `;
             } else {
               await sql`
-                UPDATE credit_cards SET balance = balance - ${ccTx.amount}, updated_at = NOW()
+                UPDATE credit_cards SET balance = balance - ${ccTx.amount}, updated_at = NOW(), updated_by = ${userId}
                 WHERE id = ${ccTx.credit_card_id} AND org_id = ${orgId}
               `;
             }

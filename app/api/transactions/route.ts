@@ -147,9 +147,9 @@ export async function POST(request: NextRequest) {
       `;
 
       if (isUsd) {
-        await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${amt}, updated_at = NOW() WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+        await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
       } else {
-        await sql`UPDATE credit_cards SET balance = balance + ${amt}, updated_at = NOW() WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+        await sql`UPDATE credit_cards SET balance = balance + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
       }
 
       return Response.json(
@@ -185,16 +185,16 @@ export async function POST(request: NextRequest) {
     `;
 
     if (type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance + ${amt} WHERE id = ${account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
     } else if (type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance - ${amt} WHERE id = ${account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
     } else if (type === "TRANSFER") {
       const [toAccount] = await sql`
         SELECT id FROM accounts WHERE id = ${to_account_id} AND org_id = ${orgId} AND is_active = TRUE
       `;
       if (!toAccount) return createErrorResponse("Cuenta destino no encontrada", 404);
-      await sql`UPDATE accounts SET balance = balance - ${amt} WHERE id = ${account_id}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance + ${amt} WHERE id = ${to_account_id} AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${account_id}    AND org_id = ${orgId}`;
+      await sql`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${to_account_id} AND org_id = ${orgId}`;
     }
 
     return Response.json(

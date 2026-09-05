@@ -178,6 +178,7 @@ export async function GET(request: NextRequest) {
     const sales = await sql`
       SELECT
         s.id,
+        s.public_id,
         s.sale_number,
         s.customer_id,
         c.name         AS customer_name,
@@ -402,8 +403,6 @@ export async function POST(request: NextRequest) {
           : product.name;
 
       if (totalAvailable < item.quantity) {
-        const [product] =
-          await sql`SELECT name FROM products WHERE id = ${item.product_id}`;
         return createErrorResponse(
           `Stock insuficiente para "${label}". Disponible: ${totalAvailable}`,
           400,
@@ -528,7 +527,7 @@ export async function POST(request: NextRequest) {
       for (const item of processedItems) {
         if (!item.is_service) {
           const consumed = await consumeFifo(
-            sql, orgId, item.product_id, item.variant_id, item.quantity
+            sql, orgId, item.product_id, item.variant_id, item.quantity, userId
           );
           if (!consumed) throw new InsufficientStockError(item.label);
           item.unit_cost = consumed.totalCost / item.quantity;

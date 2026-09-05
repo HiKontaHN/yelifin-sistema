@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         // conservar el historial de costos) a la nueva variante
         await sql`
           UPDATE inventory_batches
-          SET variant_id = ${baseVariant.id}
+          SET variant_id = ${baseVariant.id}, updated_by = ${userId}
           WHERE product_id = ${productId}
             AND org_id     = ${orgId}
             AND variant_id IS NULL

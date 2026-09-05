@@ -96,7 +96,7 @@ function SalesReportPageInner() {
           <StatCard label="Ventas"           value={String(summary.total_sales)}          icon={ShoppingCart} />
           <StatCard label="Ingresos"         value={format(summary.total_revenue)}        accent="blue"  icon={DollarSign} />
           {showProfit && <StatCard label="Utilidad bruta"   value={format(summary.gross_profit)}         accent="green" icon={TrendingUp} />}
-          {showProfit && <StatCard label="Margen"           value={`${fmtN(marginPct, 1)}%`}             accent={marginPct >= 20 ? "green" : "amber"} icon={Percent} sub={`Descuentos: ${format(summary.total_discount)}`} />}
+          {showProfit && <StatCard label="Margen"           value={`${fmtN(marginPct, 1)}%`}             accent={marginPct >= 20 ? "green" : marginPct >= 10 ? "amber" : "red"} icon={Percent} sub={`Descuentos: ${format(summary.total_discount)}`} />}
         </div>
       )}
 

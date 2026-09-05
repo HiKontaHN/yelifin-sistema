@@ -32,9 +32,9 @@ export function SalesCharts({ salesChart, paymentMethods, periodLabel, isLoading
     <div className="grid gap-4 lg:grid-cols-7">
       {/* Ventas vs Ganancias */}
       <Card className="lg:col-span-4">
-        <CardHeader className="pb-3 pt-5 px-5">
-          <CardTitle className="text-lg font-bold tracking-tight">{showProfit ? "Ventas vs Ganancias" : "Ventas"}</CardTitle>
-          <CardDescription className="text-sm font-medium">{periodLabel}</CardDescription>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-base">{showProfit ? "Ventas vs Ganancias" : "Ventas"}</CardTitle>
+          <CardDescription>{periodLabel}</CardDescription>
         </CardHeader>
         <CardContent className="px-2 pb-1">
           {isLoading ? <Skeleton className="h-64 w-full" /> : (
@@ -88,9 +88,9 @@ export function SalesCharts({ salesChart, paymentMethods, periodLabel, isLoading
 
       {/* Métodos de pago */}
       <Card className="lg:col-span-3">
-        <CardHeader className="pb-3 pt-5 px-5">
-          <CardTitle className="text-lg font-bold tracking-tight">Métodos de Pago</CardTitle>
-          <CardDescription className="text-sm font-medium">Distribución del período</CardDescription>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-base">Métodos de Pago</CardTitle>
+          <CardDescription>Distribución del período</CardDescription>
         </CardHeader>
         <CardContent className="px-5 pb-0">
           {isLoading ? <Skeleton className="h-64 w-full" /> : !paymentMethods.length ? (
