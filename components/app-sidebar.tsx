@@ -286,7 +286,7 @@ export function AppSidebar() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <Sidebar collapsible="icon" variant="floating" className="sticky top-0 h-svh">
+      <Sidebar collapsible="icon" variant="inset" className="sticky top-0 h-svh">
 
         {/* ── Header ── */}
         <SidebarHeader className="px-4 py-3">

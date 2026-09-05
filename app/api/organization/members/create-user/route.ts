@@ -1,7 +1,7 @@
 // app/api/organization/members/create-user/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, verifyResourceLimit } from "@/lib/auth";
 import { adminAuth } from "@/lib/firebase-admin";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -16,6 +16,11 @@ export async function POST(request: NextRequest) {
 
   const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
   if (denyFeature) return denyFeature;
+
+  const limit = await verifyResourceLimit(auth.data.orgId, "users");
+  if (!limit.withinLimit) {
+    return createErrorResponse(limit.error ?? "Límite alcanzado", limit.status, "needsUpgrade" in limit ? !!limit.needsUpgrade : false);
+  }
 
   try {
     const { orgId } = auth.data;

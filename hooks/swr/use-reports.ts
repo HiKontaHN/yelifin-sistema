@@ -93,6 +93,19 @@ export type InventoryVelocity = {
   window_days:       number;
 };
 
+// Rotación de inventario / días de inventario — depende del historial de
+// inventory_snapshots (v4.18), que arranca vacío y se llena un día a la
+// vez, así que el estado indica si ya hay suficiente para mostrar algo.
+export type InventoryTurnover = {
+  status:                 "collecting" | "preliminary" | "stable";
+  days_available:         number;
+  days_until_preliminary: number;
+  days_until_stable:      number;
+  turnover_ratio:         number | null;
+  days_of_inventory:      number | null;
+  avg_stock_value:        number | null;
+};
+
 export type InventoryProduct = {
   id:          number;
   name:        string;
@@ -199,6 +212,7 @@ export function useInventoryReport() {
     products:  (data?.products  ?? [])   as InventoryProduct[],
     movements: (data?.movements ?? [])   as InventoryMovement[],
     velocity:  (data?.velocity  ?? null) as InventoryVelocity | null,
+    turnover:  (data?.turnover  ?? null) as InventoryTurnover | null,
     isLoading, error: (error as any)?.message ?? null, mutate,
   };
 }

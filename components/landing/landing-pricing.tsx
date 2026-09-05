@@ -60,7 +60,7 @@ const plans: PlanCard[] = [
       "Inventario y suministros ilimitados",
       "Tarjetas de crédito",
       "Rentabilidad y reportes de eventos",
-      "Equipo y roles de acceso",
+      "Equipo (hasta 3 usuarios) y roles de acceso",
     ],
   },
 ];
@@ -120,7 +120,7 @@ const featureSections: FeatureSection[] = [
       { label: "Mi perfil", free: "check", basico: "check", pro: "check" },
       { label: "Mi negocio y categorías", free: "Categorías predeterminadas", basico: "Categorías personalizadas", pro: "Categorías personalizadas" },
       { label: "Suscripción", free: "check", basico: "check", pro: "check" },
-      { label: "Equipo", free: "dash", basico: "dash", pro: "check" },
+      { label: "Equipo", free: "Solo tú", basico: "Solo tú", pro: "Hasta 3 personas" },
       { label: "Roles y permisos", free: "dash", basico: "dash", pro: "check" },
     ],
   },

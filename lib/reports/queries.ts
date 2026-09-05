@@ -15,7 +15,7 @@ import type { NeonQueryFunction } from "@neondatabase/serverless";
 import type {
   SalesSummary, SalesByDay, SalesByProduct, SaleDetail,
   InventorySummary, InventoryProduct, InventoryMovement,
-  InventoryVelocityRow, InventoryVelocityItem,
+  InventoryVelocityRow, InventoryVelocityItem, InventoryTurnover,
   ProfitSummary, ProfitByMonth, ProfitByProduct,
   EventRow,
 } from "@/hooks/swr/use-reports";
@@ -29,6 +29,8 @@ export const INVENTORY_MOVEMENTS_LIMIT = 200;
 export const INVENTORY_MOVEMENTS_DAYS  = 30;
 export const INVENTORY_VELOCITY_DAYS   = 30;
 export const INVENTORY_VELOCITY_LIMIT  = 8;
+export const INVENTORY_TURNOVER_PRELIMINARY_DAYS = 7;
+export const INVENTORY_TURNOVER_STABLE_DAYS      = 30;
 
 // Transacciones que representan adquisición de activo (inventario, insumos)
 // o traslado de deuda (pago de tarjeta) — no son gasto operativo del período
@@ -497,4 +499,62 @@ export function computeInventoryVelocity(
   const dead_stock_value = stagnant.reduce((a, m) => a + m.stock_value, 0);
 
   return { top_movers, slow_movers, slow_movers_count: stagnant.length, dead_stock_value, window_days: days };
+}
+
+// Rotación de inventario y días de inventario — necesitan un promedio del
+// valor de inventario en el tiempo (inventory_snapshots, v4.18), no solo
+// el stock de hoy. Como el snapshot diario recién empezó a poblarse, cada
+// org acumula su propio historial desde cero: "collecting" mientras hay
+// menos de INVENTORY_TURNOVER_PRELIMINARY_DAYS snapshots (sin cifra, solo
+// progreso), "preliminary" con cifra ya calculada pero sobre pocos días
+// (ruidosa semana a semana), "stable" una vez hay 30+ días de historial.
+export async function getInventoryTurnover(sql: Sql, orgId: number): Promise<InventoryTurnover> {
+  const snapshots = await sql`
+    SELECT snapshot_date, total_stock_value
+    FROM inventory_snapshots
+    WHERE org_id = ${orgId}
+    ORDER BY snapshot_date DESC
+    LIMIT ${INVENTORY_TURNOVER_STABLE_DAYS}
+  `;
+
+  const daysAvailable = snapshots.length;
+  const daysUntilPreliminary = Math.max(0, INVENTORY_TURNOVER_PRELIMINARY_DAYS - daysAvailable);
+  const daysUntilStable      = Math.max(0, INVENTORY_TURNOVER_STABLE_DAYS - daysAvailable);
+
+  if (daysAvailable < INVENTORY_TURNOVER_PRELIMINARY_DAYS) {
+    return {
+      status: "collecting",
+      days_available: daysAvailable,
+      days_until_preliminary: daysUntilPreliminary,
+      days_until_stable: daysUntilStable,
+      turnover_ratio: null,
+      days_of_inventory: null,
+      avg_stock_value: null,
+    };
+  }
+
+  const avgStockValue = snapshots.reduce((a, s) => a + Number(s.total_stock_value), 0) / daysAvailable;
+  const oldestDate     = snapshots[snapshots.length - 1].snapshot_date;
+
+  const [{ cogs }] = await sql`
+    SELECT COALESCE(SUM(si.unit_cost * si.quantity), 0)::float AS cogs
+    FROM sale_items si
+    JOIN sales s ON s.id = si.sale_id
+    WHERE si.org_id   = ${orgId}
+      AND s.status    = 'COMPLETED'
+      AND s.sold_at  >= ${oldestDate}
+  `;
+
+  const turnoverRatio   = avgStockValue > 0 ? Number(cogs) / avgStockValue : 0;
+  const daysOfInventory = turnoverRatio > 0 ? daysAvailable / turnoverRatio : null;
+
+  return {
+    status: daysAvailable >= INVENTORY_TURNOVER_STABLE_DAYS ? "stable" : "preliminary",
+    days_available: daysAvailable,
+    days_until_preliminary: daysUntilPreliminary,
+    days_until_stable: daysUntilStable,
+    turnover_ratio: turnoverRatio,
+    days_of_inventory: daysOfInventory,
+    avg_stock_value: avgStockValue,
+  };
 }

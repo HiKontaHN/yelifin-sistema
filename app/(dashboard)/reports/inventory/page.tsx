@@ -38,7 +38,7 @@ export default function InventoryReportPage() {
 function InventoryReportPageInner() {
   const { format, symbol }                          = useCurrency();
   const { firebaseUser }                            = useAuth();
-  const { summary, products, movements, velocity, isLoading } = useInventoryReport();
+  const { summary, products, movements, velocity, turnover, isLoading } = useInventoryReport();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("REPORTS", "INVENTORY");
   const [search,       setSearch]       = useState("");
   const [tab,          setTab]          = useState<"stock" | "movements" | "velocity">("stock");
@@ -255,10 +255,48 @@ function InventoryReportPageInner() {
         </div>
       )}
 
-      {/* Rotación: más vendidos y sin movimiento */}
+      {/* Rotación: turnover + más vendidos y sin movimiento */}
       {tab === "velocity" && !isLoading && velocity && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <ReportSection title="Productos más vendidos" icon={TrendingUp} noPadding>
+        <div className="space-y-4">
+          {showCosts && turnover && (
+            turnover.status === "collecting" ? (
+              <ReportSection title="Rotación de inventario" icon={TrendingUp}>
+                <div className="space-y-2 py-1">
+                  <p className="text-sm text-muted-foreground">
+                    Recopilando datos — disponible en {turnover.days_until_preliminary} día{turnover.days_until_preliminary === 1 ? "" : "s"} más.
+                  </p>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.min(100, (turnover.days_available / (turnover.days_available + turnover.days_until_preliminary)) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {turnover.days_available} / {turnover.days_available + turnover.days_until_preliminary} días de historial
+                  </p>
+                </div>
+              </ReportSection>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard
+                  label="Rotación de inventario"
+                  value={`${fmtN(turnover.turnover_ratio ?? 0, 1)}x`}
+                  sub={turnover.status === "preliminary" ? `Preliminar · ${turnover.days_available}/${turnover.days_available + turnover.days_until_stable} días` : `Últimos ${turnover.days_available} días`}
+                  accent="blue"
+                  icon={TrendingUp}
+                />
+                <StatCard
+                  label="Días de inventario"
+                  value={turnover.days_of_inventory != null ? `${fmtN(turnover.days_of_inventory, 0)} días` : "—"}
+                  sub={turnover.status === "preliminary" ? "Cifra preliminar" : "Promedio para vender el stock actual"}
+                  accent="amber"
+                  icon={Boxes}
+                />
+              </div>
+            )
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ReportSection title="Productos más vendidos" icon={TrendingUp} noPadding>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -313,6 +351,7 @@ function InventoryReportPageInner() {
               </table>
             </div>
           </ReportSection>
+          </div>
         </div>
       )}
     </ReportShell>
