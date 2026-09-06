@@ -13,7 +13,17 @@ export interface TransactionCategory {
 
 interface CategoriesResponse {
   data: TransactionCategory[];
+  total?: number;
+  totalPages?: number;
 }
+
+export type CategoriesQuery = {
+  type?: "INCOME" | "EXPENSE" | "TRANSFER";
+  search?: string;
+  status?: "active" | "inactive" | "all";
+  page?: number;
+  limit?: number;
+};
 
 interface CategoryResponse {
   data: TransactionCategory;
@@ -35,13 +45,24 @@ function useAuthFetch() {
   };
 }
 
-export function useTransactionCategories(type?: string) {
+// Acepta el string de type de siempre (compatibilidad con los llamadores
+// existentes que solo necesitan la lista completa para llenar un <Select>)
+// o un objeto de filtros para paginar/buscar/ver inactivas — usado por
+// /settings/categories.
+export function useTransactionCategories(query?: string | CategoriesQuery) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
 
-  const url = type
-    ? `/api/transaction-categories?type=${type}`
-    : "/api/transaction-categories";
+  const q: CategoriesQuery = typeof query === "string" ? { type: query as any } : (query ?? {});
+
+  const params = new URLSearchParams();
+  if (q.type)   params.set("type", q.type);
+  if (q.search) params.set("search", q.search);
+  if (q.status) params.set("status", q.status);
+  if (q.page)   params.set("page", String(q.page));
+  if (q.limit)  params.set("limit", String(q.limit));
+  const qs = params.toString();
+  const url = qs ? `/api/transaction-categories?${qs}` : "/api/transaction-categories";
 
   const { data, error, mutate } = useSWR<CategoriesResponse>(
     firebaseUser ? url : null,
@@ -50,6 +71,8 @@ export function useTransactionCategories(type?: string) {
 
   return {
     categories: data?.data ?? [],
+    total: data?.total ?? 0,
+    totalPages: data?.totalPages ?? 1,
     isLoading: !error && !data,
     error,
     mutate,

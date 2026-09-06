@@ -30,6 +30,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Pagination, PaginationContent, PaginationItem,
+  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
+} from "@/components/ui/pagination";
+import {
   Plus,
   Pencil,
   Trash2,
@@ -38,11 +42,14 @@ import {
   ArrowUpCircle,
   ArrowLeftRight,
   Tags,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Fab } from "@/components/ui/fab";
 import { OwnerGuard } from "@/components/shared/owner-guard";
+import { SearchBar } from "@/components/shared/search-bar";
+import { useDebounce } from "@/hooks/use-debounce";
 import {
   useTransactionCategories,
   useCreateCategory,
@@ -77,24 +84,38 @@ export default function CategoriesPage() {
   );
 }
 
+const pageLimit = 15;
+
 function CategoriesPageContent() {
-  const { categories, isLoading, mutate } = useTransactionCategories();
+  const [selectedType, setSelectedType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search, 300);
+
+  const { categories, totalPages, isLoading, mutate } = useTransactionCategories({
+    type:   selectedType,
+    status: statusFilter,
+    search: debouncedSearch || undefined,
+    page,
+    limit: pageLimit,
+  });
   const { create } = useCreateCategory();
   const { update } = useUpdateCategory();
   const { remove } = useDeleteCategory();
 
-  const [selectedType, setSelectedType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
   const [createOpen, setCreateOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<TransactionCategory | null>(null);
   const [deleteCategory, setDeleteCategory] = useState<TransactionCategory | null>(null);
+  const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
 
-  const filtered = Array.isArray(categories)
-    ? categories.filter((c) => c.type === selectedType && c.is_active)
-    : [];
+  useEffect(() => { setPage(1); }, [selectedType, statusFilter, debouncedSearch]);
+
+  const filtered = Array.isArray(categories) ? categories : [];
 
   // Prevenir autofocus al abrir modales
   useEffect(() => {
@@ -159,6 +180,19 @@ function CategoriesPageContent() {
     }
   };
 
+  const handleReactivate = async (cat: TransactionCategory) => {
+    setReactivatingId(cat.id);
+    try {
+      await update(cat.id, { is_active: true });
+      toast.success("Categoría reactivada");
+      mutate();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setReactivatingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4 pb-24 md:space-y-6">
       {/* Header */}
@@ -173,22 +207,22 @@ function CategoriesPageContent() {
         </div>
       </div>
 
-      {/* Filtro - Toggle móvil / Select desktop */}
-      <div className="md:hidden grid grid-cols-3 rounded-lg border overflow-hidden">
-        {(["INCOME", "EXPENSE", "TRANSFER"] as const).map((type, i) => {
+      {/* Filtro de tipo — mismo estilo que "Tipo" en la modal de transacciones */}
+      <div className="grid grid-cols-3 gap-1.5 rounded-xl border sm:inline-flex sm:w-fit">
+        {(["INCOME", "EXPENSE", "TRANSFER"] as const).map((type) => {
           const config = TYPE_CONFIG[type];
           const Icon = config.icon;
           return (
             <button
               key={type}
+              type="button"
               onClick={() => setSelectedType(type)}
-              className={`py-2.5 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${
-                i > 0 ? "border-l" : ""
-              } ${
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
                 selectedType === type
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
+                  ? "rounded-xl bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:rounded-xl hover:bg-primary/15 hover:text-primary",
+              )}
             >
               <Icon className="size-3.5" />
               {config.label}
@@ -197,30 +231,23 @@ function CategoriesPageContent() {
         })}
       </div>
 
-      <div className="hidden md:block max-w-xs">
-        <Select value={selectedType} onValueChange={(v: any) => setSelectedType(v)}>
-          <SelectTrigger className="h-10">
+      {/* Búsqueda + estado */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          size="full"
+          className="sm:max-w-sm"
+          placeholder="Buscar por nombre..."
+        />
+        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+          <SelectTrigger className="h-10 w-full sm:w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="INCOME">
-              <div className="flex items-center gap-2">
-                <ArrowDownCircle className="size-4 text-green-600" />
-                Ingresos
-              </div>
-            </SelectItem>
-            <SelectItem value="EXPENSE">
-              <div className="flex items-center gap-2">
-                <ArrowUpCircle className="size-4 text-red-600" />
-                Egresos
-              </div>
-            </SelectItem>
-            <SelectItem value="TRANSFER">
-              <div className="flex items-center gap-2">
-                <ArrowLeftRight className="size-4 text-blue-600" />
-                Transferencias
-              </div>
-            </SelectItem>
+            <SelectItem value="active">Activas</SelectItem>
+            <SelectItem value="inactive">Inactivas</SelectItem>
+            <SelectItem value="all">Todas</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -253,35 +280,56 @@ function CategoriesPageContent() {
                 </TableRow>
               ) : (
                 filtered.map((cat) => (
-                  <TableRow key={cat.id}>
+                  <TableRow key={cat.id} className={cn(!cat.is_active && "opacity-60")}>
                     <TableCell className="font-medium">{cat.name}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={TYPE_CONFIG[cat.type].badge}>
-                        {TYPE_CONFIG[cat.type].label}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant="outline" className={TYPE_CONFIG[cat.type].badge}>
+                          {TYPE_CONFIG[cat.type].label}
+                        </Badge>
+                        {!cat.is_active && (
+                          <Badge variant="secondary" className="text-xs">Inactiva</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
+                      {cat.is_active ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => {
+                              setEditCategory(cat);
+                              setFormName(cat.name);
+                            }}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteCategory(cat)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      ) : (
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => {
-                            setEditCategory(cat);
-                            setFormName(cat.name);
-                          }}
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          disabled={reactivatingId === cat.id}
+                          onClick={() => handleReactivate(cat)}
                         >
-                          <Pencil className="size-4" />
+                          {reactivatingId === cat.id
+                            ? <Loader2 className="size-3.5 animate-spin" />
+                            : <RotateCcw className="size-3.5" />
+                          }
+                          Reactivar
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteCategory(cat)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -305,40 +353,115 @@ function CategoriesPageContent() {
           </Card>
         ) : (
           filtered.map((cat) => (
-            <Card key={cat.id}>
+            <Card key={cat.id} className={cn(!cat.is_active && "opacity-60")}>
               <CardContent className="flex items-center justify-between px-3 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{cat.name}</p>
-                  <Badge variant="outline" className={`${TYPE_CONFIG[cat.type].badge} text-xs mt-1`}>
-                    {TYPE_CONFIG[cat.type].label}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                    <Badge variant="outline" className={`${TYPE_CONFIG[cat.type].badge} text-xs`}>
+                      {TYPE_CONFIG[cat.type].label}
+                    </Badge>
+                    {!cat.is_active && (
+                      <Badge variant="secondary" className="text-xs">Inactiva</Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8"
-                    onClick={() => {
-                      setEditCategory(cat);
-                      setFormName(cat.name);
-                    }}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-destructive"
-                    onClick={() => setDeleteCategory(cat)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  {cat.is_active ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => {
+                          setEditCategory(cat);
+                          setFormName(cat.name);
+                        }}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive"
+                        onClick={() => setDeleteCategory(cat)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      disabled={reactivatingId === cat.id}
+                      onClick={() => handleReactivate(cat)}
+                    >
+                      {reactivatingId === cat.id
+                        ? <Loader2 className="size-4 animate-spin" />
+                        : <RotateCcw className="size-4" />
+                      }
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))
         )}
       </div>
+
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <div className="flex justify-center">
+          <Pagination className="w-auto mx-0">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-disabled={page === 1}
+                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) =>
+                  p === 1 || p === totalPages ||
+                  (p >= page - 1 && p <= page + 1)
+                )
+                .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "…" ? (
+                    <PaginationItem key={`ellipsis-${i}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={p}>
+                      <PaginationLink
+                        isActive={p === page}
+                        onClick={() => setPage(p as number)}
+                        className="cursor-pointer"
+                      >
+                        {p}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
+
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  aria-disabled={page === totalPages}
+                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
 
       {/* FAB */}
       <Fab

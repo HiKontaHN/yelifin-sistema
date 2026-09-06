@@ -22,10 +22,11 @@ import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { Product } from "@/types";
 import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
 
-const TASA_DEFAULT = 24.89;
+const TASA_DEFAULT = 27;
 
 const CURRENCY_NAMES: Record<string, string> = {
   HNL: "Lempiras",
@@ -82,6 +83,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const { creditCards } = useCreditCards();
   const { activeWarehouses, defaultWarehouse } = useWarehouses();
   const { format, symbol, currency: businessCurrency } = useCurrency();
+  const { rate: suggestedRate, rateDate: suggestedRateDate } = useSuggestedExchangeRate();
 
   const [paymentMode, setPaymentMode] = useState<"account" | "credit_card">("account");
   const [creditCardId, setCreditCardId] = useState<number | null>(null);
@@ -111,6 +113,15 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const rate = Number(exchangeRate) || TASA_DEFAULT;
   const ship = Number(shipping) || 0;
   const isUSD = currency === "USD";
+
+  // Precarga la tasa sugerida (BCH) apenas carga — solo si el campo sigue
+  // en su valor por defecto, para no pisar algo que el usuario ya escribió.
+  useEffect(() => {
+    if (open && suggestedRate && Number(exchangeRate) === TASA_DEFAULT) {
+      setValue("exchange_rate", suggestedRate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, suggestedRate]);
 
   const totalUnits = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
   const shippingPerUnit = totalUnits > 0 ? ship / totalUnits : 0;
@@ -386,6 +397,20 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                 {errors.exchange_rate && (
                   <p className="text-xs text-destructive">{errors.exchange_rate.message}</p>
                 )}
+                {suggestedRate != null && (
+                  <p className="text-xs text-muted-foreground">
+                    Sugerido (BCH{suggestedRateDate ? `, ${new Date(suggestedRateDate).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
+                    {Number(exchangeRate) !== suggestedRate && (
+                      <button
+                        type="button"
+                        className="ml-1.5 text-primary hover:underline font-medium"
+                        onClick={() => setValue("exchange_rate", suggestedRate)}
+                      >
+                        Usar
+                      </button>
+                    )}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -441,8 +466,8 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
             <div className={cn(
               "grid gap-2 text-xs text-muted-foreground font-medium",
               hasVariants
-                ? "grid-cols-[1fr_72px_96px_32px]"
-                : "grid-cols-[72px_96px]"
+                ? "grid-cols-[1fr_88px_120px_32px]"
+                : "grid-cols-[88px_120px]"
             )}>
               {hasVariants && <span>Variante</span>}
               <span className="text-center">Cant.</span>
@@ -465,8 +490,8 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                   <div className={cn(
                     "grid gap-2 items-center",
                     hasVariants
-                      ? "grid-cols-[1fr_72px_96px_32px]"
-                      : "grid-cols-[72px_96px]"
+                      ? "grid-cols-[1fr_88px_120px_32px]"
+                      : "grid-cols-[88px_120px]"
                   )}>
                     {/* Selector de variante */}
                     {hasVariants && (

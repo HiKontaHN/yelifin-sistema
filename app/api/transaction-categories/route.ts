@@ -17,7 +17,18 @@ export async function GET(request: NextRequest) {
   try {
     const { orgId } = auth.data;
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type");
+    const type   = searchParams.get("type");
+    const search = searchParams.get("search")?.trim() || null;
+    // status por defecto "active" — igual que el comportamiento de siempre,
+    // para no romper a los consumidores que solo piden categorías para
+    // llenar un <Select> (create/edit-transaction-modal, pay-credit-card-dialog).
+    const status = searchParams.get("status") ?? "active";
+    // page ausente = sin paginar, se devuelven todas las que matcheen (mismo
+    // comportamiento de siempre) — solo pagina si el caller lo pide
+    // explícitamente (la página de /settings/categories).
+    const pageParam = searchParams.get("page");
+    const page  = pageParam ? Math.max(1, Number(pageParam) || 1) : null;
+    const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 20));
 
     if (type && !VALID_TYPES.includes(type as TransactionType)) {
       return createErrorResponse(
@@ -25,17 +36,37 @@ export async function GET(request: NextRequest) {
         400
       );
     }
+    if (!["active", "inactive", "all"].includes(status)) {
+      return createErrorResponse("Estado inválido. Debe ser active, inactive o all", 400);
+    }
+
+    const isActiveFilter = status === "all" ? null : status === "active";
+
+    const [{ count }] = await sql`
+      SELECT COUNT(*)::int AS count
+      FROM transaction_categories
+      WHERE org_id  = ${orgId}
+        AND (${type}::text IS NULL OR type = ${type})
+        AND (${isActiveFilter}::boolean IS NULL OR is_active = ${isActiveFilter})
+        AND (${search}::text IS NULL OR name ILIKE '%' || ${search} || '%')
+    `;
 
     const categories = await sql`
       SELECT id, name, type, is_active, created_at
       FROM transaction_categories
-      WHERE org_id   = ${orgId}
+      WHERE org_id  = ${orgId}
         AND (${type}::text IS NULL OR type = ${type})
-        AND is_active = TRUE
+        AND (${isActiveFilter}::boolean IS NULL OR is_active = ${isActiveFilter})
+        AND (${search}::text IS NULL OR name ILIKE '%' || ${search} || '%')
       ORDER BY type, name
+      ${page ? sql`LIMIT ${limit} OFFSET ${(page - 1) * limit}` : sql``}
     `;
 
-    return Response.json({ data: categories });
+    return Response.json({
+      data: categories,
+      total: count,
+      totalPages: page ? Math.ceil(count / limit) : 1,
+    });
   } catch (error) {
     console.error("GET /api/transaction-categories:", error);
     return createErrorResponse("Error al obtener categorías", 500);

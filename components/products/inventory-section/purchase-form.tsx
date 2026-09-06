@@ -1,7 +1,7 @@
 ﻿// components/products/inventory-section/purchase-form.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -12,8 +12,9 @@ import { Calculator, Wallet } from "lucide-react";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { toLocalDateInput } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 
-const TASA_DEFAULT = 24.89;
+const TASA_DEFAULT = 27;
 
 const CURRENCY_NAMES: Record<string, string> = {
   HNL: "Lempiras",
@@ -58,9 +59,19 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
   const { accounts }       = useAccounts();
   const { format, symbol, currency: businessCurrency } = useCurrency();
   const [costMode, setCostMode] = useState<CostMode>("total");
+  const { rate: suggestedRate, rateDate: suggestedRateDate } = useSuggestedExchangeRate();
 
   const set = (patch: Partial<PurchaseFormValue>) =>
     onChange({ ...value, ...patch });
+
+  // Precarga la tasa sugerida (BCH) apenas carga — solo si el campo sigue
+  // en su valor por defecto, para no pisar algo que el usuario ya escribió.
+  useEffect(() => {
+    if (suggestedRate && value.exchange_rate === TASA_DEFAULT) {
+      set({ exchange_rate: suggestedRate });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestedRate]);
 
   // ── Cálculos ────────────────────────────────────────────────────────
   const qty      = Number(value.quantity)      || 0;
@@ -177,6 +188,20 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
               className="h-11 text-base"
               disabled={disabled}
             />
+            {suggestedRate != null && (
+              <p className="text-xs text-muted-foreground">
+                Sugerido (BCH{suggestedRateDate ? `, ${new Date(suggestedRateDate).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
+                {value.exchange_rate !== suggestedRate && (
+                  <button
+                    type="button"
+                    className="ml-1.5 text-primary hover:underline font-medium"
+                    onClick={() => set({ exchange_rate: suggestedRate })}
+                  >
+                    Usar
+                  </button>
+                )}
+              </p>
+            )}
           </div>
         )}
       </div>
