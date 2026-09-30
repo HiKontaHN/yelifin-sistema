@@ -1,5 +1,5 @@
 import React from "react"
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
@@ -22,6 +22,17 @@ export const metadata: Metadata = {
       },
     ]
   },
+}
+
+// interactiveWidget: "resizes-content" — en navegadores que lo soportan
+// (Chrome/Android), el viewport de layout se achica cuando aparece el
+// teclado virtual, en vez de quedar tapado por él. Sin esto, las modales
+// tipo bottom-sheet (position: fixed; bottom: 0) quedan ancladas al fondo
+// de la página completa, que ahora está detrás del teclado.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({

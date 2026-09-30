@@ -190,6 +190,39 @@ export function ResponsiveModal({
     };
   }, [open, dragToClose]);
 
+  // ── Teclado virtual (móvil) ─────────────────────────────────────────
+  // La modal es un bottom sheet fixed a bottom:0 del viewport de layout.
+  // Cuando el teclado aparece, el visualViewport se achica pero bottom:0
+  // sigue anclado al fondo de la página completa — que ahora queda detrás
+  // del teclado — y tapa la mitad de abajo de la modal (típicamente el
+  // footer con los botones). El meta viewport (app/layout.tsx,
+  // interactiveWidget: "resizes-content") ya resuelve esto en Chrome/Android;
+  // este listener es el respaldo para navegadores que no lo soportan
+  // (Safari/iOS en versiones viejas).
+  const [keyboardFix, setKeyboardFix] = React.useState<{ bottom: number; maxHeight: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      if (!window.matchMedia(SHEET_MEDIA_QUERY).matches) { setKeyboardFix(null); return; }
+      const inset = Math.round(window.innerHeight - vv.height - vv.offsetTop);
+      if (inset <= 0) { setKeyboardFix(null); return; }
+      setKeyboardFix({ bottom: inset, maxHeight: Math.round(vv.height) - 16 });
+    };
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      setKeyboardFix(null);
+    };
+  }, [open]);
+
   const bodyProps = {
     ...(as === "form" ? formProps : {}),
     ref: (node: HTMLElement | null) => { bodyRef.current = node; },
@@ -201,6 +234,7 @@ export function ResponsiveModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         ref={contentRef}
+        style={keyboardFix ? { bottom: keyboardFix.bottom, maxHeight: keyboardFix.maxHeight } : undefined}
         className={cn(
           "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
           "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
