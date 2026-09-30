@@ -22,16 +22,28 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (isNaN(customerId)) return createErrorResponse("ID inválido", 400);
 
-    const { name, phone, email, notes } = await request.json();
+    const { name, phone, email, notes, total_orders, total_spent } = await request.json();
 
+    if (total_orders !== undefined && (isNaN(Number(total_orders)) || Number(total_orders) < 0)) {
+      return createErrorResponse("Las órdenes deben ser un número mayor o igual a 0", 400);
+    }
+    if (total_spent !== undefined && (isNaN(Number(total_spent)) || Number(total_spent) < 0)) {
+      return createErrorResponse("El total comprado debe ser un número mayor o igual a 0", 400);
+    }
+
+    // total_orders/total_spent son un contador acumulado, no un histórico
+    // separado: al editarlos se sobreescribe el valor actual y las ventas
+    // nuevas se siguen sumando desde ahí (app/api/sales/route.ts).
     const [updated] = await sql`
       UPDATE customers SET
-        name       = COALESCE(${name ?? null}, name),
-        phone      = COALESCE(${phone ?? null}, phone),
-        email      = COALESCE(${email ?? null}, email),
-        notes      = COALESCE(${notes ?? null}, notes),
-        updated_at = CURRENT_TIMESTAMP,
-        updated_by = ${userId}
+        name         = COALESCE(${name  ?? null}, name),
+        phone        = COALESCE(${phone ?? null}, phone),
+        email        = COALESCE(${email ?? null}, email),
+        notes        = COALESCE(${notes ?? null}, notes),
+        total_orders = COALESCE(${total_orders !== undefined ? Math.trunc(Number(total_orders)) : null}, total_orders),
+        total_spent  = COALESCE(${total_spent  !== undefined ? Number(total_spent)              : null}, total_spent),
+        updated_at   = CURRENT_TIMESTAMP,
+        updated_by   = ${userId}
       WHERE id = ${customerId} AND org_id = ${orgId}
       RETURNING *
     `;

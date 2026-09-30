@@ -91,13 +91,27 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId, orgId } = auth.data;
-    const { name, phone, email, notes } = await request.json();
+    const { name, phone, email, notes, total_orders, total_spent } = await request.json();
 
     if (!name) return createErrorResponse("El nombre es requerido", 400);
 
+    if (total_orders !== undefined && (isNaN(Number(total_orders)) || Number(total_orders) < 0)) {
+      return createErrorResponse("Las órdenes previas deben ser un número mayor o igual a 0", 400);
+    }
+    if (total_spent !== undefined && (isNaN(Number(total_spent)) || Number(total_spent) < 0)) {
+      return createErrorResponse("El total comprado previo debe ser un número mayor o igual a 0", 400);
+    }
+
+    // total_orders/total_spent iniciales: para migrar clientes que ya
+    // compraban antes de usar el sistema. A partir de aquí, cada venta nueva
+    // se SUMA sobre este punto de partida (app/api/sales/route.ts).
     const [customer] = await sql`
-      INSERT INTO customers (org_id, created_by, name, phone, email, notes)
-      VALUES (${orgId}, ${userId}, ${name}, ${phone ?? null}, ${email ?? null}, ${notes ?? null})
+      INSERT INTO customers (org_id, created_by, name, phone, email, notes, total_orders, total_spent)
+      VALUES (
+        ${orgId}, ${userId}, ${name}, ${phone ?? null}, ${email ?? null}, ${notes ?? null},
+        ${total_orders !== undefined ? Math.trunc(Number(total_orders)) : 0},
+        ${total_spent  !== undefined ? Number(total_spent) : 0}
+      )
       RETURNING *
     `;
 

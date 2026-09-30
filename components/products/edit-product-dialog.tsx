@@ -34,6 +34,7 @@ const createSchema = (isService: boolean) =>
                    ? z.string().optional()
                    : z.string().min(1, "El SKU es requerido para productos"),
     price:       z.coerce.number().min(0, "El precio debe ser mayor o igual a 0"),
+    service_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0").optional(),
   });
 
 type FormData = z.infer<ReturnType<typeof createSchema>>;
@@ -120,6 +121,7 @@ export function EditProductDialog({
         description: product.description ?? "",
         sku:         product.sku ?? "",
         price:       product.price,
+        service_cost: product.service_cost ?? 0,
       });
       setImagePreview(product.image_url ?? null);
       setImageFile(null);
@@ -367,6 +369,35 @@ export function EditProductDialog({
                 <p className="text-xs text-destructive">{errors.price.message}</p>
               )}
             </div>
+
+            {/* Costo del servicio: solo si ES servicio */}
+            {is_service && (
+              <div className="space-y-2">
+                <FieldLabel icon={<DollarSign className="size-3.5" />} label="Costo del servicio" optional />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-sm">
+                    {symbol}
+                  </span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    {...register("service_cost")}
+                    disabled={isLoading}
+                    className="h-11 pl-8 text-base"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Lo que te cuesta prestar este servicio (mano de obra, materiales, etc.).
+                  No genera ningún movimiento financiero — solo se usa para calcular la
+                  ganancia real de cada venta.
+                </p>
+                {errors.service_cost && (
+                  <p className="text-xs text-destructive">{errors.service_cost.message}</p>
+                )}
+              </div>
+            )}
 
             {/* Descripción */}
             <div className="space-y-2">

@@ -32,6 +32,7 @@ const schema = z.object({
   sku:         z.string().optional(),
   price:       z.coerce.number().min(0, "El precio debe ser mayor o igual a 0"),
   is_service:  z.boolean().optional(),
+  service_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0").optional(),
 }).superRefine((data, ctx) => {
   if (!data.is_service && (!data.sku || data.sku.trim().length === 0)) {
     ctx.addIssue({
@@ -65,7 +66,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { is_service: false },
+    defaultValues: { is_service: false, service_cost: 0 },
   });
 
   const nameValue    = watch("name");
@@ -75,7 +76,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   const [skuStatus,    setSkuStatus]    = useState<"unknown" | "checking" | "available" | "taken">("unknown");
 
   // Sugerencia verificada por el servidor a partir del nombre
-  // (PHK-001, PHK-002, ... rellenando huecos)
+  // (PHK-001, PHK-002, ... rellenando huecos). Para servicios, prefijo fijo
+  // "SERV" (SERV-001, SERV-002...) en vez de iniciales del nombre.
   const debouncedName = useDebounce(nameValue?.trim() ?? "", 400);
   useEffect(() => {
     if (!open || !debouncedName) {
@@ -87,7 +89,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       try {
         const token = await firebaseUser?.getIdToken();
         const res = await fetch(
-          `/api/products/suggest-sku?name=${encodeURIComponent(debouncedName)}`,
+          `/api/products/suggest-sku?name=${encodeURIComponent(debouncedName)}&is_service=${isService}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error();
@@ -96,14 +98,16 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       } catch {
         // Fallback local si el endpoint falla
         if (!cancelled) {
-          const prefix = debouncedName.split(/\s+/).map((w: string) => w[0]?.toUpperCase() ?? "").join("").slice(0, 4);
+          const prefix = isService
+            ? "SERV"
+            : debouncedName.split(/\s+/).map((w: string) => w[0]?.toUpperCase() ?? "").join("").slice(0, 4);
           setSuggestedSku(prefix ? `${prefix}-001` : "");
         }
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedName, open]);
+  }, [debouncedName, open, isService]);
 
   // Verificación en vivo de disponibilidad del SKU escrito
   const skuValue = watch("sku");
@@ -406,6 +410,32 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                 className="resize-none text-base"
               />
             </div>
+
+            {/* Costo del servicio: solo si ES servicio */}
+            {isService && (
+              <div className="space-y-2">
+                <FieldLabel icon={<DollarSign className="size-3.5" />} label="Costo del servicio" optional />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-sm">
+                    {symbol}
+                  </span>
+                  <Input
+                    type="number" step="0.01" min="0" placeholder="0.00"
+                    {...register("service_cost")}
+                    disabled={isLoading}
+                    className="h-11 pl-8 text-base"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Lo que te cuesta prestar este servicio (mano de obra, materiales, etc.).
+                  No genera ningún movimiento financiero — solo se usa para calcular la
+                  ganancia real de cada venta.
+                </p>
+                {errors.service_cost && (
+                  <p className="text-xs text-destructive">{errors.service_cost.message}</p>
+                )}
+              </div>
+            )}
 
             {/* Inventario: solo si NO es servicio */}
             {!isService && (

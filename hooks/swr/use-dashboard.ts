@@ -9,7 +9,7 @@ const KEY = "/api/dashboard";
 export type DashboardPeriod = { year: number; month: number };
 
 export type DashboardData = {
-  period: { year: number; month: number } | null;
+  period: { year: number; month: number } | "today" | null;
   metrics: {
     revenue: number;
     revenue_change: number | null;
@@ -60,13 +60,17 @@ function useAuthFetch() {
 }
 
 // Hook principal con filtros opcionales
-export function useDashboard(filters?: { month?: number; year?: number }) {
+export function useDashboard(filters?: { month?: number; year?: number; period?: "today" }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
 
   const params = new URLSearchParams();
-  if (filters?.month) params.set("month", String(filters.month));
-  if (filters?.year)  params.set("year",  String(filters.year));
+  if (filters?.period === "today") {
+    params.set("period", "today");
+  } else {
+    if (filters?.month) params.set("month", String(filters.month));
+    if (filters?.year)  params.set("year",  String(filters.year));
+  }
 
   const qs  = params.toString();
   const url = qs ? `${KEY}?${qs}` : KEY;

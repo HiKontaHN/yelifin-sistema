@@ -201,6 +201,7 @@ export interface Product {
   updated_at: string;
   stock: number;
   is_service: boolean;
+  service_cost: number;
   variants: ProductVariant[];
   variants_count: number;
 }

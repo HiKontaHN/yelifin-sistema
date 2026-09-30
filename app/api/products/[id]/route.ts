@@ -27,6 +27,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         p.name,
         p.description,
         p.is_service,
+        p.service_cost,
         p.sku,
         p.barcode,
         p.price,
@@ -88,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (isNaN(productId)) return createErrorResponse("ID inválido", 400);
 
     const [existing] = await sql`
-      SELECT id FROM products
+      SELECT id, is_service, service_cost FROM products
       WHERE id     = ${productId}
         AND org_id = ${orgId}
       LIMIT 1
@@ -96,7 +97,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!existing) return createErrorResponse("Producto no encontrado", 404);
 
     const body = await request.json();
-    const { name, description, sku, price, image_url, is_active, is_service } = body;
+    const { name, description, sku, price, image_url, is_active, is_service, service_cost } = body;
+
+    if (service_cost !== undefined && (isNaN(Number(service_cost)) || Number(service_cost) < 0)) {
+      return createErrorResponse(
+        "El costo del servicio debe ser un número mayor o igual a 0",
+        400
+      );
+    }
 
     // Verificar SKU duplicado (excluyendo el mismo registro)
     if (sku) {
@@ -121,12 +129,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         image_url   = COALESCE(${image_url  ?? null}, image_url),
         is_active   = COALESCE(${is_active  !== undefined ? is_active   : null}, is_active),
         is_service  = COALESCE(${is_service !== undefined ? is_service  : null}, is_service),
+        service_cost = COALESCE(${service_cost !== undefined ? Number(service_cost) : null}, service_cost),
         updated_at  = CURRENT_TIMESTAMP,
         updated_by  = ${userId}
       WHERE id     = ${productId}
         AND org_id = ${orgId}
       RETURNING *
     `;
+
+    // Registrar el cambio de costo en el historial — solo si el producto es
+    // (o queda) servicio y el valor realmente cambió, para no llenar la
+    // gráfica con puntos repetidos.
+    if (
+      updated.is_service &&
+      Number(existing.service_cost) !== Number(updated.service_cost)
+    ) {
+      await sql`
+        INSERT INTO service_cost_history (org_id, product_id, cost, changed_by)
+        VALUES (${orgId}, ${productId}, ${Number(updated.service_cost)}, ${userId})
+      `;
+    }
 
     return Response.json({ data: updated });
   } catch (error) {

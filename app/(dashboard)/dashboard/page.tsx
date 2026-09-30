@@ -31,6 +31,7 @@ import { SecondaryStats } from "@/components/dashboard/secondary-stats";
 import { MobileSummary } from "@/components/dashboard/mobile-summary";
 import { SalesCharts } from "@/components/dashboard/sales-charts";
 import { TopProductsStock } from "@/components/dashboard/top-products-stock";
+import { ProductSalesToday } from "@/components/dashboard/product-sales-today";
 import { RecentSalesTable } from "@/components/dashboard/recent-sales-table";
 import { CreditCardDebtWidget } from "@/components/dashboard/credit-card-debt-widget";
 
@@ -55,11 +56,13 @@ export default function DashboardPage() {
 
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
   const [selectedYear, setSelectedYear] = useState<number | undefined>();
+  const [isToday, setIsToday] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
 
   const { data, isLoading, mutate } = useDashboard({
     month: selectedMonth,
     year: selectedYear,
+    period: isToday ? "today" : undefined,
   });
   const { periods } = useDashboardPeriods();
   const { accounts } = useAccounts();
@@ -71,6 +74,7 @@ export default function DashboardPage() {
   );
 
   const periodLabel = () => {
+    if (isToday) return "Hoy";
     if (!selectedMonth && !selectedYear) return "Mes actual";
     if (selectedYear && !selectedMonth) return `Año ${selectedYear}`;
     if (selectedYear && selectedMonth)
@@ -79,8 +83,27 @@ export default function DashboardPage() {
   };
 
   const clearFilter = () => {
+    setIsToday(false);
     setSelectedMonth(undefined);
     setSelectedYear(undefined);
+  };
+
+  const selectToday = () => {
+    setIsToday(true);
+    setSelectedMonth(undefined);
+    setSelectedYear(undefined);
+  };
+
+  const selectYear = (year: number) => {
+    setIsToday(false);
+    setSelectedYear(year);
+    setSelectedMonth(undefined);
+  };
+
+  const selectMonth = (year: number, month: number) => {
+    setIsToday(false);
+    setSelectedYear(year);
+    setSelectedMonth(month);
   };
 
   const m = data?.metrics;
@@ -135,10 +158,15 @@ export default function DashboardPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={selectToday}>
+              <span className={isToday ? "font-medium text-primary" : ""}>
+                Hoy
+              </span>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={clearFilter}>
               <span
                 className={
-                  !selectedMonth && !selectedYear
+                  !isToday && !selectedMonth && !selectedYear
                     ? "font-medium text-primary"
                     : ""
                 }
@@ -154,15 +182,10 @@ export default function DashboardPage() {
                 <DropdownMenuLabel className="text-xs text-muted-foreground py-1">
                   {year}
                 </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedYear(year);
-                    setSelectedMonth(undefined);
-                  }}
-                >
+                <DropdownMenuItem onClick={() => selectYear(year)}>
                   <span
                     className={
-                      selectedYear === year && !selectedMonth
+                      !isToday && selectedYear === year && !selectedMonth
                         ? "font-medium text-primary"
                         : ""
                     }
@@ -177,14 +200,11 @@ export default function DashboardPage() {
                     <DropdownMenuItem
                       key={`${p.year}-${p.month}`}
                       className="pl-5"
-                      onClick={() => {
-                        setSelectedYear(p.year);
-                        setSelectedMonth(p.month);
-                      }}
+                      onClick={() => selectMonth(p.year, p.month)}
                     >
                       <span
                         className={
-                          selectedYear === p.year && selectedMonth === p.month
+                          !isToday && selectedYear === p.year && selectedMonth === p.month
                             ? "font-medium text-primary"
                             : ""
                         }
@@ -216,6 +236,7 @@ export default function DashboardPage() {
         recentSales={data?.recent_sales ?? []}
         isLoading={isLoading}
         showProfit={showProfit}
+        hideLowStock={isToday}
       />
       <SecondaryStats metrics={m} isLoading={isLoading} showCosts={showCosts} />
       <SalesCharts
@@ -225,10 +246,18 @@ export default function DashboardPage() {
         isLoading={isLoading}
         showProfit={showProfit}
       />
-      <TopProductsStock
-        topProducts={topProducts}
-        isLoading={isLoading}
-      />
+      {isToday ? (
+        <ProductSalesToday
+          products={topProducts}
+          isLoading={isLoading}
+          showProfit={showProfit}
+        />
+      ) : (
+        <TopProductsStock
+          topProducts={topProducts}
+          isLoading={isLoading}
+        />
+      )}
       <RecentSalesTable
         recentSales={data?.recent_sales ?? []}
         isLoading={isLoading}

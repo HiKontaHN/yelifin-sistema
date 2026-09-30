@@ -23,6 +23,8 @@ export type CreateCustomerInput = {
   phone?: string;
   email?: string;
   notes?: string;
+  total_orders?: number;
+  total_spent?: number;
 };
 
 function useAuthFetch() {
@@ -160,14 +162,22 @@ export type CustomerSummary = Customer & {
   avg_order_value:  number;
 };
 
+export type RecentSaleItem = {
+  product_name: string;
+  quantity:     number;
+};
+
 export type RecentSale = {
-  id:            number;
-  sale_number:   string;
-  total:         number;
-  sold_at:       string;
-  status:        string;
-  discount:      number;
-  shipping_cost: number;
+  id:             number;
+  sale_number:    string;
+  total:          number;
+  sold_at:        string;
+  status:         string;
+  discount:       number;
+  shipping_cost:  number;
+  items_count:    number;
+  total_quantity: number;
+  items:          RecentSaleItem[];
 };
 
 export const TIER_COLORS = [

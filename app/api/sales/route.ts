@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
 
       // Verificar producto
       const [product] = await sql`
-        SELECT id, name, is_service FROM products
+        SELECT id, name, is_service, service_cost FROM products
         WHERE id = ${item.product_id} AND org_id = ${orgId} AND is_active = TRUE
       `;
       if (!product)
@@ -337,14 +337,15 @@ export async function POST(request: NextRequest) {
           404,
         );
 
-      // Servicio: sin inventario
+      // Servicio: sin inventario, el costo viene de products.service_cost
+      // (no genera transacción — solo alimenta el cálculo de ganancia)
       if (product.is_service) {
         processedItems.push({
           product_id: item.product_id,
           variant_id: variantId,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          unit_cost: 0,
+          unit_cost: Number(product.service_cost) || 0,
           item_discount: item.discount ?? 0,
           line_total: item.unit_price * item.quantity - (item.discount ?? 0),
           batches: [],

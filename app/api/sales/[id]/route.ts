@@ -454,14 +454,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         const delta      = data.quantity - currentQty;
 
         const [product] = await sql`
-          SELECT is_service FROM products
+          SELECT is_service, service_cost FROM products
           WHERE id = ${data.product_id} AND org_id = ${orgId}
         `;
         const isService = Boolean(product?.is_service);
 
         let unitCost = 0;
 
-        if (!isService) {
+        if (isService) {
+          // Sin cambio de cantidad → conservar costo original de la línea;
+          // si cambia o es nueva, usar el costo de servicio configurado hoy.
+          unitCost = (delta === 0 && current) ? current.unit_cost : (Number(product?.service_cost) || 0);
+        } else {
           if (delta === 0 && current) {
             // Sin cambio de cantidad → conservar costo original
             unitCost = current.unit_cost;

@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button }   from "@/components/ui/button";
 import { Badge }    from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,7 +33,6 @@ import { useModulePermissions }    from "@/hooks/use-module-permissions";
 import { CreateCustomerDialog }    from "@/components/customers/create-customer-dialog";
 import { EditCustomerDialog }      from "@/components/customers/edit-customer-dialog";
 import { DeleteCustomerDialog }    from "@/components/customers/delete-customer-dialog";
-import { CustomerSummarySheet }    from "@/components/customers/customer-summary-sheet";
 import { LoyaltyPoliciesDialog }   from "@/components/customers/loyalty-policies-dialog";
 import { Fab }                     from "@/components/ui/fab";
 import { SearchBar }               from "@/components/shared/search-bar";
@@ -48,6 +48,7 @@ export default function CustomersPage() {
 }
 
 function CustomersPageInner() {
+  const { push } = useRouter();
   const [search,          setSearch]          = useState("");
   const [page,            setPage]            = useState(1);
   const pageLimit = 15;
@@ -69,7 +70,6 @@ function CustomersPageInner() {
   const [loyaltyOpen,     setLoyaltyOpen]     = useState(false);
   const [editCustomer,    setEditCustomer]    = useState<Customer | null>(null);
   const [deleteCustomer,  setDeleteCustomer]  = useState<Customer | null>(null);
-  const [summaryCustomer, setSummaryCustomer] = useState<Customer | null>(null);
 
   return (
     <div className="space-y-5 pb-24">
@@ -155,7 +155,7 @@ function CustomersPageInner() {
                     <TableRow
                       key={customer.id}
                       className="cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => setSummaryCustomer(customer)}
+                      onClick={() => push(`/customers/${customer.id}`)}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -177,7 +177,7 @@ function CustomersPageInner() {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <ActionsDropdown
-                          onView={()   => setSummaryCustomer(customer)}
+                          onView={()   => push(`/customers/${customer.id}`)}
                           onEdit={()   => setEditCustomer(customer)}
                           onDelete={() => setDeleteCustomer(customer)}
                           canEdit={canEdit}
@@ -212,7 +212,7 @@ function CustomersPageInner() {
               <Card
                 key={customer.id}
                 className="pb-1 pt-1 cursor-pointer hover:bg-muted/20 transition-colors"
-                onClick={() => setSummaryCustomer(customer)}
+                onClick={() => push(`/customers/${customer.id}`)}
               >
                 <CardContent className="px-3.5 py-2.5">
                   <div className="flex items-center justify-between gap-2">
@@ -240,7 +240,7 @@ function CustomersPageInner() {
                       </div>
                       <div onClick={(e) => e.stopPropagation()}>
                         <ActionsDropdown
-                          onView={()   => setSummaryCustomer(customer)}
+                          onView={()   => push(`/customers/${customer.id}`)}
                           onEdit={()   => setEditCustomer(customer)}
                           onDelete={() => setDeleteCustomer(customer)}
                           canEdit={canEdit}
@@ -302,13 +302,6 @@ function CustomersPageInner() {
       )}
 
       {/* Modales */}
-      <CustomerSummarySheet
-        customer={summaryCustomer}
-        open={!!summaryCustomer}
-        onOpenChange={(o) => !o && setSummaryCustomer(null)}
-        onEdit={(c)   => { setSummaryCustomer(null); setEditCustomer(c); }}
-        onDelete={(c) => { setSummaryCustomer(null); setDeleteCustomer(c); }}
-      />
       <LoyaltyPoliciesDialog open={loyaltyOpen} onOpenChange={setLoyaltyOpen} />
       <CreateCustomerDialog  open={createOpen}  onOpenChange={setCreateOpen}  onSuccess={() => mutate()} />
       <EditCustomerDialog

@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         p.name,
         p.description,
         p.is_service,
+        p.service_cost,
         p.sku,
         p.barcode,
         p.price,
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, orgId } = auth.data;
     const body = await request.json();
-    const { name, description, sku, price, image_url, is_service } = body;
+    const { name, description, sku, price, image_url, is_service, service_cost } = body;
 
     if (!name || typeof name !== "string" || name.trim().length < 1) {
       return createErrorResponse("El nombre del producto es requerido", 400);
@@ -98,19 +99,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SKU: el enviado (verificado) o el siguiente disponible según las
-    // iniciales del nombre (PHK-001, PHK-002, ... rellenando huecos)
+    if (service_cost !== undefined && (isNaN(Number(service_cost)) || Number(service_cost) < 0)) {
+      return createErrorResponse(
+        "El costo del servicio debe ser un número mayor o igual a 0",
+        400
+      );
+    }
+
+    // SKU: el enviado (verificado) o el siguiente disponible.
+    // Productos: iniciales del nombre (PHK-001, PHK-002...). Servicios: prefijo
+    // fijo "SERV" (SERV-001, SERV-002...) — el nombre de un servicio no forma
+    // un acrónimo útil y da igual, ningún flujo de inventario lo usa.
     let finalSku = sku?.trim() || null;
     if (finalSku) {
       if (!(await isProductSkuAvailable(sql, orgId, finalSku))) {
         return createErrorResponse("Ya existe un producto con este SKU", 409);
       }
     } else {
-      [finalSku] = await nextProductSkus(sql, orgId, skuPrefixFromName(name), 1);
+      const prefix = is_service ? "SERV" : skuPrefixFromName(name);
+      [finalSku] = await nextProductSkus(sql, orgId, prefix, 1);
     }
 
     const [product] = await sql`
-      INSERT INTO products (org_id, created_by, name, description, sku, barcode, price, image_url, is_service)
+      INSERT INTO products (org_id, created_by, name, description, sku, barcode, price, image_url, is_service, service_cost)
       VALUES (
         ${orgId},
         ${userId},
@@ -120,10 +131,20 @@ export async function POST(request: NextRequest) {
         ${null},
         ${Number(price)},
         ${image_url    ?? null},
-        ${is_service   ?? false}
+        ${is_service   ?? false},
+        ${service_cost !== undefined ? Number(service_cost) : 0}
       )
       RETURNING *
     `;
+
+    // Punto inicial del historial de costo — solo para servicios, que no
+    // tienen lotes de inventario de donde sacar una gráfica de evolución.
+    if (product.is_service) {
+      await sql`
+        INSERT INTO service_cost_history (org_id, product_id, cost, changed_by)
+        VALUES (${orgId}, ${product.id}, ${Number(product.service_cost)}, ${userId})
+      `;
+    }
 
     // Devolver con variants vacío para consistencia de shape
     return Response.json(

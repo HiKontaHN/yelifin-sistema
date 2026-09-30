@@ -39,11 +39,31 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     if (!customer) return createErrorResponse("Cliente no encontrado", 404);
 
+    // Detalle de líneas por venta (para el tooltip de la card: cantidad de
+    // productos y el desglose) — solo 6 ventas, así que el N+1 es barato.
     const recentSales = await sql`
-      SELECT id, sale_number, total, sold_at, status, discount, shipping_cost
-      FROM sales
-      WHERE customer_id = ${customerId} AND org_id = ${orgId}
-      ORDER BY sold_at DESC
+      SELECT
+        s.id, s.sale_number, s.total, s.sold_at, s.status, s.discount, s.shipping_cost,
+        COALESCE(items.items_count, 0)::int    AS items_count,
+        COALESCE(items.total_quantity, 0)::int AS total_quantity,
+        COALESCE(items.items, '[]'::jsonb)     AS items
+      FROM sales s
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*)::int      AS items_count,
+          SUM(si.quantity)   AS total_quantity,
+          jsonb_agg(
+            jsonb_build_object(
+              'product_name', COALESCE(p.name, 'Producto eliminado'),
+              'quantity',     si.quantity
+            ) ORDER BY si.id
+          ) AS items
+        FROM sale_items si
+        LEFT JOIN products p ON p.id = si.product_id
+        WHERE si.sale_id = s.id AND si.org_id = s.org_id
+      ) items ON TRUE
+      WHERE s.customer_id = ${customerId} AND s.org_id = ${orgId}
+      ORDER BY s.sold_at DESC
       LIMIT 6
     `;
 

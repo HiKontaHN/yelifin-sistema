@@ -31,6 +31,7 @@ export type CreateProductInput = {
   price: number;
   image_url?: string | null;
   is_service?: boolean;
+  service_cost?: number;
 };
 
 export type UpdateProductInput = Partial<CreateProductInput> & {

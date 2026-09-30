@@ -32,6 +32,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         p.image_url,
         p.is_active,
         p.is_service,
+        p.service_cost,
         p.created_at
       FROM products p
       WHERE p.id     = ${productId}
@@ -139,6 +140,18 @@ export async function GET(request: NextRequest, { params }: Params) {
       LIMIT 50
     `;
 
+    // ── 5c. Service cost history for chart (servicios, sin lotes) ────
+    const serviceCostHistory = product.is_service
+      ? await sql`
+          SELECT id, cost, changed_at
+          FROM service_cost_history
+          WHERE product_id = ${productId}
+            AND org_id     = ${orgId}
+          ORDER BY changed_at ASC
+          LIMIT 50
+        `
+      : [];
+
     // ── 6. Sales statistics ──────────────────────────────────────────
     const [salesStats] = await sql`
       SELECT
@@ -224,7 +237,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     `;
 
     // ── Compose response ─────────────────────────────────────────────
-    const avgCostNum = Number(costRow?.avg_cost ?? 0);
+    // Los servicios no tienen lotes de inventario — su "costo" es el que se
+    // configuró a mano en products.service_cost, no un promedio ponderado.
+    const avgCostNum = product.is_service
+      ? Number(product.service_cost ?? 0)
+      : Number(costRow?.avg_cost ?? 0);
     const calcMargin = (price: number, cost: number) =>
       price > 0 ? ((price - cost) / price) * 100 : 0;
 
@@ -232,7 +249,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       ...product,
       total_stock:      Number(stockRow.total_stock),
       avg_cost:         avgCostNum as number | null,
-      last_cost:        Number(lastCostRow?.last_cost ?? 0) as number | null,
+      last_cost:        (product.is_service ? avgCostNum : Number(lastCostRow?.last_cost ?? 0)) as number | null,
       margin_pct:       calcMargin(Number(product.price), avgCostNum) as number | null,
       variants:         variants.map((v) => {
         const avgCost = Number(v.avg_cost);
@@ -269,6 +286,16 @@ export async function GET(request: NextRequest, { params }: Params) {
         variant_id:   b.variant_id ?? null,
         variant_name: b.variant_name ?? null,
       })),
+      // Mismo shape que cost_history para que el frontend reuse el mismo
+      // componente de gráfica — los servicios no tienen lotes ni variantes.
+      service_cost_history: serviceCostHistory.map((h) => ({
+        id:           Number(h.id),
+        qty_in:       1,
+        unit_cost:    Number(h.cost),
+        received_at:  h.changed_at,
+        variant_id:   null,
+        variant_name: null,
+      })),
     };
 
     // El costo (promedio, último, por lote, historial de compras) y el
@@ -286,6 +313,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       // se vacía el arreglo en vez de anular cada campo, así el frontend
       // (que solo dibuja el gráfico si hay más de un punto) lo oculta solo.
       data.cost_history = [];
+      data.service_cost_history = [];
     }
     if (!perms.showProfit) {
       nullifyKeysDeep(data, new Set(["total_profit", "margin_pct"]));

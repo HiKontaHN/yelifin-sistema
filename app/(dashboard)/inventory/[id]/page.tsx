@@ -128,6 +128,8 @@ type ProductDetail = {
   movements: MovementRow[];
   // vacío (nunca > 1) sin show_costs — el backend no envía puntos del gráfico
   cost_history: CostHistoryRow[];
+  // mismo shape, pero para servicios (viene de service_cost_history, no de lotes)
+  service_cost_history: CostHistoryRow[];
 };
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -405,23 +407,34 @@ export default function ProductDetailPage({ params }: Props) {
           <Card>
             <CardContent className="pl-3">
               <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                Costo promedio
+                {product.is_service ? "Costo del servicio" : "Costo promedio"}
                 <InfoTooltip
                   content={
-                    <div className="space-y-1">
-                      <p className="font-semibold">Costo promedio del stock actual</p>
-                      <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
-                      <p className="opacity-80">
-                        Cada compra entra como un lote con su propio costo; el promedio pondera
-                        cada lote por las unidades que le quedan. Por eso cambia cuando compras
-                        a un precio distinto, y puede diferir del último costo.
-                      </p>
-                    </div>
+                    product.is_service ? (
+                      <div className="space-y-1">
+                        <p className="font-semibold">Costo del servicio</p>
+                        <p>Lo que te cuesta prestar este servicio (mano de obra, materiales, etc.).</p>
+                        <p className="opacity-80">
+                          No genera ningún movimiento financiero — solo se usa para calcular
+                          la ganancia real de cada venta.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="font-semibold">Costo promedio del stock actual</p>
+                        <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
+                        <p className="opacity-80">
+                          Cada compra entra como un lote con su propio costo; el promedio pondera
+                          cada lote por las unidades que le quedan. Por eso cambia cuando compras
+                          a un precio distinto, y puede diferir del último costo.
+                        </p>
+                      </div>
+                    )
                   }
                 />
               </p>
               <p className="text-xl font-bold">
-                {product.is_service ? "—" : format(Number(product.avg_cost ?? 0))}
+                {format(Number(product.avg_cost ?? 0))}
               </p>
               {!product.is_service && Number(product.last_cost ?? 0) > 0 && product.last_cost !== product.avg_cost && (
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -442,8 +455,8 @@ export default function ProductDetailPage({ params }: Props) {
                   content={
                     <div className="space-y-1">
                       <p className="font-semibold">Margen sobre el precio de venta</p>
-                      <p>(Precio de venta − Costo promedio) ÷ Precio de venta × 100</p>
-                      {!product.is_service && product.price > 0 && showCosts && (
+                      <p>(Precio de venta − Costo{product.is_service ? " del servicio" : " promedio"}) ÷ Precio de venta × 100</p>
+                      {product.price > 0 && showCosts && (
                         <p className="opacity-80">
                           ({format(product.price)} − {format(Number(product.avg_cost ?? 0))}) ÷ {format(product.price)} = {margin.toFixed(1)}%
                         </p>
@@ -465,12 +478,10 @@ export default function ProductDetailPage({ params }: Props) {
                 <span className={`text-xl font-bold ${
                   margin > 20 ? "text-green-600" : margin > 0 ? "text-amber-600" : "text-destructive"
                 }`}>
-                  {product.is_service ? "—" : `${margin.toFixed(1)}%`}
+                  {`${margin.toFixed(1)}%`}
                 </span>
               </div>
-              {!product.is_service && (
-                <p className="text-xs text-muted-foreground mt-0.5">sobre precio</p>
-              )}
+              <p className="text-xs text-muted-foreground mt-0.5">sobre precio</p>
             </CardContent>
           </Card>
         )}
@@ -694,7 +705,7 @@ export default function ProductDetailPage({ params }: Props) {
       {/* Gráfico de evolución del precio de entrada — 100% costo; el backend
           ya manda cost_history vacío sin show_costs, showCosts es solo
           defensa adicional */}
-      {showCosts && product.cost_history.length > 1 && (
+      {showCosts && !product.is_service && product.cost_history.length > 1 && (
         <Card>
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-lg font-bold tracking-tight flex items-center gap-2">
@@ -705,6 +716,26 @@ export default function ProductDetailPage({ params }: Props) {
           <CardContent className="px-2 pb-1">
             <PurchasePriceChart
               data={product.cost_history}
+              format={format}
+              tz={tz}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Gráfico de evolución del costo del servicio — cada cambio guardado
+          en products.service_cost queda como un punto (service_cost_history) */}
+      {showCosts && product.is_service && product.service_cost_history.length > 1 && (
+        <Card>
+          <CardHeader className="pb-3 pt-5 px-5">
+            <CardTitle className="text-lg font-bold tracking-tight flex items-center gap-2">
+              <LineChartIcon className="size-4" />
+              Evolución del costo del servicio
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-2 pb-1">
+            <PurchasePriceChart
+              data={product.service_cost_history}
               format={format}
               tz={tz}
             />

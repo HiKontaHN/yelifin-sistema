@@ -1,9 +1,23 @@
 // app/api/dashboard/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, getOrgTimezone } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
+
+// ── Timezone-aware "today" (mismo patrón que app/api/sales/route.ts) ──────
+function tzOffsetMs(tz: string, at: Date): number {
+  const tzStr  = at.toLocaleString("en-US", { timeZone: tz });
+  const utcStr = at.toLocaleString("en-US", { timeZone: "UTC" });
+  return new Date(tzStr).getTime() - new Date(utcStr).getTime();
+}
+
+function startOfDayTZ(d: Date, tz: string): Date {
+  const ymd    = d.toLocaleDateString("sv", { timeZone: tz }); // "YYYY-MM-DD"
+  const offset = tzOffsetMs(tz, d);
+  const [y, m, day] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, day, 0, 0, 0, 0) - offset);
+}
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
@@ -20,10 +34,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const now = new Date();
-    const paramMonth = searchParams.get("month");
-    const paramYear = searchParams.get("year");
+    const paramMonth  = searchParams.get("month");
+    const paramYear   = searchParams.get("year");
+    const isToday     = searchParams.get("period") === "today";
 
-    const filterAll = !paramMonth && !paramYear;
+    const filterAll = !paramMonth && !paramYear && !isToday;
     const filterYear = paramYear ? Number(paramYear) : now.getFullYear();
     const filterMonth = paramMonth ? Number(paramMonth) : now.getMonth() + 1;
 
@@ -32,7 +47,16 @@ export async function GET(request: NextRequest) {
     let prevStartISO: string;
     let prevEndISO: string;
 
-    if (filterAll) {
+    if (isToday) {
+      const tz = await getOrgTimezone(orgId);
+      const todayStart = startOfDayTZ(now, tz);
+      const todayEnd    = new Date(todayStart.getTime() + 86_400_000);
+      const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+      startISO = todayStart.toISOString();
+      endISO = todayEnd.toISOString();
+      prevStartISO = yesterdayStart.toISOString();
+      prevEndISO = todayStart.toISOString();
+    } else if (filterAll) {
       startISO = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       endISO = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
       prevStartISO = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
@@ -128,7 +152,7 @@ export async function GET(request: NextRequest) {
         SELECT product_id, SUM(qty_available) AS s
         FROM inventory_batches WHERE org_id = ${orgId} GROUP BY product_id
       ) stock ON stock.product_id = p.id
-      WHERE p.org_id = ${orgId} AND p.is_active = TRUE
+      WHERE p.org_id = ${orgId} AND p.is_active = TRUE AND p.is_service = FALSE
     `;
 
     // ── Balance ────────────────────────────────────────────────────────
@@ -199,7 +223,9 @@ export async function GET(request: NextRequest) {
       ORDER BY amount DESC
     `;
 
-    // ── Top 5 productos (con cálculo correcto de profit) ──────────────
+    // ── Top 5 productos (todos, sin límite, cuando period=today —
+    // "Ventas por producto" del día en vez del ranking del período) ────
+    const topProductsLimit = isToday ? sql`` : sql`LIMIT 5`;
     const topProducts = await sql`
       SELECT
         p.id, p.name, p.image_url,
@@ -224,7 +250,7 @@ export async function GET(request: NextRequest) {
         AND s.sold_at >= ${startISO} AND s.sold_at < ${endISO}
       GROUP BY p.id
       ORDER BY units_sold DESC
-      LIMIT 5
+      ${topProductsLimit}
     `;
 
     // ── Últimas 5 ventas (con cálculo correcto de profit) ─────────────
@@ -276,7 +302,9 @@ export async function GET(request: NextRequest) {
 
     return Response.json({
       data: {
-        period: filterAll ? null : { year: filterYear, month: paramMonth ? filterMonth : null },
+        period: isToday
+          ? "today" as const
+          : filterAll ? null : { year: filterYear, month: paramMonth ? filterMonth : null },
         metrics: {
           revenue: revenueThisNum,
           revenue_change: revenueLastNum > 0 ? ((revenueThisNum - revenueLastNum) / revenueLastNum) * 100 : null,

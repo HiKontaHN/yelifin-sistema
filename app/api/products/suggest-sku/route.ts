@@ -27,8 +27,9 @@ export async function GET(request: NextRequest) {
     const name = searchParams.get("name")?.trim();
     if (!name) return createErrorResponse("El nombre es requerido", 400);
 
-    const count = Math.min(10, Math.max(1, Number(searchParams.get("count")) || 1));
-    const prefix = skuPrefixFromName(name);
+    const isService = searchParams.get("is_service") === "true";
+    const count  = Math.min(10, Math.max(1, Number(searchParams.get("count")) || 1));
+    const prefix = isService ? "SERV" : skuPrefixFromName(name);
     const suggestions = await nextProductSkus(sql, orgId, prefix, count);
 
     return Response.json({ data: { prefix, suggestions } });

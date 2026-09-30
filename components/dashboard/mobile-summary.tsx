@@ -10,9 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Package, AlertTriangle } from "lucide-react";
 
-type Props = { lowStock: any[]; recentSales: any[]; isLoading: boolean; showProfit?: boolean };
+type Props = {
+  lowStock: any[]; recentSales: any[]; isLoading: boolean;
+  showProfit?: boolean; hideLowStock?: boolean;
+};
 
-export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = true }: Props) {
+export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = true, hideLowStock = false }: Props) {
   const { push } = useRouter();
   const { format } = useCurrency();
   const tz = useTimezone();
@@ -21,7 +24,7 @@ export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = t
 
   return (
     <div className="space-y-3 lg:hidden">
-      {(isLoading || lowStock.length > 0) && (
+      {!hideLowStock && (isLoading || lowStock.length > 0) && (
         <Card>
           <CardContent className="pl-4">
             <div className="flex items-center gap-2 mb-3">
