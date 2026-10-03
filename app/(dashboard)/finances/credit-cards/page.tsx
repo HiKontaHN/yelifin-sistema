@@ -62,6 +62,7 @@ export default function CreditCardsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [payCard, setPayCard] = useState<CreditCardType | null>(null);
+  const [payPickerOpen, setPayPickerOpen] = useState(false); // pagar desde el FAB, sin tarjeta elegida
 
   // Restaurados desde la URL — "volver" desde /finances/credit-cards/[id]
   // (que usa router.back()) trae de vuelta esta misma URL con el
@@ -114,6 +115,7 @@ export default function CreditCardsPage() {
 
   const totalDebtLocal = creditCards.reduce((a, c) => a + Number(c.balance), 0);
   const totalDebtUsd   = creditCards.reduce((a, c) => a + Number(c.balance_usd), 0);
+  const cardsWithDebt  = creditCards.filter((c) => Number(c.balance) > 0 || Number(c.balance_usd) > 0);
 
   // Category breakdown — charges only
   const categoryData = useMemo(() => {
@@ -531,6 +533,9 @@ export default function CreditCardsPage() {
         actions={[
           { label: "Nueva transacción", icon: ArrowLeftRight, onClick: () => setTransactionOpen(true) },
           { label: "Nueva tarjeta", icon: CreditCard, onClick: () => setCreateOpen(true) },
+          ...(cardsWithDebt.length > 0
+            ? [{ label: "Pagar tarjeta", icon: Banknote, onClick: () => setPayPickerOpen(true) }]
+            : []),
         ]}
       />
 
@@ -549,11 +554,12 @@ export default function CreditCardsPage() {
       />
 
       <PayCreditCardDialog
-        open={!!payCard}
-        onOpenChange={(v) => !v && setPayCard(null)}
+        open={!!payCard || payPickerOpen}
+        onOpenChange={(v) => { if (!v) { setPayCard(null); setPayPickerOpen(false); } }}
         card={payCard}
+        cards={cardsWithDebt}
         accounts={accounts}
-        onSuccess={() => { mutate(); setPayCard(null); }}
+        onSuccess={() => { mutate(); setPayCard(null); setPayPickerOpen(false); }}
       />
     </div>
   );

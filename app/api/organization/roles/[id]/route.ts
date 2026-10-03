@@ -1,7 +1,7 @@
 // app/api/organization/roles/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
 import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -13,9 +13,10 @@ export async function PATCH(
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede editar roles", 403);
-  }
+  const denyRoles = await requireModule(auth.data, 'ADMIN', 'canEdit', 'ROLES');
+  if (denyRoles) return denyRoles;
+  const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
+  if (denyFeature) return denyFeature;
 
   try {
     const { orgId } = auth.data;
@@ -27,6 +28,12 @@ export async function PATCH(
       SELECT id, is_owner FROM org_roles WHERE id = ${roleId} AND org_id = ${orgId}
     `;
     if (!role) return createErrorResponse("Rol no encontrado", 404);
+
+    // Nadie edita su propio rol — si no, un miembro con ADMIN.ROLES podría
+    // darse a sí mismo cualquier permiso.
+    if (!auth.data.isOwner && Number(role.id) === auth.data.roleId) {
+      return createErrorResponse("No podés editar tu propio rol", 403);
+    }
 
     // El rol "Dueño" no se puede renombrar ni modificar (tiene bypass total)
     if (role.is_owner && (name !== undefined || permissions !== undefined)) {
@@ -106,9 +113,8 @@ export async function DELETE(
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede eliminar roles", 403);
-  }
+  const denyRoles = await requireModule(auth.data, 'ADMIN', 'canDelete', 'ROLES');
+  if (denyRoles) return denyRoles;
 
   try {
     const { orgId } = auth.data;

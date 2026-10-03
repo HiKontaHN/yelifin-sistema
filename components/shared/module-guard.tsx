@@ -13,13 +13,14 @@ import type { OrgModule, ModulePermissions } from "@/types";
 
 type Props = {
   module: OrgModule;
+  subitem?: string;
   permission?: keyof ModulePermissions;
   children: React.ReactNode;
 };
 
-export function ModuleGuard({ module, permission = "can_view", children }: Props) {
+export function ModuleGuard({ module, subitem, permission = "can_view", children }: Props) {
   const { push } = useRouter();
-  const perms = useModulePermissions(module);
+  const perms = useModulePermissions(module, subitem);
   const { getModulePermissions, isLoading: meIsLoading } = useMe();
 
   const blocked = !perms.isLoading && !perms[permission];

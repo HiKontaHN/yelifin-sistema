@@ -1,7 +1,7 @@
 // app/api/organization/members/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -15,6 +15,8 @@ export async function PATCH(
 
   const denyTeam = await requireModule(auth.data, 'ADMIN', 'canEdit', 'TEAM');
   if (denyTeam) return denyTeam;
+  const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
+  if (denyFeature) return denyFeature;
 
   try {
     const { orgId } = auth.data;

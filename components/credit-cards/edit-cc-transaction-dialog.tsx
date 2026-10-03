@@ -18,6 +18,7 @@ import { CreditCardTransaction, useUpdateCCTransaction } from "@/hooks/swr/use-c
 import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
 import { TransactionCategory } from "@/hooks/swr/use-transaction-categories";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 
 const schema = z.object({
   description:   z.string().optional(),
@@ -59,6 +60,7 @@ export function EditCCTransactionDialog({
     handleSubmit,
     reset,
     watch,
+    setValue,
     control,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
@@ -247,6 +249,11 @@ export function EditCCTransactionDialog({
               {errors.exchange_rate && (
                 <p className="text-xs text-destructive">{errors.exchange_rate.message}</p>
               )}
+              <SuggestedRateHint
+                value={Number(watchRate)}
+                localCurrency={nativeCurrency}
+                onUse={(r) => setValue("exchange_rate", r, { shouldValidate: true })}
+              />
               {localEquivalent && localEquivalent > 0 && (
                 <div className="flex items-center gap-1.5 bg-muted/60 rounded-lg px-3 py-2">
                   <span className="text-xs text-muted-foreground">Equivalente en {symbol}:</span>

@@ -67,7 +67,7 @@ function BillingSettingsContent() {
 
       {/* Placeholder principal */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base md:text-lg">
             Gestión de suscripción en construcción
           </CardTitle>

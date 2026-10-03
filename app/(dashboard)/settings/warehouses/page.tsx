@@ -9,13 +9,13 @@ import { es } from "date-fns/locale";
 
 import { useMe } from "@/hooks/swr/use-me";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { useProducts } from "@/hooks/swr/use-products";
 import {
   useWarehouses,
   useCreateWarehouse,
   useUpdateWarehouse,
   useWarehouseTransfers,
   useCreateWarehouseTransfer,
+  useWarehouseStock,
 } from "@/hooks/swr/use-warehouses";
 
 import { Button }   from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -133,7 +134,6 @@ function RenameWarehouseDialog({ warehouse, onClose, onRenamed }: {
 // ── Transfer form ─────────────────────────────────────────────────────────
 
 function TransferStockCard({ warehouses }: { warehouses: { id: number; name: string }[] }) {
-  const { products } = useProducts();
   const { createTransfer, isCreating } = useCreateWarehouseTransfer();
   const { mutate: mutateTransfers } = useWarehouseTransfers();
 
@@ -143,10 +143,10 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
   const [quantity,  setQuantity]  = useState("1");
   const [notes,     setNotes]     = useState("");
 
-  const physicalProducts = products.filter((p) => !p.is_service);
-  const selectedProduct = physicalProducts.find((p) =>
-    productKey === `p${p.id}` || p.variants.some((v) => productKey === `v${v.id}`)
-  );
+  const { stock, mutate: mutateStock } = useWarehouseStock(fromId ? Number(fromId) : null);
+  const keyOf = (s: { product_id: number; variant_id: number | null }) =>
+    s.variant_id ? `v${s.variant_id}` : `p${s.product_id}`;
+  const selectedItem = stock.find((s) => keyOf(s) === productKey);
 
   const reset = () => {
     setProductKey(""); setQuantity("1"); setNotes("");
@@ -155,22 +155,22 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
   const handleSubmit = async () => {
     if (!fromId || !toId) { toast.error("Elegí ambas bodegas"); return; }
     if (fromId === toId)  { toast.error("Las bodegas deben ser diferentes"); return; }
-    if (!selectedProduct) { toast.error("Elegí un producto"); return; }
+    if (!selectedItem) { toast.error("Elegí un producto"); return; }
     const qty = Number(quantity);
     if (!qty || qty < 1)  { toast.error("La cantidad debe ser al menos 1"); return; }
-
-    const variantId = productKey.startsWith("v") ? Number(productKey.slice(1)) : null;
+    if (qty > selectedItem.stock) { toast.error(`Solo hay ${selectedItem.stock} disponibles en la bodega de origen`); return; }
 
     try {
       await createTransfer({
         from_warehouse_id: Number(fromId),
         to_warehouse_id:   Number(toId),
         notes: notes.trim() || undefined,
-        items: [{ product_id: selectedProduct.id, variant_id: variantId, quantity: qty }],
+        items: [{ product_id: selectedItem.product_id, variant_id: selectedItem.variant_id, quantity: qty }],
       });
       toast.success("Transferencia registrada");
       reset();
       mutateTransfers();
+      mutateStock();
     } catch (err: any) {
       toast.error(err.message || "Error al registrar la transferencia");
     }
@@ -179,7 +179,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
   if (warehouses.length < 2) {
     return (
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <ArrowRightLeft className="size-4 text-muted-foreground" />
             Transferir stock
@@ -196,7 +196,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <ArrowRightLeft className="size-4 text-muted-foreground" />
           Transferir stock
@@ -206,7 +206,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label className="text-xs">Desde</Label>
-            <Select value={fromId} onValueChange={setFromId} disabled={isCreating}>
+            <Select value={fromId} onValueChange={(v) => { setFromId(v); setProductKey(""); }} disabled={isCreating}>
               <SelectTrigger className="h-10"><SelectValue placeholder="Origen" /></SelectTrigger>
               <SelectContent>
                 {warehouses.map((w) => (
@@ -230,18 +230,18 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
         <div className="space-y-1.5">
           <Label className="text-xs">Producto</Label>
-          <Select value={productKey} onValueChange={setProductKey} disabled={isCreating}>
-            <SelectTrigger className="h-10"><SelectValue placeholder="Selecciona un producto..." /></SelectTrigger>
-            <SelectContent>
-              {physicalProducts.flatMap((p) =>
-                p.variants.length > 0
-                  ? p.variants.map((v) => (
-                      <SelectItem key={`v${v.id}`} value={`v${v.id}`}>{p.name} — {v.variant_name}</SelectItem>
-                    ))
-                  : [<SelectItem key={`p${p.id}`} value={`p${p.id}`}>{p.name}</SelectItem>]
-              )}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={productKey}
+            onValueChange={setProductKey}
+            disabled={isCreating || !fromId}
+            placeholder={fromId ? "Selecciona un producto..." : "Elegí primero la bodega de origen"}
+            searchPlaceholder="Buscar producto..."
+            className="h-10 w-full"
+            items={stock.map((s) => ({
+              value: keyOf(s),
+              label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""} (${s.stock} disp.)`,
+            }))}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -344,7 +344,7 @@ export default function WarehousesPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <WarehouseIcon className="size-4 text-muted-foreground" />
             {warehouses.length} {warehouses.length === 1 ? "bodega" : "bodegas"}
@@ -399,7 +399,7 @@ export default function WarehousesPage() {
       <TransferStockCard warehouses={activeWarehouses} />
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Package className="size-4 text-muted-foreground" />
             Transferencias recientes

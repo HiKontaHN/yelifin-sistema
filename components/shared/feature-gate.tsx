@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+type AuthUser = NonNullable<ReturnType<typeof useAuth>["user"]>;
+
+export function hasPlanFeature(user: AuthUser, feature: FeatureKey) {
+  return (
+    user.subscription?.plan?.slug === "admin" ||
+    Object.values(user.features ?? {})
+      .flat()
+      .some((f) => f.key === feature)
+  );
+}
+
 // Bloquea el contenido si el plan de la org no incluye la feature.
 // El bloqueo real está en el API (requireFeature) — esto es la capa de UX.
 export function FeatureGate({
@@ -23,14 +34,7 @@ export function FeatureGate({
   // propios skeletons y el API bloquea igual si no corresponde)
   if (!user) return <>{children}</>;
 
-  const planSlug = user.subscription?.plan?.slug;
-  const hasFeature =
-    planSlug === "admin" ||
-    Object.values(user.features ?? {})
-      .flat()
-      .some((f) => f.key === feature);
-
-  if (hasFeature) return <>{children}</>;
+  if (hasPlanFeature(user, feature)) return <>{children}</>;
 
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-4 text-center max-w-md mx-auto">

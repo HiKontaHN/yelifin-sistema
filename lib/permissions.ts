@@ -59,6 +59,7 @@ export const MODULE_SUBITEMS: Record<OrgModule, readonly ModuleSubitem[]> = {
     { code: "TEAM",       label: "Equipo" },
     { code: "ROLES",      label: "Roles" },
     { code: "WAREHOUSES", label: "Bodegas" },
+    { code: "CATEGORIES", label: "Categorías" },
   ],
 };
 

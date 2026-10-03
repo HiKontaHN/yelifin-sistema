@@ -1,7 +1,7 @@
 ﻿// components/transactions/create-transaction-modal.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { useCreateTransaction } from "@/hooks/swr/use-transactions";
 import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
+import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
 import { CreditCard as CreditCardType } from "@/hooks/swr/use-credit-cards";
 
@@ -77,6 +79,14 @@ export function CreateTransactionModal({
   const showCreditCardOption = type === "EXPENSE" && creditCards.length > 0;
   const isCreditCardMode = showCreditCardOption && sourceMode === "credit_card";
   const isCcUsd = isCreditCardMode && ccCurrency === "USD";
+
+  // Al pasar a USD, precargar la tasa del BCH (editable) si está vacía.
+  const { rate: suggestedRate } = useSuggestedExchangeRate();
+  useEffect(() => {
+    if (isCcUsd && suggestedRate && nativeCurrency === "HNL") {
+      setCcExchangeRate((r) => r || String(suggestedRate));
+    }
+  }, [isCcUsd, suggestedRate, nativeCurrency]);
 
   // Obtener categorías dinámicas filtradas por tipo
   const { categories } = useTransactionCategories(type);
@@ -311,6 +321,11 @@ export function CreateTransactionModal({
                       value={ccExchangeRate}
                       onChange={(e) => setCcExchangeRate(e.target.value)}
                       className="h-11 text-base"
+                    />
+                    <SuggestedRateHint
+                      value={Number(ccExchangeRate)}
+                      localCurrency={nativeCurrency}
+                      onUse={(r) => setCcExchangeRate(String(r))}
                     />
                     {Number(amount) > 0 && Number(ccExchangeRate) > 0 && (
                       <div className="flex items-center gap-1.5 bg-muted/60 rounded-lg px-3 py-2">

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { useMe } from "@/hooks/swr/use-me";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import {
   useOrgRoles,
   useCreateOrgRole,
@@ -331,7 +332,8 @@ function RoleDialog({
 
 export default function RolesPage() {
   const { back } = useRouter();
-  const { isOwner, isLoading: meLoading } = useMe();
+  const { isLoading: meLoading } = useMe();
+  const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("ADMIN", "ROLES");
   const { roles, isLoading: rolesLoading, mutate } = useOrgRoles();
   const { deleteRole, isDeleting } = useDeleteOrgRole();
 
@@ -379,7 +381,7 @@ export default function RolesPage() {
             </p>
           </div>
         </div>
-        {isOwner && (
+        {canEdit && (
           <Button size="sm" className="gap-2" onClick={() => setShowCreate(true)}>
             <Plus className="size-4" />
             Nuevo rol
@@ -425,24 +427,24 @@ export default function RolesPage() {
                     >
                       {isExpanded ? "Ocultar permisos" : "Ver permisos"}
                     </Button>
-                    {isOwner && !role.is_owner && (
+                    {!role.is_owner && (
                       <>
-                        <Button
+                        {canEdit && <Button
                           variant="ghost"
                           size="icon"
                           className="size-8"
                           onClick={() => setEditRole(role)}
                         >
                           <Pencil className="size-3.5" />
-                        </Button>
-                        <Button
+                        </Button>}
+                        {canDelete && <Button
                           variant="ghost"
                           size="icon"
                           className="size-8 text-destructive hover:text-destructive"
                           onClick={() => setDeletingId(role.id)}
                         >
                           <Trash2 className="size-3.5" />
-                        </Button>
+                        </Button>}
                       </>
                     )}
                   </div>

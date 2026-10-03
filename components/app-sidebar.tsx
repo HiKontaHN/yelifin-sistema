@@ -4,8 +4,7 @@
 import {
   BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
   Home, ShoppingCart, Users, Package, PackageOpen, Settings,
-  User,
-  Shield, Tags, Wallet, ArrowLeftRight, UserCog, Warehouse,
+  Shield, Wallet, ArrowLeftRight,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -96,31 +95,6 @@ const adminNav = [
       { title: "Planes",    url: "/admin/plans" },
     ],
   },
-]
-
-const settingsNavBase = [
-  { title: "Mi Perfil",   url: "/settings/profile",       icon: User },
-]
-
-// Solo el propietario de la organización puede ver estas secciones —
-// tocan configuración estructural de la org (catálogo) o la definición
-// misma de los permisos, así que se quedan fuera de la delegación por
-// rol. "Mi Negocio" y "Suscripción" NO van aquí — dejaron de ser módulos
-// aparte del sidebar, ahora se llega a ellos desde botones en Mi Perfil
-// (visibles solo para el dueño, ver app/(dashboard)/settings/profile),
-// pero las páginas en sí siguen existiendo bajo /settings/organization y
-// /settings/billing, cada una con su propio OwnerGuard.
-const settingsNavOwner = [
-  { title: "Categorías",  url: "/settings/categories",    icon: Tags },
-  { title: "Roles",       url: "/settings/roles",         icon: UserCog },
-]
-
-// Delegable vía permisos de rol (ADMIN.TEAM / ADMIN.WAREHOUSES) — el dueño
-// siempre las ve (getModulePermissions ya le da acceso total), y un
-// miembro no-dueño las ve si su rol tiene can_view en el subitem.
-const settingsNavDelegable: NavItemDef[] = [
-  { title: "Equipo",  url: "/settings/members",    icon: Users,     module: "ADMIN", subitem: "TEAM" },
-  { title: "Bodegas", url: "/settings/warehouses", icon: Warehouse, module: "ADMIN", subitem: "WAREHOUSES" },
 ]
 
 // ── Icon-only item (collapsed) ─────────────────────────────────────────
@@ -247,7 +221,7 @@ export function AppSidebar() {
   const { user }  = useAuth()
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar()
 
-  const { isOwner, getModulePermissions, isLoading: meIsLoading } = useMe()
+  const { getModulePermissions, isLoading: meIsLoading } = useMe()
   const isAdmin      = user?.subscription?.plan?.slug === "admin"
   const planSlug     = user?.subscription?.plan?.slug ?? null
   const isFinanzas   = planSlug === "finanzas"
@@ -368,14 +342,7 @@ export function AppSidebar() {
             {!isCollapsed && <SidebarGroupLabel>Sistema</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
-                {renderNav([{
-                  title: "Configuración", url: "/settings", icon: Settings,
-                  submenu: [
-                    ...settingsNavBase,
-                    ...(isOwner ? settingsNavOwner : []),
-                    ...settingsNavDelegable.filter(item => canViewModule(item.module, item.subitem)),
-                  ],
-                }])}
+                {renderNav([{ title: "Configuración", url: "/settings", icon: Settings }])}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

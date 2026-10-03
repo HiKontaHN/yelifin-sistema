@@ -1,7 +1,7 @@
 // app/api/organization/roles/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature } from "@/lib/auth";
 import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -57,9 +57,10 @@ export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
-  if (!auth.data.isOwner) {
-    return createErrorResponse("Solo el dueño puede crear roles", 403);
-  }
+  const denyRoles = await requireModule(auth.data, 'ADMIN', 'canEdit', 'ROLES');
+  if (denyRoles) return denyRoles;
+  const denyFeature = await requireFeature(auth.data.orgId, "admin.multi_user");
+  if (denyFeature) return denyFeature;
 
   try {
     const { orgId } = auth.data;

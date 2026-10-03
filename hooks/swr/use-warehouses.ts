@@ -97,6 +97,28 @@ export function useUpdateWarehouse() {
   return { updateWarehouse, isUpdating };
 }
 
+export type WarehouseStockItem = {
+  product_id: number;
+  variant_id: number | null;
+  product_name: string;
+  variant_name: string | null;
+  stock: number;
+};
+
+// Stock disponible (> 0) por producto/variante en una bodega.
+export function useWarehouseStock(warehouseId: number | null) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const { data, isLoading, mutate } = useSWR(
+    firebaseUser && warehouseId ? `${KEY}/${warehouseId}/stock` : null,
+    (url: string) => authFetch(url),
+    { revalidateOnFocus: false }
+  );
+
+  return { stock: (data?.data ?? []) as WarehouseStockItem[], isLoading, mutate };
+}
+
 // ── Transferencias entre bodegas ────────────────────────────────────────
 
 const TRANSFERS_KEY = '/api/organization/warehouses/transfers';

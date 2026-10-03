@@ -11,7 +11,10 @@ type TransactionType = (typeof VALID_TYPES)[number];
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'TRANSACTIONS');
+  // Leer: quien usa transacciones (para el <Select>) o quien administra
+  // categorías en /settings/categories.
+  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'TRANSACTIONS')
+    && await requireModule(auth.data, 'ADMIN', 'canView', 'CATEGORIES');
   if (deny) return deny;
 
   try {
@@ -76,7 +79,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'TRANSACTIONS');
+  const deny = await requireModule(auth.data, 'ADMIN', 'canEdit', 'CATEGORIES');
   if (deny) return deny;
 
   try {

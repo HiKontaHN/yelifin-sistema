@@ -47,7 +47,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Fab } from "@/components/ui/fab";
-import { OwnerGuard } from "@/components/shared/owner-guard";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
@@ -77,11 +77,7 @@ const TYPE_CONFIG = {
 };
 
 export default function CategoriesPage() {
-  return (
-    <OwnerGuard>
-      <CategoriesPageContent />
-    </OwnerGuard>
-  );
+  return <CategoriesPageContent />;
 }
 
 const pageLimit = 15;
@@ -92,6 +88,7 @@ function CategoriesPageContent() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 300);
+  const { can_edit: canEdit } = useModulePermissions("ADMIN", "CATEGORIES");
 
   const { categories, totalPages, isLoading, mutate } = useTransactionCategories({
     type:   selectedType,
@@ -464,7 +461,7 @@ function CategoriesPageContent() {
       )}
 
       {/* FAB */}
-      <Fab
+      {canEdit && <Fab
         actions={[
           {
             label: "Nueva categoría",
@@ -475,7 +472,7 @@ function CategoriesPageContent() {
             },
           },
         ]}
-      />
+      />}
 
       {/* Dialog Crear */}
       <Dialog open={createOpen} onOpenChange={(v) => !v && setCreateOpen(false)}>

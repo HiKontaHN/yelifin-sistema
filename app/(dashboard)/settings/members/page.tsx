@@ -372,7 +372,7 @@ export default function MembersPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Users className="size-4 text-muted-foreground" />
             {members.length} {members.length === 1 ? "miembro" : "miembros"}

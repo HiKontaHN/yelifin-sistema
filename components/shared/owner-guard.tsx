@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useMe } from "@/hooks/swr/use-me";
 
 // Igual que ModuleGuard, pero para secciones de Configuración que solo debe
-// poder ver el propietario de la organización (Mi Negocio, Categorías,
+// poder ver el propietario de la organización (Mi Negocio,
 // Suscripción) — sin importar los permisos por módulo del rol.
 export function OwnerGuard({ children }: { children: React.ReactNode }) {
   const { push } = useRouter();

@@ -1,7 +1,7 @@
 ﻿// components/credit-cards/pay-credit-card-dialog.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -16,6 +16,8 @@ import { Loader2, Banknote } from "lucide-react";
 import { toast } from "sonner";
 import { usePayCreditCard, CreditCard } from "@/hooks/swr/use-credit-cards";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
+import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 import { Account } from "@/hooks/swr/use-accounts";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
 
@@ -35,15 +37,19 @@ type Props = {
   open:         boolean;
   onOpenChange: (open: boolean) => void;
   card:         CreditCard | null;
+  // Sin `card` (ej. desde el FAB del listado): se elige la tarjeta acá.
+  cards?:       CreditCard[];
   accounts:     Account[];
   onSuccess:    () => void;
 };
 
-export function PayCreditCardDialog({ open, onOpenChange, card, accounts, onSuccess }: Props) {
+export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards = [], accounts, onSuccess }: Props) {
   const { payCreditCard, isPaying } = usePayCreditCard();
   const { currency: nativeCurrency, symbol, format } = useCurrency();
   const { categories } = useTransactionCategories("EXPENSE");
   const [selectedCurrency, setSelectedCurrency] = useState<string>(nativeCurrency);
+  const [pickedCardId, setPickedCardId] = useState("");
+  const card = cardProp ?? cards.find((c) => String(c.id) === pickedCardId) ?? null;
 
   const todayLocal = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
 
@@ -58,14 +64,27 @@ export function PayCreditCardDialog({ open, onOpenChange, card, accounts, onSucc
   const isUsd = watchCurrency === "USD";
   const localEquivalent = isUsd && watchAmount && watchRate ? watchAmount * watchRate : null;
 
+  // Al pasar a USD, precargar la tasa del BCH (editable) si está vacía.
+  const { rate: suggestedRate } = useSuggestedExchangeRate();
+  useEffect(() => {
+    if (isUsd && suggestedRate && nativeCurrency === "HNL" && !watchRate) {
+      setValue("exchange_rate", suggestedRate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUsd, suggestedRate, nativeCurrency]);
+
   const handleClose = () => {
     reset({ currency: nativeCurrency, occurred_at: todayLocal });
     setSelectedCurrency(nativeCurrency);
+    setPickedCardId("");
     onOpenChange(false);
   };
 
   const onSubmit = async (data: FormData) => {
-    if (!card) return;
+    if (!card) {
+      toast.error("Selecciona una tarjeta");
+      return;
+    }
     if (isUsd && (!data.exchange_rate || data.exchange_rate <= 0)) {
       toast.error("La tasa de cambio es requerida para pagos en USD");
       return;
@@ -95,6 +114,7 @@ export function PayCreditCardDialog({ open, onOpenChange, card, accounts, onSucc
       title="Pagar tarjeta"
       icon={Banknote}
       subtitle={card && `${card.name}${card.last_four ? ` ···· ${card.last_four}` : ""}`}
+      width="wide"
       as="form"
       formProps={{ id: "pay-cc-form", onSubmit: handleSubmit(onSubmit) }}
       topContent={card && (
@@ -129,6 +149,27 @@ export function PayCreditCardDialog({ open, onOpenChange, card, accounts, onSucc
         </>
       }
     >
+          {/* Tarjeta — solo si no vino preseleccionada */}
+          {!cardProp && (
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Tarjeta <span className="text-destructive text-xs">*</span>
+              </Label>
+              <Select value={pickedCardId} onValueChange={setPickedCardId}>
+                <SelectTrigger className="w-full h-11">
+                  <SelectValue placeholder="Selecciona una tarjeta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cards.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}{c.last_four ? ` ···· ${c.last_four}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Cuenta */}
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">
@@ -218,6 +259,11 @@ export function PayCreditCardDialog({ open, onOpenChange, card, accounts, onSucc
                 className="h-11 text-base"
               />
               {errors.exchange_rate && <p className="text-xs text-destructive">{errors.exchange_rate.message}</p>}
+              <SuggestedRateHint
+                value={Number(watchRate)}
+                localCurrency={nativeCurrency}
+                onUse={(r) => setValue("exchange_rate", r, { shouldValidate: true })}
+              />
               {localEquivalent && localEquivalent > 0 && (
                 <div className="flex items-center gap-1.5 bg-muted/60 rounded-lg px-3 py-2">
                   <span className="text-xs text-muted-foreground">Se deducirán de la cuenta:</span>
