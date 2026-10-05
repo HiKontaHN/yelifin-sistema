@@ -3,8 +3,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth, authReady } from "@/lib/firebase";
+import { useSWRConfig } from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +36,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
   const { push } = useRouter();
+  const { mutate } = useSWRConfig();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -69,21 +71,26 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
         throw new Error(result.error || "Error al crear la cuenta");
       }
 
+      await authReady;
       await signInWithEmailAndPassword(auth, data.email, data.password);
       const currentUser = auth.currentUser;
-      if (currentUser) {
-        // Correo con nuestra propia plantilla (lib/mailer.ts), no el de
-        // Firebase — la cuenta ya quedó creada, así que un fallo acá no
-        // debe bloquear el mensaje de bienvenida ni el redirect.
-        try {
-          const idToken = await currentUser.getIdToken();
-          await fetch("/api/auth/send-verification-email", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` },
-          });
-        } catch (mailError) {
-          console.error("No se pudo enviar el correo de verificación:", mailError);
-        }
+      if (!currentUser) throw new Error("No se pudo iniciar la sesión");
+
+      const idToken = await currentUser.getIdToken();
+      const sessionResponse = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!sessionResponse.ok) throw new Error("No se pudo iniciar la sesión");
+      await signOut(auth);
+      await mutate("/api/auth/session");
+
+      // El servidor usa la cookie de sesión; el SDK ya no conserva al usuario.
+      try {
+        await fetch("/api/auth/send-verification-email", { method: "POST" });
+      } catch (mailError) {
+        console.error("No se pudo enviar el correo de verificación:", mailError);
       }
 
       toast.success(
@@ -93,6 +100,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
 
       push("/verify-email");
     } catch (error: any) {
+      await signOut(auth).catch(() => undefined);
       console.error("Error en registro:", error);
 
       let errorMessage = "Error al crear la cuenta";

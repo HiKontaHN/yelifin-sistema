@@ -69,11 +69,10 @@ export interface CreateEventData {
 export type UpdateEventData = Partial<CreateEventData>;
 
 // ── Fetcher ────────────────────────────────────────────────────────────
-async function authFetch(url: string, token: string, options?: RequestInit) {
+async function authFetch(url: string, options?: RequestInit) {
   const res = await fetch(url, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...options?.headers,
     },
@@ -91,10 +90,7 @@ export function useEvents() {
 
   const { data, isLoading, error, mutate } = useSWR(
     firebaseUser ? ["events", firebaseUser.uid] : null,
-    async () => {
-      const token = await firebaseUser!.getIdToken();
-      return authFetch("/api/events", token);
-    },
+    () => authFetch("/api/events"),
     { revalidateOnFocus: false }
   );
 
@@ -112,10 +108,7 @@ export function useEvent(id: number | null) {
 
   const { data, isLoading, error, mutate } = useSWR(
     firebaseUser && id ? ["event", id, firebaseUser.uid] : null,
-    async () => {
-      const token = await firebaseUser!.getIdToken();
-      return authFetch(`/api/events/${id}`, token);
-    },
+    () => authFetch(`/api/events/${id}`),
     {
       revalidateOnFocus:    false,
       dedupingInterval:     5 * 60_000,
@@ -132,12 +125,10 @@ export function useEvent(id: number | null) {
 
 // ── useCreateEvent ─────────────────────────────────────────────────────
 export function useCreateEvent() {
-  const { firebaseUser } = useAuth();
   const { mutate } = useEvents();
 
   const createEvent = async (data: CreateEventData): Promise<Event> => {
-    const token = await firebaseUser!.getIdToken();
-    const result = await authFetch("/api/events", token, {
+    const result = await authFetch("/api/events", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -150,12 +141,10 @@ export function useCreateEvent() {
 
 // ── useUpdateEvent ─────────────────────────────────────────────────────
 export function useUpdateEvent() {
-  const { firebaseUser } = useAuth();
   const { mutate } = useEvents();
 
   const updateEvent = async (id: number, data: UpdateEventData): Promise<Event> => {
-    const token = await firebaseUser!.getIdToken();
-    const result = await authFetch(`/api/events/${id}`, token, {
+    const result = await authFetch(`/api/events/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
@@ -168,12 +157,10 @@ export function useUpdateEvent() {
 
 // ── useDeleteEvent ─────────────────────────────────────────────────────
 export function useDeleteEvent() {
-  const { firebaseUser } = useAuth();
   const { mutate } = useEvents();
 
   const deleteEvent = async (id: number): Promise<void> => {
-    const token = await firebaseUser!.getIdToken();
-    await authFetch(`/api/events/${id}`, token, { method: "DELETE" });
+    await authFetch(`/api/events/${id}`, { method: "DELETE" });
     await mutate();
   };
 

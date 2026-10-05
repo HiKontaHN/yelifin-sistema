@@ -8,8 +8,7 @@ import {
   confirmPasswordReset,
   verifyPasswordResetCode,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { setTokenCookie } from '@/lib/token-cookie';
+import { auth, authReady } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -78,15 +77,9 @@ function AuthActionHandler() {
 
     (async () => {
       try {
+        await authReady;
         if (mode === 'verifyEmail') {
           await applyActionCode(auth, oobCode);
-
-          if (auth.currentUser) {
-            await auth.currentUser.reload();
-            const freshToken = await auth.currentUser.getIdToken(true);
-            setTokenCookie(freshToken);
-          }
-
           setStatus('verify-success');
         } else if (mode === 'resetPassword') {
           const email = await verifyPasswordResetCode(auth, oobCode);
@@ -173,7 +166,7 @@ function AuthActionHandler() {
             Tu cuenta ha sido activada correctamente. Ya puedes continuar usando HiKonta.
           </p>
         </div>
-        <Button className="w-full" onClick={() => push(auth.currentUser ? '/verify-email' : '/login')}>
+        <Button className="w-full" onClick={() => push('/verify-email')}>
           Continuar
         </Button>
       </ActionCard>

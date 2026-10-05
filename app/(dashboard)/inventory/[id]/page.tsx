@@ -138,12 +138,8 @@ function useProductDetail(id: number | null) {
   const { firebaseUser } = useAuth();
 
   const fetcher = async (url: string) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
-
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    if (!firebaseUser) throw new Error("No autenticado");
+    const res = await fetch(url);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

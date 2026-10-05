@@ -188,8 +188,7 @@ export function ImportExcelModal({
     selectedFile: File,
     opts: { dryRun?: boolean; offset?: number; limit?: number; importBatchId?: string } = {}
   ) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
+    if (!firebaseUser) throw new Error("No autenticado");
     const formData = new FormData();
     formData.append("file", selectedFile);
     if (warehouseId) formData.append("warehouse_id", String(warehouseId));
@@ -201,7 +200,6 @@ export function ImportExcelModal({
     const qs = params.toString();
     const res = await fetch(`/api/inventory/import${qs ? `?${qs}` : ""}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
     const json = await res.json();

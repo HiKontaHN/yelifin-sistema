@@ -22,8 +22,11 @@ import { verifyEmailTemplate } from "@/lib/email-templates";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowUnverifiedEmail: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  if (auth.data.emailVerified) {
+    return createErrorResponse("El correo ya está verificado", 400);
+  }
 
   // 5 reenvíos por IP cada 10 minutos — el botón "Reenviar" en
   // /verify-email ya tiene su propio cooldown de 60s en el cliente, esto

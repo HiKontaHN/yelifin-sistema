@@ -118,14 +118,14 @@ export async function POST(request: NextRequest) {
     `;
 
     // Actualizar la cookie de sesión que cachea el proxy (mismo formato
-    // que hikonta_session en proxy.ts) para que la navegación al dashboard
+    // que hikonta_nav en proxy.ts) para que la navegación al dashboard
     // no repita el fetch de sesión.
     const res = NextResponse.json(
       { message: "Onboarding completado", data: { currency, industry_id: industryId } },
       { status: 201 }
     );
     res.cookies.set(
-      "hikonta_session",
+      "hikonta_nav",
       `1|${auth.data.subscription.planSlug ?? ""}|${auth.data.firebaseUid}`,
       {
         httpOnly: true,

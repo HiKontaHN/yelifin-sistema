@@ -14,8 +14,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useDeleteProduct } from "@/hooks/swr/use-products";
-import { storage } from "@/lib/firebase";
-import { ref, deleteObject } from "firebase/storage";
+import { deleteProductImage } from "@/lib/product-image";
 import { Product } from "@/types";
 
 type Props = {
@@ -32,8 +31,7 @@ export function DeleteProductDialog({ product, open, onOpenChange, onSuccess }: 
   try {
     if (product?.image_url) {
       try {
-        const imageRef = ref(storage, product.image_url);
-        await deleteObject(imageRef);
+        await deleteProductImage(product.image_url);
       } catch {
         console.warn("No se pudo eliminar la imagen");
       }

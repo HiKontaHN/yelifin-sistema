@@ -5,11 +5,8 @@ import useSWR from "swr";
 import { useAuth } from "@/hooks/use-auth";
 
 function useAuthFetch() {
-  const { firebaseUser } = useAuth();
   return async (url: string) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || "Error al obtener reporte");

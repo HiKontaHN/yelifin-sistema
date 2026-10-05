@@ -1,6 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { getAuth, inMemoryPersistence, setPersistence, signOut } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,5 +14,9 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+// Elimina la persistencia Firebase que pudieran tener clientes de versiones
+// anteriores; la sesión durable vive únicamente en la cookie del servidor.
+export const authReady = typeof window === 'undefined'
+  ? Promise.resolve()
+  : setPersistence(auth, inMemoryPersistence).then(() => signOut(auth));
 export default app;

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 
 export function useOnboardingGuard() {
-  const { firebaseUser, loading } = useAuth();
+  const { firebaseUser, loading, sessionEmailVerified, logout } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
@@ -19,18 +19,17 @@ export function useOnboardingGuard() {
 
     const check = async () => {
       try {
-        // Sin reload() ni getIdToken(true): forzar un refresh del token
-        // contra Firebase en cada montaje del layout es caro y no aporta —
-        // la página /verify-email ya refresca el token al verificar.
         if (!firebaseUser.emailVerified) {
           router.replace("/verify-email");
           return;
         }
+        if (!sessionEmailVerified) {
+          await logout();
+          router.replace("/login");
+          return;
+        }
 
-        const token = await firebaseUser.getIdToken();
-        const res = await fetch("/api/onboarding", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/onboarding");
 
         if (!res.ok) return;
 
@@ -48,7 +47,7 @@ export function useOnboardingGuard() {
     };
 
     check();
-  }, [firebaseUser, loading, router]);
+  }, [firebaseUser, loading, sessionEmailVerified, logout, router]);
 
   return { checking };
 }

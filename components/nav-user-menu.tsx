@@ -3,8 +3,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useMe } from "@/hooks/swr/use-me";
 import { usePrivacyMode } from "@/context/privacy-mode-context";
@@ -18,7 +16,7 @@ import { Settings, LogOut, Shield, Crown, Eye, EyeOff } from "lucide-react";
 
 export function NavUserMenu() {
   const { push } = useRouter();
-  const { user, firebaseUser } = useAuth();
+  const { user, firebaseUser, logout } = useAuth();
   const { org, isOwner } = useMe();
   const { isPrivate, toggle: togglePrivacy } = usePrivacyMode();
 
@@ -40,8 +38,7 @@ export function NavUserMenu() {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      document.cookie = "token=; Max-Age=0; path=/";
+      await logout();
       toast.success("Sesión cerrada exitosamente");
       push("/");
     } catch {

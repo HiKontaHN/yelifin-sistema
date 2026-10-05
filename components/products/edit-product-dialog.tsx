@@ -16,10 +16,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUpdateProduct } from "@/hooks/swr/use-products";
-import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { deleteProductImage, uploadProductImage } from "@/lib/product-image";
 import { Product } from "@/types";
 import Image from "next/image";
 import { is } from "date-fns/locale";
@@ -84,10 +82,7 @@ async function convertToWebP(file: File, quality = 0.85): Promise<Blob> {
 
 async function deleteOldImage(imageUrl: string) {
   try {
-    const path = decodeURIComponent(
-      imageUrl.split("/o/")[1].split("?")[0]
-    );
-    await deleteObject(ref(storage, path));
+    await deleteProductImage(imageUrl);
   } catch {
     console.warn("No se pudo eliminar la imagen anterior de Storage");
   }
@@ -97,7 +92,6 @@ async function deleteOldImage(imageUrl: string) {
 export function EditProductDialog({
   product, open, onOpenChange, onSuccess, is_service,
 }: Props) {
-  const { firebaseUser }              = useAuth();
   const { updateProduct, isUpdating } = useUpdateProduct(product?.id ?? null);
   const { symbol }                    = useCurrency();
 
@@ -171,10 +165,7 @@ export function EditProductDialog({
 
   const uploadImage = async (file: File): Promise<string> => {
     const webpBlob   = await convertToWebP(file);
-    const path       = `products/${firebaseUser!.uid}/${Date.now()}.webp`;
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, webpBlob, { contentType: "image/webp" });
-    return getDownloadURL(storageRef);
+    return uploadProductImage(webpBlob, "product");
   };
 
   // ── Submit ──────────────────────────────────────────────────────────

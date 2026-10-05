@@ -21,16 +21,10 @@ const DENY_ALL: ModulePermissions = {
 };
 
 function useAuthFetch() {
-  const { firebaseUser } = useAuth();
-
   return async (url: string, options: RequestInit = {}) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
-
     const res = await fetch(url, {
       ...options,
       headers: {
-        Authorization: `Bearer ${token}`,
         ...options.headers,
       },
     });
@@ -80,15 +74,11 @@ export function useUploadLogo() {
   const uploadLogo = async (file: File): Promise<string> => {
     setIsUploading(true);
     try {
-      const token = await firebaseUser?.getIdToken();
-      if (!token) throw new Error("No autenticado");
-
       const form = new FormData();
       form.append("file", file);
 
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
 

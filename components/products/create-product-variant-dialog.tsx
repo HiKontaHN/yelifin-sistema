@@ -16,10 +16,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCreateVariant } from "@/hooks/swr/use-products";
-import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadProductImage } from "@/lib/product-image";
 import { ProductImageUpload } from "./product-image-upload";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./inventory-section/existing-form";
 import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
@@ -60,7 +58,6 @@ type Props = {
 export function CreateProductVariantDialog({
   open, onOpenChange, productId, productName, basePrice, baseSku, variantCount = 0, baseStock = 0, onSuccess,
 }: Props) {
-  const { firebaseUser }              = useAuth();
   const { createVariant, isCreating } = useCreateVariant(productId);
   const { symbol, format }            = useCurrency();
 
@@ -98,10 +95,8 @@ export function CreateProductVariantDialog({
     let cancelled = false;
     (async () => {
       try {
-        const token = await firebaseUser?.getIdToken();
         const res = await fetch(
           `/api/products/${productId}/variants/suggest-sku?count=2`,
-          { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error();
         const json = await res.json();
@@ -136,10 +131,8 @@ export function CreateProductVariantDialog({
     setSkuStatus("checking");
     (async () => {
       try {
-        const token = await firebaseUser?.getIdToken();
         const res = await fetch(
           `/api/products/${productId}/variants/suggest-sku?check=${encodeURIComponent(debouncedSku)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
         );
         const json = await res.json();
         if (!cancelled) setSkuStatus(json.data?.available ? "available" : "taken");
@@ -174,10 +167,7 @@ export function CreateProductVariantDialog({
   // ── Imagen ─────────────────────────────────────────────────────────
 
   const uploadImage = async (file: File): Promise<string> => {
-    const path       = `products/${firebaseUser!.uid}/variants/${Date.now()}.webp`;
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file, { contentType: "image/webp" });
-    return getDownloadURL(storageRef);
+    return uploadProductImage(file, "variant");
   };
 
   // ── Submit ─────────────────────────────────────────────────────────
@@ -237,10 +227,9 @@ export function CreateProductVariantDialog({
       // Registrar inventario inicial si se configuró
       if (inventoryOpen && Number(inventoryData.quantity) >= 1) {
         try {
-          const token = await firebaseUser?.getIdToken();
           const res = await fetch("/api/inventory/existing", {
             method:  "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               product_id:   productId,
               variant_id:   newVariant.id,

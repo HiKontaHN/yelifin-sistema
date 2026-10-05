@@ -15,10 +15,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUpdateVariant } from "@/hooks/swr/use-products";
-import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { deleteProductImage, uploadProductImage } from "@/lib/product-image";
 import { ProductVariant } from "@/types";
 import { ProductImageUpload } from "./product-image-upload";
 
@@ -59,10 +57,7 @@ type Props = {
 
 async function deleteOldImage(imageUrl: string) {
   try {
-    const path = decodeURIComponent(
-      imageUrl.split("/o/")[1].split("?")[0]
-    );
-    await deleteObject(ref(storage, path));
+    await deleteProductImage(imageUrl);
   } catch {
     console.warn("No se pudo eliminar la imagen anterior de Storage");
   }
@@ -73,7 +68,6 @@ async function deleteOldImage(imageUrl: string) {
 export function EditProductVariantDialog({
   open, onOpenChange, productId, productName, basePrice, baseSku, variantIndex = 0, variant, onSuccess,
 }: Props) {
-  const { firebaseUser }              = useAuth();
   const { updateVariant, isUpdating } = useUpdateVariant(productId, variant?.id ?? null);
   const { symbol, format }            = useCurrency();
 
@@ -140,10 +134,7 @@ export function EditProductVariantDialog({
   // ── Imagen ─────────────────────────────────────────────────────────
 
   const uploadImage = async (file: File): Promise<string> => {
-    const path       = `products/${firebaseUser!.uid}/variants/${Date.now()}.webp`;
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file, { contentType: "image/webp" });
-    return getDownloadURL(storageRef);
+    return uploadProductImage(file, "variant");
   };
 
   // ── Submit ─────────────────────────────────────────────────────────

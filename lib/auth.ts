@@ -50,20 +50,30 @@ type AuthResult =
 
 // ── verifyAuth ─────────────────────────────────────────────────────────
 
-export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
-  const authHeader = request.headers.get("Authorization");
-
-  if (!authHeader?.startsWith("Bearer ")) {
-    return { error: "No autorizado", status: 401, data: null };
-  }
-
-  const token = authHeader.substring(7);
-
+export async function verifyAuth(
+  request: NextRequest,
+  options: { allowUnverifiedEmail?: boolean } = {},
+): Promise<AuthResult> {
   let decodedToken;
+  const sessionCookie = request.cookies.get("hikonta_auth")?.value;
   try {
-    decodedToken = await adminAuth.verifyIdToken(token);
+    if (!sessionCookie) {
+      return { error: "No autorizado", status: 401, data: null };
+    }
+    decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
   } catch {
     return { error: "Token inválido o expirado", status: 401, data: null };
+  }
+
+  if (decodedToken.email_verified !== true && !options.allowUnverifiedEmail) {
+    return { error: "Debes verificar tu correo para continuar", status: 403, data: null };
+  }
+
+  if (sessionCookie && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    const origin = request.headers.get("origin");
+    if (!origin || origin !== request.nextUrl.origin) {
+      return { error: "Origen no autorizado", status: 403, data: null };
+    }
   }
 
   try {

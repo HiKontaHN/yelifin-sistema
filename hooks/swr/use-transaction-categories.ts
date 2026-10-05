@@ -30,13 +30,8 @@ interface CategoryResponse {
 }
 
 function useAuthFetch() {
-  const { firebaseUser } = useAuth();
   return async (url: string) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || "Error en la solicitud");
@@ -86,14 +81,12 @@ export function useCreateCategory() {
     name: string;
     type: "INCOME" | "EXPENSE" | "TRANSFER";
   }): Promise<TransactionCategory> => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
+    if (!firebaseUser) throw new Error("No autenticado");
 
     const res = await fetch("/api/transaction-categories", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
@@ -117,14 +110,12 @@ export function useUpdateCategory() {
     id: number,
     payload: { name?: string; is_active?: boolean }
   ): Promise<TransactionCategory> => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
+    if (!firebaseUser) throw new Error("No autenticado");
 
     const res = await fetch(`/api/transaction-categories/${id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
@@ -145,14 +136,10 @@ export function useDeleteCategory() {
   const { firebaseUser } = useAuth();
 
   const remove = async (id: number): Promise<void> => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error("No autenticado");
+    if (!firebaseUser) throw new Error("No autenticado");
 
     const res = await fetch(`/api/transaction-categories/${id}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     });
 
     if (!res.ok) {

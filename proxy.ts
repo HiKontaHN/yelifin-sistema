@@ -1,113 +1,19 @@
 // proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { adminAuth } from "@/lib/firebase-admin";
 
 const PUBLIC_PATHS = ["", "/login", "/register", "/forgot-password"];
 const AUTH_ONLY_PATHS = ["/verify-email", "/onboarding"];
 
-type VerifiedTokenPayload = {
-  aud?: string;
-  exp?: number;
-  email_verified?: boolean;
-  [key: string]: any;
-};
-
-type VerifiedTokenResult =
-  | { valid: true; payload: VerifiedTokenPayload }
-  | { valid: false };
-
-// ── Verificación JWT manual (Edge-compatible) ──────────────────────────
-// Firebase ID tokens son JWTs firmados con RS256 por Google
-async function verifyFirebaseToken(token: string): Promise<VerifiedTokenResult> {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return { valid: false };
-
-    const [headerB64, payloadB64, signatureB64] = parts;
-
-    const header = JSON.parse(
-      atob(headerB64.replace(/-/g, "+").replace(/_/g, "/"))
-    );
-    const payload: VerifiedTokenPayload = JSON.parse(
-      atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"))
-    );
-
-    const now = Math.floor(Date.now() / 1000);
-
-    if (!payload.exp || payload.exp < now) return { valid: false };
-    if (payload.aud !== process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
-      return { valid: false };
-    }
-
-    const keysRes = await fetch(
-      "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com",
-      { next: { revalidate: 3600 } }
-    );
-
-    if (!keysRes.ok) return { valid: false };
-
-    const keys = await keysRes.json();
-    const certPem = keys[header.kid];
-    if (!certPem) return { valid: false };
-
-    const certDer = pemToDer(certPem);
-    const cryptoKey = await crypto.subtle.importKey(
-      "spki",
-      certDer,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
-
-    const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-    const signature = base64UrlDecode(signatureB64);
-
-    const isValid = await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      cryptoKey,
-      signature,
-      data
-    );
-
-    if (!isValid) return { valid: false };
-
-    return { valid: true, payload };
-  } catch {
-    return { valid: false };
-  }
-}
-
-function pemToDer(pem: string): ArrayBuffer {
-  const base64 = pem
-    .replace(/-----BEGIN CERTIFICATE-----/, "")
-    .replace(/-----END CERTIFICATE-----/, "")
-    .replace(/\s/g, "");
-
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes.buffer;
-}
-
-function base64UrlDecode(str: string): ArrayBuffer {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "="
-  );
-
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes.buffer;
+function clearLegacyTokenCookie(response: NextResponse) {
+  response.cookies.set("token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 // ── Plan routing rules ────────────────────────────────────────────────
@@ -157,7 +63,7 @@ function enforcePlanRules(
 // ligadas al uid del token para no arrastrar datos de otro usuario.
 // El POST /api/onboarding también setea esta cookie al completar.
 
-const SESSION_COOKIE = "hikonta_session";
+const SESSION_COOKIE = "hikonta_nav";
 const SESSION_TTL = 600; // 10 minutos
 
 type Session = { onboarding_completed: boolean; plan_slug: string | null };
@@ -183,12 +89,12 @@ function attachSessionCookie(res: NextResponse, session: Session, uid: string) {
 
 // ── Session helper (calls /api/onboarding, returns plan info) ──────────
 async function fetchSession(
-  token: string,
+  sessionCookie: string,
   requestUrl: string
 ): Promise<{ onboarding_completed: boolean; plan_slug: string | null } | null> {
   try {
     const res = await fetch(new URL("/api/onboarding", requestUrl), {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Cookie: `hikonta_auth=${sessionCookie}` },
     });
     if (!res.ok) return null;
     const body = await res.json();
@@ -224,7 +130,9 @@ export async function proxy(request: NextRequest) {
         },
       );
     }
-    return NextResponse.next();
+    const response = NextResponse.next();
+    if (request.cookies.has("token")) clearLegacyTokenCookie(response);
+    return response;
   }
 
   if (
@@ -235,37 +143,39 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get("token")?.value;
+  const sessionCookie = request.cookies.get("hikonta_auth")?.value;
 
   const isPublic   = PUBLIC_PATHS.some((p) =>
     p === "" ? pathname === "/" : pathname.startsWith(p)
   );
   const isAuthOnly = AUTH_ONLY_PATHS.some((p) => pathname.startsWith(p));
 
-  // Sin cookie → dejar pasar (el cliente mostrará login)
-  if (!token) return NextResponse.next();
-
-  const result = await verifyFirebaseToken(token);
-
-  // Token inválido → tratar como sin sesión
-  if (!result.valid) return NextResponse.next();
-
-  const emailVerified = result.payload.email_verified === true;
-
-  // No verificado → solo /verify-email
-  if (!emailVerified) {
-    if (!pathname.startsWith("/verify-email")) {
-      return NextResponse.redirect(new URL("/verify-email", request.url));
-    }
-    return NextResponse.next();
+  if (!sessionCookie) {
+    const response = NextResponse.next();
+    if (request.cookies.has("token")) clearLegacyTokenCookie(response);
+    return response;
   }
 
-  const uid = typeof result.payload.sub === "string" ? result.payload.sub : "";
+  let decodedToken;
+  try {
+    decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
+  } catch {
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.delete("hikonta_auth");
+    response.cookies.delete("hikonta_nav");
+    return response;
+  }
 
-  // Verificado, rutas públicas o /verify-email → revisar onboarding y redirigir
-  if (isPublic || pathname.startsWith("/verify-email")) {
+  const uid = decodedToken.uid;
+
+  // Email verification is enforced by the authenticated dashboard layout.
+  // Firebase session cookies keep the email_verified claim from sign-in time.
+  if (pathname.startsWith("/verify-email")) return NextResponse.next();
+
+  // Rutas públicas → revisar onboarding y redirigir
+  if (isPublic) {
     const cached  = readSessionCookie(request, uid);
-    const session = cached ?? (await fetchSession(token, request.url));
+    const session = cached ?? (await fetchSession(sessionCookie, request.url));
 
     if (session && !session.onboarding_completed) {
       return NextResponse.redirect(new URL("/onboarding", request.url));
@@ -278,7 +188,7 @@ export async function proxy(request: NextRequest) {
   // Rutas privadas (no authOnly) → verificar onboarding + plan rules
   if (!isAuthOnly) {
     const cached  = readSessionCookie(request, uid);
-    const session = cached ?? (await fetchSession(token, request.url));
+    const session = cached ?? (await fetchSession(sessionCookie, request.url));
 
     if (session && !session.onboarding_completed) {
       return NextResponse.redirect(new URL("/onboarding", request.url));

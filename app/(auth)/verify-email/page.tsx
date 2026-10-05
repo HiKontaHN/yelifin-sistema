@@ -2,9 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
-import { setTokenCookie } from '@/lib/token-cookie';
 import { useAuth } from '@/hooks/use-auth';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
 import { Button } from '@/components/ui/button';
@@ -16,7 +13,7 @@ import { toast } from 'sonner';
 const RESEND_COOLDOWN = 60;
 
 export default function VerifyEmailPage() {
-  const { firebaseUser, loading, emailVerified } = useAuth();
+  const { firebaseUser, loading, emailVerified, sessionEmailVerified, refreshSession, logout } = useAuth();
   const { push } = useRouter();
   const [isSending,   setIsSending]   = useState(false);
   const [isChecking,  setIsChecking]  = useState(false);
@@ -24,9 +21,9 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (emailVerified) { push('/onboarding'); return; }
+    if (emailVerified && sessionEmailVerified) { push('/onboarding'); return; }
     if (!firebaseUser) { push('/login'); return; }
-  }, [firebaseUser, loading, emailVerified, push]);
+  }, [firebaseUser, loading, emailVerified, sessionEmailVerified, push]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -35,13 +32,11 @@ export default function VerifyEmailPage() {
   }, [cooldown]);
 
   const handleResend = async () => {
-    if (!firebaseUser || cooldown > 0) return;
+    if (!firebaseUser || emailVerified || cooldown > 0) return;
     setIsSending(true);
     try {
-      const idToken = await firebaseUser.getIdToken();
       const res = await fetch('/api/auth/send-verification-email', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
       });
 
       if (res.status === 429) {
@@ -63,14 +58,16 @@ export default function VerifyEmailPage() {
     if (!firebaseUser) return;
     setIsChecking(true);
     try {
-      await firebaseUser.reload();
-      if (firebaseUser.emailVerified) {
-        // Refrescar el token para que la cookie lleve email_verified=true;
-        // si no, el proxy redirige de vuelta a /verify-email (loop).
-        const freshToken = await firebaseUser.getIdToken(true);
-        setTokenCookie(freshToken);
-        toast.success('¡Email verificado! Configurando tu cuenta...');
-        push('/onboarding');
+      const session = await refreshSession();
+      if (session?.emailVerified) {
+        if (session.sessionEmailVerified) {
+          toast.success('¡Email verificado! Configurando tu cuenta...');
+          push('/onboarding');
+        } else {
+          await logout();
+          toast.success('Correo verificado. Inicia sesión para continuar.');
+          push('/login');
+        }
       } else {
         toast.error('Tu email aún no ha sido verificado.');
       }
@@ -82,8 +79,12 @@ export default function VerifyEmailPage() {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    push('/login');
+    try {
+      await logout();
+      push('/login');
+    } catch {
+      toast.error('Error al cerrar sesión');
+    }
   };
 
   if (loading) return <LoadingScreen />;
@@ -105,9 +106,13 @@ export default function VerifyEmailPage() {
             </div>
             <h1 className="text-2xl font-bold">Verifica tu email</h1>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Te enviamos un correo de verificación a{' '}
-              <span className="font-medium text-foreground">{firebaseUser.email}</span>.
-              Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
+              {emailVerified && !sessionEmailVerified ? (
+                <>Tu correo ya está verificado. Inicia sesión nuevamente para continuar.</>
+              ) : (
+                <>Te enviamos un correo de verificación a{' '}
+                  <span className="font-medium text-foreground">{firebaseUser.email}</span>.
+                  Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.</>
+              )}
             </p>
           </div>
 
@@ -122,13 +127,15 @@ export default function VerifyEmailPage() {
               {isChecking ? (
                 <><RefreshCw className="size-4 mr-2 animate-spin" />Verificando…</>
               ) : (
-                'Ya verifiqué mi email'
+                emailVerified ? 'Iniciar sesión para continuar' : 'Ya verifiqué mi email'
               )}
             </Button>
 
-            <Button variant="outline" className="w-full" onClick={handleResend} disabled={isSending || cooldown > 0}>
+            <Button variant="outline" className="w-full" onClick={handleResend} disabled={emailVerified || isSending || cooldown > 0}>
               {isSending ? (
                 <><RefreshCw className="size-4 mr-2 animate-spin" />Enviando…</>
+              ) : emailVerified ? (
+                'Correo verificado'
               ) : cooldown > 0 ? (
                 `Reenviar en ${cooldown}s`
               ) : (
