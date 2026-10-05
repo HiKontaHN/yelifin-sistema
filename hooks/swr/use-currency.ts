@@ -34,10 +34,7 @@ export function useCurrency() {
   const { data } = useSWR(
     firebaseUser ? "/api/onboarding" : null,
     async (url: string) => {
-      const token = await firebaseUser!.getIdToken();
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Error al obtener configuración");
       return res.json();
     },

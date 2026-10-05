@@ -53,13 +53,10 @@ function InventoryReportPageInner() {
 
   // ── Exportación via servidor ──────────────────────────────────────
   const handlePDFExport = async () => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) return;
-
     try {
       const res = await fetch("/api/reports/inventory/export", {
         method:  "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ symbol }),
       });
       if (!res.ok) {

@@ -11,10 +11,11 @@ import { useForm, type UseFormRegisterReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, updatePassword } from "firebase/auth";
 import { Check, Circle, Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 
-import { auth } from "@/lib/firebase";
+import { auth, authReady } from "@/lib/firebase";
+import { useAuth } from "@/hooks/use-auth";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +103,7 @@ export function ChangePasswordDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { sessionUser } = useAuth();
   const [isSending, setIsSending] = useState(false);
   const {
     register, handleSubmit, reset, setError, watch,
@@ -116,23 +118,24 @@ export function ChangePasswordDialog({
   };
 
   const onSubmit = async (data: FormData) => {
-    const user = auth.currentUser;
-    if (!user?.email) return toast.error("Tu sesión expiró, vuelve a iniciar sesión");
+    const email = sessionUser?.email;
+    if (!email) return toast.error("Tu sesión expiró, vuelve a iniciar sesión");
 
     try {
-      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, data.current));
-    } catch (err: any) {
-      if (err.code === "auth/too-many-requests") {
-        return toast.error("Demasiados intentos. Intenta de nuevo en unos minutos.");
-      }
-      return setError("current", { message: "La contraseña actual no es correcta" });
-    }
-
-    try {
-      await updatePassword(user, data.next);
+      await authReady;
+      const credential = await signInWithEmailAndPassword(auth, email, data.current);
+      await updatePassword(credential.user, data.next);
+      await signOut(auth);
       toast.success("Contraseña actualizada");
       handleClose();
     } catch (err: any) {
+      await signOut(auth).catch(() => undefined);
+      if (err.code === "auth/too-many-requests") {
+        return toast.error("Demasiados intentos. Intenta de nuevo en unos minutos.");
+      }
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
+        return setError("current", { message: "La contraseña actual no es correcta" });
+      }
       toast.error(
         err.code === "auth/weak-password"
           ? "La nueva contraseña es demasiado débil"
@@ -142,7 +145,7 @@ export function ChangePasswordDialog({
   };
 
   const handleForgot = async () => {
-    const email = auth.currentUser?.email;
+    const email = sessionUser?.email;
     if (!email) return;
     setIsSending(true);
     try {

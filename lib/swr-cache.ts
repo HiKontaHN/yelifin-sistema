@@ -1,13 +1,8 @@
 export const swrCache = new Map();
 
-export const createFetcher = (getToken: () => Promise<string | null>) => {
+export const createFetcher = () => {
   return async (url: string) => {
-    const token = await getToken();
-    if (!token) throw new Error('No autenticado');
-
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(url);
 
     if (!res.ok) {
       const error = await res.json();

@@ -6,8 +6,14 @@ import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
+const SESSION_COOKIE = "hikonta_auth";
+const SESSION_MAX_AGE = 60 * 60 * 24 * 5;
 
 export async function POST(req: NextRequest) {
+  if (req.headers.get("origin") !== req.nextUrl.origin) {
+    return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
+  }
+
   // 5 intentos por IP cada 15 minutos
   const { allowed, remaining, retryAfterSec } = rateLimit(
     `login:${getClientIP(req)}`,
@@ -44,6 +50,15 @@ export async function POST(req: NextRequest) {
     } catch {
       return NextResponse.json(
         { error: "Token inválido o expirado" },
+        { status: 401 }
+      );
+    }
+
+    // Solo permitir crear una sesión tras una autenticación reciente;
+    // un ID token renovado en segundo plano no debe extender los 5 días.
+    if (Date.now() / 1000 - decodedToken.auth_time > 5 * 60) {
+      return NextResponse.json(
+        { error: "Inicia sesión nuevamente para crear una sesión" },
         { status: 401 }
       );
     }
@@ -128,9 +143,30 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // La cookie `token` la setea el cliente (lib/token-cookie.ts).
-    // No debe setearse httpOnly aquí: el ID token de Firebase expira cada
-    // hora y el cliente necesita poder re-escribir la cookie al refrescarlo.
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: SESSION_MAX_AGE * 1000,
+    });
+    response.cookies.set(SESSION_COOKIE, sessionCookie, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+    response.cookies.set("token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set("hikonta_session", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
     return response;
   } catch (error: any) {
     console.error(" Error en login:", error);

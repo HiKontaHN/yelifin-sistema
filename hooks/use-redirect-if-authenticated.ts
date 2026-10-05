@@ -5,22 +5,22 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './use-auth';
 
 export function useRedirectIfAuthenticated() {
-  const { firebaseUser, loading, emailVerified } = useAuth();
+  const { firebaseUser, loading, emailVerified, serverSession } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
 
     // replace: no dejar /login o /register en el historial
-    if (firebaseUser && emailVerified) {
+    if (firebaseUser && serverSession && emailVerified) {
       router.replace('/dashboard');
       return;
     }
 
-    if (firebaseUser && !emailVerified) {
+    if (firebaseUser && serverSession && !emailVerified) {
       router.replace('/verify-email');
     }
-  }, [firebaseUser, loading, emailVerified, router]);
+  }, [firebaseUser, loading, emailVerified, serverSession, router]);
 
   return { firebaseUser, loading };
 }

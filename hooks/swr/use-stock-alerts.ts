@@ -28,9 +28,7 @@ export function useStockAlerts() {
   const { data, isLoading, error, mutate } = useSWR(
     firebaseUser ? KEY : null,
     async (url: string) => {
-      const token = await firebaseUser?.getIdToken();
-      if (!token) throw new Error("No autenticado");
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Error en la solicitud");
       return res.json();
     },

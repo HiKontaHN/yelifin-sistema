@@ -19,18 +19,12 @@ export function useOnboardingGuard() {
 
     const check = async () => {
       try {
-        // Sin reload() ni getIdToken(true): forzar un refresh del token
-        // contra Firebase en cada montaje del layout es caro y no aporta —
-        // la página /verify-email ya refresca el token al verificar.
         if (!firebaseUser.emailVerified) {
           router.replace("/verify-email");
           return;
         }
 
-        const token = await firebaseUser.getIdToken();
-        const res = await fetch("/api/onboarding", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/onboarding");
 
         if (!res.ok) return;
 

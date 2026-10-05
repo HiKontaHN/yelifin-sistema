@@ -3,9 +3,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { setTokenCookie, clearTokenCookie } from "@/lib/token-cookie";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth, authReady } from "@/lib/firebase";
+import { useSWRConfig } from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const { push } = useRouter();
+  const { mutate } = useSWRConfig();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -42,33 +43,31 @@ export function LoginForm() {
     setFormError(null);
 
     try {
+      await authReady;
       const userCredential = await signInWithEmailAndPassword(
         auth,
         data.email,
         data.password,
       );
 
-      const idToken = await userCredential.user.getIdToken();
-      // Setear la cookie antes de navegar para que el proxy vea la sesión
-      setTokenCookie(idToken);
-
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken: await userCredential.user.getIdToken() }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        clearTokenCookie();
-        await auth.signOut();
         throw new Error(result.error || "Error al iniciar sesión");
       }
 
+      await signOut(auth);
+      await mutate("/api/auth/session");
       toast.success("¡Bienvenido de vuelta!");
       push("/dashboard");
     } catch (error: any) {
+      await signOut(auth).catch(() => undefined);
       console.error("Error en login:", error);
 
       let errorMessage = "Error al iniciar sesión. Intenta de nuevo.";

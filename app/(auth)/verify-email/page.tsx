@@ -2,9 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
-import { setTokenCookie } from '@/lib/token-cookie';
 import { useAuth } from '@/hooks/use-auth';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
 import { Button } from '@/components/ui/button';
@@ -16,7 +13,7 @@ import { toast } from 'sonner';
 const RESEND_COOLDOWN = 60;
 
 export default function VerifyEmailPage() {
-  const { firebaseUser, loading, emailVerified } = useAuth();
+  const { firebaseUser, loading, emailVerified, refreshSession, logout } = useAuth();
   const { push } = useRouter();
   const [isSending,   setIsSending]   = useState(false);
   const [isChecking,  setIsChecking]  = useState(false);
@@ -38,10 +35,8 @@ export default function VerifyEmailPage() {
     if (!firebaseUser || cooldown > 0) return;
     setIsSending(true);
     try {
-      const idToken = await firebaseUser.getIdToken();
       const res = await fetch('/api/auth/send-verification-email', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${idToken}` },
       });
 
       if (res.status === 429) {
@@ -63,12 +58,8 @@ export default function VerifyEmailPage() {
     if (!firebaseUser) return;
     setIsChecking(true);
     try {
-      await firebaseUser.reload();
-      if (firebaseUser.emailVerified) {
-        // Refrescar el token para que la cookie lleve email_verified=true;
-        // si no, el proxy redirige de vuelta a /verify-email (loop).
-        const freshToken = await firebaseUser.getIdToken(true);
-        setTokenCookie(freshToken);
+      const session = await refreshSession();
+      if (session?.emailVerified) {
         toast.success('¡Email verificado! Configurando tu cuenta...');
         push('/onboarding');
       } else {
@@ -82,8 +73,12 @@ export default function VerifyEmailPage() {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    push('/login');
+    try {
+      await logout();
+      push('/login');
+    } catch {
+      toast.error('Error al cerrar sesión');
+    }
   };
 
   if (loading) return <LoadingScreen />;

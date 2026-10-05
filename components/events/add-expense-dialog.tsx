@@ -62,10 +62,9 @@ export function AddExpenseDialog({ event, open, onOpenChange, onSuccess }: Props
 
     setIsLoading(true);
     try {
-      const token = await firebaseUser!.getIdToken();
       const res   = await fetch("/api/transactions", {
         method:  "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type:           "EXPENSE",
           account_id:     Number(accountId),

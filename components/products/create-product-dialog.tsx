@@ -16,10 +16,8 @@ import { cn } from "@/lib/utils";
 
 import { useCreateProduct } from "@/hooks/swr/use-products";
 import { useCreatePurchase } from "@/hooks/swr/use-purchases";
-import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadProductImage } from "@/lib/product-image";
 
 import { ProductImageUpload } from "./product-image-upload";
 import { InventorySection, InventorySectionValue } from "./inventory-section";
@@ -52,7 +50,6 @@ type Props = {
 };
 
 export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
-  const { firebaseUser }                                   = useAuth();
   const { createProduct, isCreating }                      = useCreateProduct();
   const { createPurchase, isCreating: isCreatingPurchase } = useCreatePurchase();
   const { symbol, currency: businessCurrency }             = useCurrency();
@@ -87,10 +84,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const token = await firebaseUser?.getIdToken();
         const res = await fetch(
           `/api/products/suggest-sku?name=${encodeURIComponent(debouncedName)}&is_service=${isService}`,
-          { headers: { Authorization: `Bearer ${token}` } }
         );
         if (!res.ok) throw new Error();
         const json = await res.json();
@@ -121,10 +116,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     setSkuStatus("checking");
     (async () => {
       try {
-        const token = await firebaseUser?.getIdToken();
         const res = await fetch(
           `/api/products/suggest-sku?check=${encodeURIComponent(debouncedSku)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
         );
         const json = await res.json();
         if (!cancelled) setSkuStatus(json.data?.available ? "available" : "taken");
@@ -137,10 +130,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   }, [debouncedSku, open]);
 
   const uploadImage = async (file: File): Promise<string> => {
-    const path       = `products/${firebaseUser!.uid}/${Date.now()}.webp`;
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file, { contentType: "image/webp" });
-    return getDownloadURL(storageRef);
+    return uploadProductImage(file, "product");
   };
 
   const onSubmit = async (data: FormData) => {
@@ -189,10 +179,9 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
 
       } else if (!data.is_service && inventory?.mode === "existing") {
         const d = inventory.data;
-        const token = await firebaseUser?.getIdToken();
         const res = await fetch("/api/inventory/existing", {
           method:  "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             product_id:   productId,
             quantity:     Number(d.quantity),

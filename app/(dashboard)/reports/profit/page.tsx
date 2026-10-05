@@ -42,13 +42,10 @@ function ProfitReportPageInner() {
 
   // ── Exportación via servidor ──────────────────────────────────────
   const handlePDFExport = async () => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) return;
-
     try {
       const res = await fetch("/api/reports/profit/export", {
         method:  "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ from, to, symbol }),
       });
       if (!res.ok) {

@@ -84,10 +84,7 @@ export default function OnboardingPage() {
 
         const check = async () => {
             try {
-                const token = await firebaseUser.getIdToken();
-                const res = await fetch("/api/onboarding", {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                const res = await fetch("/api/onboarding");
                 if (res.ok) {
                     const data = await res.json();
                     if (data?.data?.onboarding_completed) {
@@ -117,14 +114,12 @@ export default function OnboardingPage() {
 
         setSaving(true);
         try {
-            const token = await firebaseUser?.getIdToken();
-            if (!token) throw new Error("No autenticado");
+            if (!firebaseUser) throw new Error("No autenticado");
 
             const res = await fetch("/api/onboarding", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     currency,

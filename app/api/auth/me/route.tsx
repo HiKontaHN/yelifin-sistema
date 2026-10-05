@@ -1,6 +1,5 @@
 // app/api/auth/me/route.ts
 import { NextRequest } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
 import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
@@ -9,18 +8,8 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return Response.json({ error: "No autorizado" }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    let decodedToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(token);
-    } catch {
-      return Response.json({ error: "Token inválido o expirado" }, { status: 401 });
-    }
+    const auth = await verifyAuth(request);
+    if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
     // Usuario + org + rol + suscripción en un solo query
     const [row] = await sql`
@@ -73,7 +62,7 @@ export async function GET(request: NextRequest) {
       JOIN  org_roles             r  ON r.id        = om.role_id
       JOIN  org_subscriptions     os ON os.org_id   = o.id
       JOIN  subscription_plans    sp ON sp.id       = os.plan_id
-      WHERE u.firebase_uid = ${decodedToken.uid}
+      WHERE u.firebase_uid = ${auth.data.firebaseUid}
         AND u.is_active    = TRUE
       ORDER BY om.joined_at ASC
       LIMIT 1

@@ -16,15 +16,11 @@ export type Warehouse = {
 };
 
 function useAuthFetch() {
-  const { firebaseUser } = useAuth();
   return async (url: string, options: RequestInit = {}) => {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) throw new Error('No autenticado');
     const res = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
         ...options.headers,
       },
     });

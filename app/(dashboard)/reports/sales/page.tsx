@@ -42,13 +42,10 @@ function SalesReportPageInner() {
 
   // ── Exportación via servidor ──────────────────────────────────────
   async function triggerExport(fmt: "xlsx" | "pdf") {
-    const token = await firebaseUser?.getIdToken();
-    if (!token) return;
-
     try {
       const res = await fetch("/api/reports/sales/export", {
         method:  "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ from, to, format: fmt, symbol }),
       });
 

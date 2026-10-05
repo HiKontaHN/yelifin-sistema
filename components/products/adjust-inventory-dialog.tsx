@@ -58,10 +58,9 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
 
     try {
       setIsLoading(true);
-      const token = await firebaseUser?.getIdToken();
       const res = await fetch("/api/inventory/adjust", {
         method:  "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_id: product!.id,
           variant_id: variant?.id ?? undefined,
