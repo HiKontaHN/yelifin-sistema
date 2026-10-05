@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 
 export function useOnboardingGuard() {
-  const { firebaseUser, loading } = useAuth();
+  const { firebaseUser, loading, sessionEmailVerified, logout } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
@@ -21,6 +21,11 @@ export function useOnboardingGuard() {
       try {
         if (!firebaseUser.emailVerified) {
           router.replace("/verify-email");
+          return;
+        }
+        if (!sessionEmailVerified) {
+          await logout();
+          router.replace("/login");
           return;
         }
 
@@ -42,7 +47,7 @@ export function useOnboardingGuard() {
     };
 
     check();
-  }, [firebaseUser, loading, router]);
+  }, [firebaseUser, loading, sessionEmailVerified, logout, router]);
 
   return { checking };
 }

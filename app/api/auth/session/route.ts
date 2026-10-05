@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       email: user.email ?? null,
       displayName: user.displayName ?? null,
       emailVerified: user.emailVerified,
+      sessionEmailVerified: decoded.email_verified === true,
     });
   } catch {
     return NextResponse.json({ error: "Sesión inválida o expirada" }, { status: 401 });

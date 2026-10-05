@@ -50,7 +50,10 @@ type AuthResult =
 
 // ── verifyAuth ─────────────────────────────────────────────────────────
 
-export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
+export async function verifyAuth(
+  request: NextRequest,
+  options: { allowUnverifiedEmail?: boolean } = {},
+): Promise<AuthResult> {
   let decodedToken;
   const sessionCookie = request.cookies.get("hikonta_auth")?.value;
   try {
@@ -60,6 +63,10 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
     decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
   } catch {
     return { error: "Token inválido o expirado", status: 401, data: null };
+  }
+
+  if (decodedToken.email_verified !== true && !options.allowUnverifiedEmail) {
+    return { error: "Debes verificar tu correo para continuar", status: 403, data: null };
   }
 
   if (sessionCookie && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {

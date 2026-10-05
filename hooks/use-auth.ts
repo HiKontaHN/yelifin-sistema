@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import useSWR from 'swr';
 import { UserProfileResponse } from '@/types';
 import { authReady } from '@/lib/firebase';
@@ -12,6 +13,7 @@ type SessionUser = {
   email: string | null;
   displayName: string | null;
   emailVerified: boolean;
+  sessionEmailVerified: boolean;
 };
 
 async function fetchSession(url: string): Promise<SessionUser | null> {
@@ -50,12 +52,14 @@ export function useAuth() {
     },
   );
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     const response = await fetch(SESSION_KEY, { method: 'DELETE' });
     if (!response.ok) throw new Error('No se pudo cerrar la sesión');
     await mutateSession(null, { revalidate: false });
     await mutateProfile(undefined, { revalidate: false });
-  };
+  }, [mutateSession, mutateProfile]);
+
+  const refreshSession = useCallback(() => mutateSession(), [mutateSession]);
 
   // firebaseUser queda como alias compatible para consumidores que solo
   // necesitan uid/email; ahora es una identidad del servidor, no del SDK.
@@ -66,8 +70,9 @@ export function useAuth() {
     user,
     loading: sessionLoading || !!sessionError || (!!sessionUser && profileLoading),
     emailVerified: sessionUser?.emailVerified ?? false,
+    sessionEmailVerified: sessionUser?.sessionEmailVerified ?? false,
     refreshProfile: () => mutateProfile(),
-    refreshSession: () => mutateSession(),
+    refreshSession,
     logout,
   };
 }

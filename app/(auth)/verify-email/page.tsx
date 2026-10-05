@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 const RESEND_COOLDOWN = 60;
 
 export default function VerifyEmailPage() {
-  const { firebaseUser, loading, emailVerified, refreshSession, logout } = useAuth();
+  const { firebaseUser, loading, emailVerified, sessionEmailVerified, refreshSession, logout } = useAuth();
   const { push } = useRouter();
   const [isSending,   setIsSending]   = useState(false);
   const [isChecking,  setIsChecking]  = useState(false);
@@ -21,9 +21,9 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (emailVerified) { push('/onboarding'); return; }
+    if (emailVerified && sessionEmailVerified) { push('/onboarding'); return; }
     if (!firebaseUser) { push('/login'); return; }
-  }, [firebaseUser, loading, emailVerified, push]);
+  }, [firebaseUser, loading, emailVerified, sessionEmailVerified, push]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -32,7 +32,7 @@ export default function VerifyEmailPage() {
   }, [cooldown]);
 
   const handleResend = async () => {
-    if (!firebaseUser || cooldown > 0) return;
+    if (!firebaseUser || emailVerified || cooldown > 0) return;
     setIsSending(true);
     try {
       const res = await fetch('/api/auth/send-verification-email', {
@@ -60,8 +60,14 @@ export default function VerifyEmailPage() {
     try {
       const session = await refreshSession();
       if (session?.emailVerified) {
-        toast.success('¡Email verificado! Configurando tu cuenta...');
-        push('/onboarding');
+        if (session.sessionEmailVerified) {
+          toast.success('¡Email verificado! Configurando tu cuenta...');
+          push('/onboarding');
+        } else {
+          await logout();
+          toast.success('Correo verificado. Inicia sesión para continuar.');
+          push('/login');
+        }
       } else {
         toast.error('Tu email aún no ha sido verificado.');
       }
@@ -100,9 +106,13 @@ export default function VerifyEmailPage() {
             </div>
             <h1 className="text-2xl font-bold">Verifica tu email</h1>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Te enviamos un correo de verificación a{' '}
-              <span className="font-medium text-foreground">{firebaseUser.email}</span>.
-              Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
+              {emailVerified && !sessionEmailVerified ? (
+                <>Tu correo ya está verificado. Inicia sesión nuevamente para continuar.</>
+              ) : (
+                <>Te enviamos un correo de verificación a{' '}
+                  <span className="font-medium text-foreground">{firebaseUser.email}</span>.
+                  Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.</>
+              )}
             </p>
           </div>
 
@@ -117,13 +127,15 @@ export default function VerifyEmailPage() {
               {isChecking ? (
                 <><RefreshCw className="size-4 mr-2 animate-spin" />Verificando…</>
               ) : (
-                'Ya verifiqué mi email'
+                emailVerified ? 'Iniciar sesión para continuar' : 'Ya verifiqué mi email'
               )}
             </Button>
 
-            <Button variant="outline" className="w-full" onClick={handleResend} disabled={isSending || cooldown > 0}>
+            <Button variant="outline" className="w-full" onClick={handleResend} disabled={emailVerified || isSending || cooldown > 0}>
               {isSending ? (
                 <><RefreshCw className="size-4 mr-2 animate-spin" />Enviando…</>
+              ) : emailVerified ? (
+                'Correo verificado'
               ) : cooldown > 0 ? (
                 `Reenviar en ${cooldown}s`
               ) : (
