@@ -6,7 +6,6 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import { Fab } from "@/components/ui/fab";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +30,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar";
+import {
+  DateRangePicker,
+  DEFAULT_DATE_RANGE_PRESETS,
+  type DateRangePreset,
+  type DateRangeValue,
+} from "@/components/shared/date-range-picker";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 
 import { useSales, usePatchSale, useDeleteSale, Sale } from "@/hooks/swr/use-sales";
@@ -63,6 +68,53 @@ const PRESET_LABELS: Record<Preset, string> = {
   last_month: "Mes pasado",
   all:        "Todas",
 };
+
+const toDateInput = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const salesPresetRange = (preset: Preset, today = new Date()): DateRangeValue => {
+  const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (preset === "all") return { from: "", to: "" };
+  if (preset === "today") {
+    const value = toDateInput(day);
+    return { from: value, to: value };
+  }
+  if (preset === "7d") {
+    const from = new Date(day);
+    from.setDate(from.getDate() - 6);
+    return { from: toDateInput(from), to: toDateInput(day) };
+  }
+  if (preset === "last_month") {
+    return {
+      from: toDateInput(new Date(day.getFullYear(), day.getMonth() - 1, 1)),
+      to: toDateInput(new Date(day.getFullYear(), day.getMonth(), 0)),
+    };
+  }
+  return {
+    from: toDateInput(new Date(day.getFullYear(), day.getMonth(), 1)),
+    to: toDateInput(new Date(day.getFullYear(), day.getMonth() + 1, 0)),
+  };
+};
+
+const thisMonthPresetIndex = DEFAULT_DATE_RANGE_PRESETS.findIndex(
+  (preset) => preset.id === "this-month",
+);
+const SALES_DATE_PRESETS: DateRangePreset[] = [
+  ...DEFAULT_DATE_RANGE_PRESETS.slice(0, thisMonthPresetIndex + 1),
+  {
+    id: "last-month",
+    label: "Mes pasado",
+    getRange: (today) => salesPresetRange("last_month", today),
+  },
+  ...DEFAULT_DATE_RANGE_PRESETS.slice(thisMonthPresetIndex + 1),
+  {
+    id: "all",
+    label: "Todas",
+    getRange: () => salesPresetRange("all"),
+  },
+];
 
 const getTaxRate = (v: any): number => Number(v) || 0;
 
@@ -258,11 +310,42 @@ export default function SalesPage() {
 
   const { accounts } = useAccounts();
 
-  const hasFilters   = dateFrom || dateTo || paymentFilter !== "all" || accountFilter !== "all" || statusFilter !== "all" || search;
-  const clearAll     = () => { setDateFrom(""); setDateTo(""); setSearch(""); setPaymentFilter("all"); setAccountFilter("all"); setStatusFilter("all"); setPreset("this_month"); setPage(1); };
-  const onChangePreset = (v: Preset) => { setPreset(v); setDateFrom(""); setDateTo(""); };
-  const onManualFrom   = (v: string)  => { setDateFrom(v); setPreset("all"); };
-  const onManualTo     = (v: string)  => { setDateTo(v);   setPreset("all"); };
+  const hasFilters = preset !== "7d" || dateFrom || dateTo || paymentFilter !== "all"
+    || accountFilter !== "all" || statusFilter !== "all" || search;
+  const clearAll = () => {
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+    setPaymentFilter("all");
+    setAccountFilter("all");
+    setStatusFilter("all");
+    setPreset("7d");
+    setPage(1);
+  };
+
+  const selectedDateRange = dateFrom || dateTo
+    ? { from: dateFrom, to: dateTo }
+    : salesPresetRange(preset);
+
+  const onDateRangeChange = (range: DateRangeValue) => {
+    const today = new Date();
+    const matchingPreset = (["today", "7d", "this_month", "last_month", "all"] as const)
+      .find((candidate) => {
+        const candidateRange = salesPresetRange(candidate, today);
+        return candidateRange.from === range.from && candidateRange.to === range.to;
+      });
+
+    if (matchingPreset) {
+      setPreset(matchingPreset);
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+
+    setPreset("all");
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  };
 
   const activePeriodLabel = dateFrom || dateTo
     ? [dateFrom && `Desde ${formatDateOnly(dateFrom)}`, dateTo && `Hasta ${formatDateOnly(dateTo)}`].filter(Boolean).join(" · ")
@@ -380,31 +463,25 @@ export default function SalesPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Select value={preset} onValueChange={(v) => onChangePreset(v as Preset)}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
-              <SelectItem value="today">Hoy</SelectItem>
-              <SelectItem value="7d">Últimos 7 días</SelectItem>
-              <SelectItem value="this_month">Este mes</SelectItem>
-              <SelectItem value="last_month">Mes pasado</SelectItem>
-              <SelectItem value="all">Todas</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Cuenta" /></SelectTrigger>
-            <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
-              <SelectItem value="all">Todas las cuentas</SelectItem>
-              {accounts.map((a) => (
-                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Input type="date" value={dateFrom} onChange={(e) => onManualFrom(e.target.value)} className="text-sm" />
-          <Input type="date" value={dateTo}   onChange={(e) => onManualTo(e.target.value)}   className="text-sm" />
+        <div className="flex gap-2">
+          <div className="min-w-0 flex-1">
+            <DateRangePicker
+              value={selectedDateRange}
+              onChange={onDateRangeChange}
+              presets={SALES_DATE_PRESETS}
+            />
+          </div>
+          <div className="w-[38%] shrink-0">
+            <Select value={accountFilter} onValueChange={setAccountFilter}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Cuenta" /></SelectTrigger>
+              <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
+                <SelectItem value="all">Todas las cuentas</SelectItem>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {hasFilters && (

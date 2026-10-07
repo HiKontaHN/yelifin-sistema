@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const date      = searchParams.get("date");
+    const from      = searchParams.get("from");
+    const to        = searchParams.get("to");
     const month     = searchParams.get("month");
     const year      = searchParams.get("year");
     const productId = searchParams.get("product_id");
@@ -30,7 +32,13 @@ export async function GET(request: NextRequest) {
     let startISO: string;
     let endISO:   string;
 
-    if (date) {
+    if (from || to) {
+      const rangeStart = from ?? to!;
+      const rangeEnd   = to ?? from!;
+      startISO = `${rangeStart}T00:00:00.000Z`;
+      const [year, month, day] = rangeEnd.split("-").map(Number);
+      endISO = new Date(Date.UTC(year, month - 1, day + 1)).toISOString();
+    } else if (date) {
       startISO = `${date}T00:00:00.000Z`;
       endISO   = `${date}T23:59:59.999Z`;
     } else if (year && month) {

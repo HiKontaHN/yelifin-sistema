@@ -48,6 +48,8 @@ export type Movement = {
 
 export type MovementFilters = {
   date?:       string;
+  from?:       string;
+  to?:         string;
   month?:      number;
   year?:       number;
   product_id?: number;
@@ -79,6 +81,8 @@ export function useMovements(filters?: MovementFilters) {
 
   const params = new URLSearchParams();
   if (filters?.date)       params.set('date',       filters.date);
+  if (filters?.from)       params.set('from',       filters.from);
+  if (filters?.to)         params.set('to',         filters.to);
   if (filters?.month)      params.set('month',      String(filters.month));
   if (filters?.year)       params.set('year',       String(filters.year));
   if (filters?.product_id) params.set('product_id', String(filters.product_id));

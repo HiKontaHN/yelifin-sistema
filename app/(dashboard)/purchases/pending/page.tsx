@@ -9,8 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
-  ArrowLeft, Clock, PackageCheck, XCircle,
-  Wallet, CalendarDays, StickyNote, Truck, Package,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  ArrowLeft, PackageCheck, XCircle, Package,
+  Wallet, CalendarDays, StickyNote, Truck,
 } from "lucide-react";
 
 import { usePendingPurchases, PurchaseWithItems, Purchase } from "@/hooks/swr/use-purchases";
@@ -24,7 +27,7 @@ import { StatCard } from "@/components/reports/report-shell";
 import { SearchBar } from "@/components/shared/search-bar";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 10;
 
 export default function PendingPurchasesPage() {
   const { back, push } = useRouter();
@@ -141,22 +144,162 @@ export default function PendingPurchasesPage() {
         </div>
       )}
 
-      {/* Lista */}
-      {!isLoading && pagePurchases.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {pagePurchases.map((p) => (
+      {/* Tarjetas — móvil */}
+      <div className="space-y-3 md:hidden">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-64 w-full rounded-xl" />
+          ))
+        ) : (
+          pagePurchases.map((purchase) => (
             <PurchaseCard
-              key={p.id}
-              purchase={p}
+              key={purchase.id}
+              purchase={purchase}
               format={format}
               showCosts={showCosts}
               canEdit={canEdit}
               canDelete={canDelete}
-              onConfirm={() => setSelected(p)}
-              onCancel={() => setToCancel(p)}
+              onConfirm={() => setSelected(purchase)}
+              onCancel={() => setToCancel(purchase)}
             />
-          ))}
-        </div>
+          ))
+        )}
+      </div>
+
+      {/* Tabla — tablet y escritorio */}
+      {(isLoading || pagePurchases.length > 0) && (
+        <Card className="hidden overflow-hidden py-0 md:block">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[860px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Productos</TableHead>
+                    <TableHead className="text-center">Unidades</TableHead>
+                    <TableHead>Cuenta</TableHead>
+                    {showCosts && <TableHead className="text-right">Envío</TableHead>}
+                    {showCosts && <TableHead className="text-right">Total</TableHead>}
+                    <TableHead>Notas</TableHead>
+                    {(canDelete || canEdit) && <TableHead className="text-right">Acciones</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={index}>
+                        {Array.from({
+                          length: 5 + (showCosts ? 2 : 0) + (canDelete || canEdit ? 1 : 0),
+                        }).map((__, cellIndex) => (
+                          <TableCell key={cellIndex}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    pagePurchases.map((purchase) => {
+                      const date = new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      });
+                      const totalUnits = purchase.items.reduce(
+                        (sum, item) => sum + Number(item.quantity),
+                        0,
+                      );
+
+                      return (
+                        <TableRow key={purchase.id} className="bg-amber-50/20 dark:bg-amber-950/5">
+                          <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                            {date}
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-64 space-y-0.5">
+                              {purchase.items.map((item, index) => (
+                                <p key={index} className="truncate text-sm font-medium">
+                                  {item.product_name}
+                                  {item.variant_name && (
+                                    <span className="font-normal text-muted-foreground">
+                                      {" "}· {item.variant_name}
+                                    </span>
+                                  )}
+                                  {purchase.items.length > 1 && (
+                                    <span className="font-normal text-muted-foreground">
+                                      {" "}· {Number(item.quantity).toLocaleString("es-HN")} un.
+                                    </span>
+                                  )}
+                                </p>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center font-medium tabular-nums">
+                            {totalUnits.toLocaleString("es-HN")}
+                          </TableCell>
+                          <TableCell className="max-w-44 truncate text-sm">
+                            {purchase.account_name ?? "—"}
+                          </TableCell>
+                          {showCosts && (
+                            <TableCell className="text-right tabular-nums">
+                              {Number(purchase.shipping ?? 0) > 0
+                                ? format(Number(purchase.shipping))
+                                : "—"}
+                            </TableCell>
+                          )}
+                          {showCosts && (
+                            <TableCell className="text-right font-semibold tabular-nums">
+                              {format(Number(purchase.total ?? 0))}
+                              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                {purchase.currency}
+                              </span>
+                            </TableCell>
+                          )}
+                          <TableCell className="max-w-52 truncate text-sm text-muted-foreground">
+                            {purchase.notes ?? "—"}
+                          </TableCell>
+                          {(canDelete || canEdit) && (
+                            <TableCell>
+                              <div className="flex justify-end gap-1.5">
+                                {canDelete && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() => setToCancel(purchase)}
+                                    aria-label="Cancelar compra"
+                                    title="Cancelar compra"
+                                  >
+                                    <XCircle className="size-4" />
+                                  </Button>
+                                )}
+                                {canEdit && showCosts && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="gap-1.5"
+                                    onClick={() => setSelected(purchase)}
+                                  >
+                                    Confirmar llegada
+                                  </Button>
+                                )}
+                                {canEdit && !showCosts && (
+                                  <span className="self-center whitespace-nowrap text-xs text-muted-foreground">
+                                    Sin permiso de costos
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Paginación */}
@@ -190,10 +333,8 @@ export default function PendingPurchasesPage() {
   );
 }
 
-// ── Tarjeta de compra pendiente ────────────────────────────────────────
-
 function PurchaseCard({
-  purchase: p,
+  purchase,
   format,
   showCosts,
   canEdit,
@@ -202,81 +343,75 @@ function PurchaseCard({
   onCancel,
 }: {
   purchase: PurchaseWithItems;
-  format: (v: number) => string;
+  format: (value: number) => string;
   showCosts: boolean;
   canEdit: boolean;
   canDelete: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const date = new Date(p.purchased_at).toLocaleDateString("es-HN", {
-    day: "numeric", month: "long", year: "numeric",
+  const date = new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 
   return (
-    <Card className="border-amber-200/60 bg-amber-50/30 dark:bg-amber-950/10 dark:border-amber-800/30">
-      <CardContent className="p-4 space-y-3">
-
-        {/* Fila superior */}
+    <Card className="border-amber-200/60 bg-amber-50/30 dark:border-amber-800/30 dark:bg-amber-950/10">
+      <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-              <Clock className="size-4 text-amber-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-tight">
-                {p.items_count} producto{p.items_count !== 1 ? "s" : ""}
-              </p>
-              <p className="text-xs text-muted-foreground">Pendiente de llegada</p>
-            </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight">
+              {purchase.items_count} producto{purchase.items_count !== 1 ? "s" : ""}
+            </p>
           </div>
           {showCosts && (
-            <div className="text-right shrink-0">
-              <p className="text-base font-bold">{format(Number(p.total ?? 0))}</p>
-              <p className="text-xs text-muted-foreground">{p.currency}</p>
+            <div className="shrink-0 text-right">
+              <p className="text-base font-bold">{format(Number(purchase.total ?? 0))}</p>
+              <p className="text-xs text-muted-foreground">{purchase.currency}</p>
             </div>
           )}
         </div>
 
-        {/* Detalles */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <CalendarDays className="size-3 shrink-0" />
             <span>{date}</span>
           </div>
-          {p.account_name && (
+          {purchase.account_name && (
             <div className="flex items-center gap-1.5">
               <Wallet className="size-3 shrink-0" />
-              <span className="truncate">{p.account_name}</span>
+              <span className="truncate">{purchase.account_name}</span>
             </div>
           )}
-          {showCosts && Number(p.shipping ?? 0) > 0 && (
+          {showCosts && Number(purchase.shipping ?? 0) > 0 && (
             <div className="flex items-center gap-1.5">
               <Truck className="size-3 shrink-0" />
-              <span>Envío: {format(Number(p.shipping ?? 0))}</span>
+              <span>Envío: {format(Number(purchase.shipping))}</span>
             </div>
           )}
-          {p.notes && (
-            <div className="flex items-center gap-1.5 col-span-2">
+          {purchase.notes && (
+            <div className="col-span-2 flex items-center gap-1.5">
               <StickyNote className="size-3 shrink-0" />
-              <span className="truncate">{p.notes}</span>
+              <span className="truncate">{purchase.notes}</span>
             </div>
           )}
         </div>
 
-        {/* Lista de productos */}
-        {p.items.length > 0 && (
+        {purchase.items.length > 0 && (
           <>
             <Separator />
             <div className="space-y-1.5">
-              {p.items.map((item, i) => (
-                <div key={i} className="flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Package className="size-3 text-muted-foreground shrink-0" />
+              {purchase.items.map((item, index) => (
+                <div key={index} className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Package className="size-3 shrink-0 text-muted-foreground" />
                     <span className="truncate font-medium">
                       {item.product_name}
                       {item.variant_name && (
-                        <span className="text-muted-foreground font-normal"> · {item.variant_name}</span>
+                        <span className="font-normal text-muted-foreground">
+                          {" "}· {item.variant_name}
+                        </span>
                       )}
                     </span>
                   </div>
@@ -295,18 +430,12 @@ function PurchaseCard({
           </>
         )}
 
-        {/* Aviso */}
-        <div className="rounded-lg bg-amber-100/60 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-          El dinero ya fue debitado de la cuenta. Al confirmar la llegada, el stock se acreditará al inventario.
-        </div>
-
-        {/* Acciones */}
         {(canDelete || canEdit) && (
           <div className="flex gap-2">
             {canDelete && (
               <Button
                 variant="outline"
-                className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={onCancel}
               >
                 <XCircle className="size-4" />
@@ -316,11 +445,10 @@ function PurchaseCard({
             {canEdit && (
               showCosts ? (
                 <Button className="flex-1 gap-2" onClick={onConfirm}>
-                  <PackageCheck className="size-4" />
                   Confirmar llegada
                 </Button>
               ) : (
-                <p className="flex-1 self-center text-xs text-muted-foreground text-center">
+                <p className="flex-1 self-center text-center text-xs text-muted-foreground">
                   Necesitas permiso de costos para confirmar la llegada
                 </p>
               )

@@ -4,9 +4,8 @@
 import { useState } from "react";
 import { usePrivacyMode } from "@/context/privacy-mode-context";
 import { Button }  from "@/components/ui/button";
-import { Input }   from "@/components/ui/input";
-import { Label }   from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { Loader2, FileText, ArrowLeft, CalendarDays, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toLocalDateInput } from "@/lib/date-utils";
@@ -112,34 +111,14 @@ export function ReportShell({
 
       {/* Date range filter */}
       {showDateRange && (
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-muted/20 p-3">
-          <div className="flex gap-1.5 flex-wrap">
-            {[
-              { label: "Este mes",  ...thisMonth() },
-              { label: "Mes ant.", ...lastMonth() },
-              { label: "Este año",  ...thisYear()  },
-            ].map((p) => (
-              <Button
-                key={p.label}
-                variant={from === p.from && to === p.to ? "default" : "outline"}
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => { onFromChange(p.from); onToChange(p.to); }}
-              >
-                {p.label}
-              </Button>
-            ))}
-          </div>
-          <div className="flex items-end gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Desde</Label>
-              <Input type="date" value={from} onChange={e => onFromChange(e.target.value)} className="h-8 text-xs w-36" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Hasta</Label>
-              <Input type="date" value={to}   onChange={e => onToChange(e.target.value)}   className="h-8 text-xs w-36" />
-            </div>
-          </div>
+        <div className="flex justify-end rounded-xl border bg-muted/20 p-3">
+          <DateRangePicker
+            value={{ from, to }}
+            onChange={(range) => {
+              onFromChange(range.from);
+              onToChange(range.to);
+            }}
+          />
         </div>
       )}
 

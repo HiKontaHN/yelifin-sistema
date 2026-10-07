@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -21,7 +20,6 @@ import {
 } from "lucide-react";
 import { useMovements, Movement } from "@/hooks/swr/use-movements";
 import { useProducts } from "@/hooks/swr/use-products";
-import { useMovementPeriods } from "@/hooks/swr/use-movements";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { Fab } from "@/components/ui/fab";
@@ -31,7 +29,12 @@ import {
 } from "@/components/ui/pagination";
 import { SearchBar } from "@/components/shared/search-bar";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import {
+  DateRangePicker,
+  type DateRangeValue,
+} from "@/components/shared/date-range-picker";
 import { useDebounce } from "@/hooks/use-debounce";
+import { toLocalDateInput } from "@/lib/date-utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -47,13 +50,20 @@ const formatDateOnly = (dateString: string) =>
     day: "numeric", month: "short", year: "numeric",
   });
 
-const MONTH_NAMES = [
-  "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
+const currentMonthRange = (): DateRangeValue => {
+  const now = new Date();
+  return {
+    from: toLocalDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: toLocalDateInput(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+};
 
-const currentYear  = new Date().getFullYear();
-const currentMonth = new Date().getMonth() + 1;
+const formatRangeDate = (value: string) =>
+  new Date(`${value}T12:00:00`).toLocaleDateString("es-HN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
 type FormatFn = (v: number | null | undefined) => string;
 
@@ -339,14 +349,10 @@ function MobileDetail({ m, format, showCosts, showProfit }: { m: Movement; forma
 // ── Page ───────────────────────────────────────────────────────────────
 
 export default function MovementsPage() {
-  const now    = new Date();
   const { push } = useRouter();
 
   const [search,        setSearch]        = useState("");
-  const [filterMode,    setFilterMode]    = useState<"month" | "date">("month");
-  const [selectedYear,  setSelectedYear]  = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [specificDate,  setSpecificDate]  = useState("");
+  const [dateRange,     setDateRange]     = useState<DateRangeValue>(currentMonthRange);
   const [productId,     setProductId]     = useState<number | undefined>();
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [page,          setPage]          = useState(1);
@@ -356,13 +362,12 @@ export default function MovementsPage() {
 
   useEffect(() => { setPage(1); }, [
     debouncedSearch, typeFilter, productId,
-    filterMode, selectedMonth, selectedYear, specificDate,
+    dateRange.from, dateRange.to,
   ]);
 
   const { movements, isLoading, total, totalPages } = useMovements({
-    date:       filterMode === "date"  ? specificDate || undefined : undefined,
-    month:      filterMode === "month" ? selectedMonth             : undefined,
-    year:       filterMode === "month" ? selectedYear              : undefined,
+    from:       dateRange.from,
+    to:         dateRange.to,
     product_id: productId,
     search:     debouncedSearch || undefined,
     type:       typeFilter !== "all" ? typeFilter : undefined,
@@ -371,7 +376,6 @@ export default function MovementsPage() {
   });
 
   const { products }              = useProducts();
-  const { periods }               = useMovementPeriods();
   const { format: formatCurrency } = useCurrency();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
 
@@ -380,32 +384,25 @@ export default function MovementsPage() {
     return formatCurrency(Number(v));
   };
 
-  const availableYears     = [...new Set(periods.map((p) => p.year))].sort((a, b) => b - a);
-  const monthsForYear      = (year: number) =>
-    periods.filter((p) => p.year === year).map((p) => p.month).sort((a, b) => b - a);
-
+  const defaultRange = currentMonthRange();
   const hasFilters =
     search ||
     productId !== undefined ||
     typeFilter !== "all" ||
-    (filterMode === "date"  && specificDate) ||
-    (filterMode === "month" && (selectedYear !== currentYear || selectedMonth !== currentMonth));
+    dateRange.from !== defaultRange.from ||
+    dateRange.to !== defaultRange.to;
 
   const clearAll = () => {
     setSearch("");
-    setFilterMode("month");
-    setSelectedYear(now.getFullYear());
-    setSelectedMonth(now.getMonth() + 1);
-    setSpecificDate("");
+    setDateRange(currentMonthRange());
     setProductId(undefined);
     setTypeFilter("all");
     setPage(1);
   };
 
-  const periodLabel =
-    filterMode === "date" && specificDate
-      ? formatDateOnly(specificDate)
-      : `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+  const periodLabel = dateRange.from === dateRange.to
+    ? formatRangeDate(dateRange.from)
+    : `${formatRangeDate(dateRange.from)} — ${formatRangeDate(dateRange.to)}`;
 
   return (
     <div className="space-y-4 pb-24">
@@ -417,77 +414,21 @@ export default function MovementsPage() {
 
       {/* Filtros */}
       <div className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div>
           <SearchBar
             value={search}
             onChange={setSearch}
             size="full"
             placeholder="Buscar producto, variante, SKU, cliente..."
           />
-          <Select value={filterMode} onValueChange={(v) => setFilterMode(v as "month" | "date")}>
-            <SelectTrigger className="hidden sm:flex w-full sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="month">Por mes</SelectItem>
-              <SelectItem value="date">Fecha exacta</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Toggle modo — móvil */}
-        <div className="grid grid-cols-2 rounded-lg border overflow-hidden sm:hidden">
-          {(["month", "date"] as const).map((mode, i) => (
-            <button
-              key={mode}
-              onClick={() => setFilterMode(mode)}
-              className={`py-2 text-xs font-medium transition-colors ${i > 0 ? "border-l" : ""} ${
-                filterMode === mode
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {mode === "month" ? "Por mes" : "Fecha exacta"}
-            </button>
-          ))}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          {filterMode === "month" ? (
-            <>
-              <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
-                <SelectTrigger className="w-full sm:w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {monthsForYear(selectedYear).map((m) => (
-                    <SelectItem key={m} value={String(m)}>{MONTH_NAMES[m]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={String(selectedYear)}
-                onValueChange={(v) => {
-                  const y = Number(v);
-                  setSelectedYear(y);
-                  const months = periods.filter((p) => p.year === y).map((p) => p.month);
-                  if (months.length && !months.includes(selectedMonth)) setSelectedMonth(months[0]);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {availableYears.map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          ) : (
-            <Input
-              type="date"
-              value={specificDate}
-              onChange={(e) => setSpecificDate(e.target.value)}
-              className="w-full sm:w-44"
-            />
-          )}
+          <DateRangePicker
+            value={dateRange}
+            onChange={setDateRange}
+            className="sm:w-auto"
+          />
 
           <SearchableSelect
             value={productId?.toString() ?? "all"}
