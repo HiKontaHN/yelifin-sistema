@@ -23,10 +23,10 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Package, Warehouse, AlertTriangle, DollarSign,
+  Package, Warehouse, AlertTriangle, OctagonX, createLucideIcon,
   Plus, MoreVertical, Pencil, Trash2, PackagePlus,
-  ShoppingCart, SlidersHorizontal, ArrowLeftRight,
-  ChevronDown, Layers, Box, Clock, X, Eye, FileSpreadsheet,
+  SlidersHorizontal, ChevronDown, Layers, Box,
+  X, Eye, FileSpreadsheet,
 } from "lucide-react";
 import {
   Pagination, PaginationContent, PaginationItem,
@@ -52,14 +52,20 @@ import { AddInventoryDialog } from "@/components/products/add-inventory-dialog";
 import { AdjustInventoryDialog } from "@/components/products/adjust-inventory-dialog";
 import { ImportExcelModal } from "@/components/inventory/import-excel-modal";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
-import { usePurchases } from "@/hooks/swr/use-purchases";
-import { useMe } from "@/hooks/swr/use-me";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+const BanknoteArrowUp = createLucideIcon("BanknoteArrowUp", [
+  ["path", { d: "M12 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5", key: "banknote" }],
+  ["path", { d: "M18 12h.01", key: "right-dot" }],
+  ["path", { d: "M19 22v-6", key: "arrow-line" }],
+  ["path", { d: "m22 19-3-3-3 3", key: "arrow-head" }],
+  ["path", { d: "M6 12h.01", key: "left-dot" }],
+  ["circle", { cx: "12", cy: "12", r: "2", key: "coin" }],
+]);
 
 const getStockBadge = (stock: number, is_service?: boolean) => {
   if (is_service) return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Servicio</Badge>;
@@ -234,13 +240,13 @@ function BaseTableRow({
       <TableCell className="font-mono text-xs text-muted-foreground">
         {item.sku ?? "—"}
       </TableCell>
-      <TableCell>{getStockBadge(Number(item.base_stock))}</TableCell>
+      <TableCell className="text-center">{getStockBadge(Number(item.base_stock))}</TableCell>
       {showCosts && (
-        <TableCell className="text-sm">
+        <TableCell className="text-right text-sm">
           {Number(item.base_stock) > 0 ? format(Number(item.base_avg_unit_cost ?? 0)) : "—"}
         </TableCell>
       )}
-      <TableCell className="text-sm">{format(item.price)}</TableCell>
+      <TableCell className="text-right text-sm">{format(item.price)}</TableCell>
       {showCosts && (
         <TableCell className="text-right text-sm font-medium">
           {Number(item.base_stock) > 0 ? format(Number(item.base_total_value ?? 0)) : "—"}
@@ -310,13 +316,13 @@ function VariantTableRow({
       <TableCell className="font-mono text-xs text-muted-foreground">
         {variantStock.sku || "—"}
       </TableCell>
-      <TableCell>{getStockBadge(Number(variantStock.stock))}</TableCell>
+      <TableCell className="text-center">{getStockBadge(Number(variantStock.stock))}</TableCell>
       {showCosts && (
-        <TableCell className="text-sm">
+        <TableCell className="text-right text-sm">
           {Number(variantStock.stock) > 0 ? format(Number(variantStock.avg_unit_cost ?? 0)) : "—"}
         </TableCell>
       )}
-      <TableCell className="text-sm">
+      <TableCell className="text-right text-sm">
         {variantStock.price_override != null
           ? format(variantStock.price_override)
           : product
@@ -561,7 +567,6 @@ export default function InventoryPage() {
   // Diálogos de producto
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [transactionOpen, setTransactionOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [inventoryProduct, setInventoryProduct] = useState<Product | null>(null);
@@ -578,13 +583,7 @@ export default function InventoryPage() {
   const { accounts, mutate: mutateAccounts } = useAccounts();
   const { creditCards, mutate: mutateCreditCards } = useCreditCards();
   const { format } = useCurrency();
-  const { purchases, mutate: mutatePurchases } = usePurchases();
-  const { features, subscription } = useMe();
   const { show_costs: showCosts, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY");
-
-  const isAdmin = (features?.ADMIN ?? []).length > 0 || subscription?.plan?.slug === "admin";
-
-  const pendingPurchases = purchases.filter((p) => p.status === "PENDING");
 
   const findProduct = (productId: number): Product | null =>
     products.find((p) => p.id === productId) ?? null;
@@ -605,7 +604,6 @@ export default function InventoryPage() {
   const handleSuccess = () => {
     mutateProducts();
     mutateInventory();
-    mutatePurchases();
     mutateAccounts();
     mutateCreditCards();
   };
@@ -621,6 +619,41 @@ export default function InventoryPage() {
       toast.error(error.message || "Error al eliminar variante");
     }
   };
+
+  const inventorySummary = [
+    {
+      label: "Unidades",
+      value: `${stats.total_stock.toLocaleString("es-HN")} uds`,
+      detail: `${stats.total_products.toLocaleString("es-HN")} productos`,
+      icon: Warehouse,
+      tone: "text-foreground",
+      iconTone: "text-muted-foreground",
+    },
+    ...(showCosts ? [{
+      label: "Valor",
+      value: format(Number(stats.total_value ?? 0)),
+      detail: "valor de inventario",
+      icon: BanknoteArrowUp,
+      tone: "text-foreground",
+      iconTone: "text-muted-foreground",
+    }] : []),
+    {
+      label: "Stock bajo",
+      value: stats.low_stock.toLocaleString("es-HN"),
+      detail: "stock bajo",
+      icon: AlertTriangle,
+      tone: "text-amber-600 dark:text-amber-400",
+      iconTone: "text-amber-500/70",
+    },
+    {
+      label: "Agotados",
+      value: stats.out_of_stock.toLocaleString("es-HN"),
+      detail: "agotados",
+      icon: OctagonX,
+      tone: "text-destructive",
+      iconTone: "text-destructive/60",
+    },
+  ];
 
   // ──────────────────────────────────────────────────────────────────
 
@@ -641,47 +674,51 @@ export default function InventoryPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { title: "Unidades", value: stats.total_stock, sub: `${stats.total_products} productos`, icon: Warehouse },
-          { title: "Valor", value: format(Number(stats.total_value ?? 0)), sub: "costo adquisición", icon: DollarSign, hiddenWhenNoCosts: true },
-          { title: "Stock bajo", value: stats.low_stock, sub: "menos de 10 uds", icon: AlertTriangle, cls: "text-yellow-600" },
-          { title: "Agotados", value: stats.out_of_stock, sub: "sin stock", icon: Package, cls: "text-destructive" },
-        ].filter((s) => !(s as any).hiddenWhenNoCosts || showCosts).map((stat) => (
-          <Card key={stat.title}>
-            <CardContent className="pl-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{stat.title}</span>
-                <stat.icon className="size-3.5 text-muted-foreground shrink-0" />
-              </div>
-              {loadingInventory
-                ? <Skeleton className="h-5 w-16" />
-                : <div className={`text-lg font-bold md:text-xl ${stat.cls ?? ""}`}>{stat.value}</div>
-              }
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+        <div className={cn(
+          "grid grid-cols-2",
+          showCosts ? "md:grid-cols-4" : "md:grid-cols-3",
+        )}>
+          {inventorySummary.map((stat, index) => {
+            const isOddLastItem = inventorySummary.length % 2 === 1
+              && index === inventorySummary.length - 1;
+            const lastMobileRowStart = inventorySummary.length % 2 === 0
+              ? inventorySummary.length - 2
+              : inventorySummary.length - 1;
+            const isInLastMobileRow = index >= lastMobileRowStart;
+            const Icon = stat.icon;
 
-      {/* ── Banner compras pendientes ─────────────────────────────── */}
-      {isAdmin && pendingPurchases.length > 0 && (
-        <button
-          type="button"
-          onClick={() => push("/purchases/pending")}
-          className="w-full flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-800/40 px-4 py-3 text-left hover:bg-amber-100/60 dark:hover:bg-amber-950/40 transition-colors"
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Clock className="size-4 text-amber-600 shrink-0" />
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300 truncate">
-              {pendingPurchases.length} compra{pendingPurchases.length !== 1 ? "s" : ""} pendiente{pendingPurchases.length !== 1 ? "s" : ""} de llegada — inventario no acreditado
-            </p>
-          </div>
-          <Badge className="shrink-0 bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300">
-            Ver →
-          </Badge>
-        </button>
-      )}
+            return (
+              <div
+                key={stat.label}
+                className={cn(
+                  "flex min-w-0 items-center gap-3 px-4 py-4",
+                  index % 2 === 0 && !isOddLastItem && "border-r",
+                  !isInLastMobileRow && "border-b",
+                  isOddLastItem && "col-span-2",
+                  "md:col-span-1 md:border-b-0",
+                  index < inventorySummary.length - 1 ? "md:border-r" : "md:border-r-0",
+                )}
+              >
+                <Icon className={cn("size-7 shrink-0 stroke-[1.6]", stat.iconTone)} />
+                <div className="min-w-0">
+                  {loadingInventory ? (
+                    <Skeleton className="mb-1 h-5 w-24" />
+                  ) : (
+                    <p className={cn(
+                      "truncate text-lg font-semibold leading-tight tabular-nums md:text-xl",
+                      stat.tone,
+                    )}>
+                      {stat.value}
+                    </p>
+                  )}
+                  <p className="truncate text-xs text-muted-foreground">{stat.detail}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       {/* Filtros */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -720,9 +757,9 @@ export default function InventoryPage() {
               <TableRow>
                 <TableHead>Producto</TableHead>
                 <TableHead>SKU</TableHead>
-                <TableHead>Stock</TableHead>
-                {showCosts && <TableHead>Costo prom.</TableHead>}
-                <TableHead>Precio venta</TableHead>
+                <TableHead className="text-center">Stock</TableHead>
+                {showCosts && <TableHead className="text-right">Costo prom.</TableHead>}
+                <TableHead className="text-right">Precio venta</TableHead>
                 {showCosts && <TableHead className="text-right">Valor total</TableHead>}
                 <TableHead className="w-10" />
               </TableRow>
@@ -789,11 +826,11 @@ export default function InventoryPage() {
                         <TableCell className="font-mono text-sm text-muted-foreground">
                           {item.sku ?? "—"}
                         </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           {getStockBadge(Number(item.stock), item.is_service)}
                         </TableCell>
-                        {showCosts && <TableCell>{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</TableCell>}
-                        <TableCell>{format(item.price)}</TableCell>
+                        {showCosts && <TableCell className="text-right">{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</TableCell>}
+                        <TableCell className="text-right">{format(item.price)}</TableCell>
                         {showCosts && (
                           <TableCell className="text-right font-medium">
                             {item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}
@@ -1059,16 +1096,14 @@ export default function InventoryPage() {
       )}
 
       {/* FAB */}
-      <Fab
-        actions={[
-          { label: "Nueva transacción", icon: ArrowLeftRight, onClick: () => setTransactionOpen(true) },
-          { label: "Nueva venta", icon: ShoppingCart, onClick: () => push("/sales/new") },
-          ...(canEdit ? [
-            { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },
+      {canEdit && (
+        <Fab
+          actions={[
             { label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) },
-          ] : []),
-        ]}
-      />
+            { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },
+          ]}
+        />
+      )}
 
       {/* ── Diálogos de producto ──────────────────────────────────── */}
       <CreateProductDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={handleSuccess} />
@@ -1162,14 +1197,6 @@ export default function InventoryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <CreateTransactionModal
-        open={transactionOpen}
-        onOpenChange={setTransactionOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-        onSuccess={() => setTransactionOpen(false)}
-      />
     </div>
   );
 }
