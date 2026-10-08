@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
+import { hasValidRequestOrigin } from "@/lib/request-origin";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -70,8 +71,7 @@ export async function verifyAuth(
   }
 
   if (sessionCookie && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-    const origin = request.headers.get("origin");
-    if (!origin || origin !== request.nextUrl.origin) {
+    if (!hasValidRequestOrigin(request)) {
       return { error: "Origen no autorizado", status: 403, data: null };
     }
   }

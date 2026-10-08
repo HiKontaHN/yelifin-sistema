@@ -9,11 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   ArrowLeft, PackageCheck, XCircle, Package,
-  Wallet, CalendarDays, StickyNote, Truck,
+  Wallet, CalendarDays, Truck,
 } from "lucide-react";
 
 import { usePendingPurchases, PurchaseWithItems, Purchase } from "@/hooks/swr/use-purchases";
@@ -26,11 +23,20 @@ import { CancelPurchaseDialog } from "@/components/products/cancel-purchase-dial
 import { StatCard } from "@/components/reports/report-shell";
 import { SearchBar } from "@/components/shared/search-bar";
 import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 const PAGE_SIZE = 10;
 
 export default function PendingPurchasesPage() {
   const { back, push } = useRouter();
+  const timezone = useTimezone();
+  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  }), [timezone]);
+  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
+    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
+  }), [timezone]);
   const { purchases, isLoading, mutate: mutatePurchases } = usePendingPurchases();
   const { mutate: mutateInventory }  = useInventory();
   const { accounts, mutate: mutateAccounts } = useAccounts();
@@ -41,6 +47,7 @@ export default function PendingPurchasesPage() {
   const [toCancel, setToCancel] = useState<Purchase | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   const handleSuccess = () => {
     mutatePurchases();
@@ -58,8 +65,85 @@ export default function PendingPurchasesPage() {
 
   useEffect(() => { setPage(1); }, [search]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredPurchases.length / PAGE_SIZE));
-  const pagePurchases = filteredPurchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filteredPurchases.length / pageSize));
+  const pagePurchases = filteredPurchases.slice((page - 1) * pageSize, page * pageSize);
+
+  const columns: DataTableTimeSectionColumn<PurchaseWithItems>[] = [
+    {
+      id: "date", header: "Fecha", width: 110,
+      className: "whitespace-nowrap text-sm text-muted-foreground",
+      cell: (purchase) => new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+        day: "numeric", month: "short", year: "numeric",
+      }),
+    },
+    {
+      id: "products", header: "Productos", width: "clamp(11rem, 20vw, 16rem)",
+      cell: (purchase) => (
+        <div className="max-w-64 space-y-0.5">
+          {purchase.items.map((item, index) => (
+            <p key={index} className="truncate text-sm font-medium">
+              {item.product_name}
+              {item.variant_name && <span className="font-normal text-muted-foreground">{" "}· {item.variant_name}</span>}
+              {purchase.items.length > 1 && <span className="font-normal text-muted-foreground">{" "}· {Number(item.quantity).toLocaleString("es-HN")} un.</span>}
+            </p>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "units", header: "Unidades", width: 72, align: "center",
+      className: "font-medium tabular-nums",
+      cell: (purchase) => purchase.items.reduce((sum, item) => sum + Number(item.quantity), 0).toLocaleString("es-HN"),
+    },
+    { id: "account", header: "Cuenta", width: "clamp(5rem, 8vw, 6.5rem)", className: "truncate text-sm", cell: (purchase) => purchase.account_name ?? "—" },
+    ...(showCosts ? [
+      {
+        id: "shipping", header: "Envío", width: 90, align: "right" as const,
+        className: "tabular-nums",
+        cell: (purchase: PurchaseWithItems) => Number(purchase.shipping ?? 0) > 0 ? format(Number(purchase.shipping)) : "—",
+      },
+      {
+        id: "total", header: "Total", width: 100, align: "right" as const,
+        className: "font-semibold tabular-nums",
+        cell: (purchase: PurchaseWithItems) => <>{format(Number(purchase.total ?? 0))}<span className="ml-1 text-xs font-normal text-muted-foreground"></span></>,
+      },
+    ] : []),
+    ...((canDelete || canEdit) ? [{
+      id: "actions", header: "Acciones", width: 180, align: "right" as const,
+      cell: (purchase: PurchaseWithItems) => (
+        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+          {canDelete && (
+            <Button
+              type="button" variant="ghost" size="icon-sm"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setToCancel(purchase)} aria-label="Cancelar compra" title="Cancelar compra"
+            >
+              <XCircle className="size-4" />
+            </Button>
+          )}
+          {canEdit && showCosts && (
+            <Button type="button" size="sm" className="gap-1.5" onClick={() => setSelected(purchase)}>
+              Confirmar llegada
+            </Button>
+          )}
+          {canEdit && !showCosts && (
+            <Button
+              type="button" size="sm" className="gap-1.5" disabled
+              title="Necesitas permiso de costos para confirmar la llegada"
+            >
+              Confirmar llegada
+            </Button>
+          )}
+        </div>
+      ),
+    }] : []),
+  ];
+  const renderPurchaseDate = (_key: string, rows: readonly PurchaseWithItems[]) => {
+    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].purchased_at));
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
+    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
+    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+  };
 
   const stats = purchases.reduce(
     (acc, p) => {
@@ -166,151 +250,45 @@ export default function PendingPurchasesPage() {
         )}
       </div>
 
-      {/* Tabla — tablet y escritorio */}
+      {/* Tabla reutilizable — tablet y escritorio */}
       {(isLoading || pagePurchases.length > 0) && (
-        <Card className="hidden overflow-hidden py-0 md:block">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table className="min-w-[860px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Productos</TableHead>
-                    <TableHead className="text-center">Unidades</TableHead>
-                    <TableHead>Cuenta</TableHead>
-                    {showCosts && <TableHead className="text-right">Envío</TableHead>}
-                    {showCosts && <TableHead className="text-right">Total</TableHead>}
-                    <TableHead>Notas</TableHead>
-                    {(canDelete || canEdit) && <TableHead className="text-right">Acciones</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, index) => (
-                      <TableRow key={index}>
-                        {Array.from({
-                          length: 5 + (showCosts ? 2 : 0) + (canDelete || canEdit ? 1 : 0),
-                        }).map((__, cellIndex) => (
-                          <TableCell key={cellIndex}>
-                            <Skeleton className="h-4 w-full" />
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    pagePurchases.map((purchase) => {
-                      const date = new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      });
-                      const totalUnits = purchase.items.reduce(
-                        (sum, item) => sum + Number(item.quantity),
-                        0,
-                      );
-
-                      return (
-                        <TableRow key={purchase.id} className="bg-amber-50/20 dark:bg-amber-950/5">
-                          <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                            {date}
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-64 space-y-0.5">
-                              {purchase.items.map((item, index) => (
-                                <p key={index} className="truncate text-sm font-medium">
-                                  {item.product_name}
-                                  {item.variant_name && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}· {item.variant_name}
-                                    </span>
-                                  )}
-                                  {purchase.items.length > 1 && (
-                                    <span className="font-normal text-muted-foreground">
-                                      {" "}· {Number(item.quantity).toLocaleString("es-HN")} un.
-                                    </span>
-                                  )}
-                                </p>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center font-medium tabular-nums">
-                            {totalUnits.toLocaleString("es-HN")}
-                          </TableCell>
-                          <TableCell className="max-w-44 truncate text-sm">
-                            {purchase.account_name ?? "—"}
-                          </TableCell>
-                          {showCosts && (
-                            <TableCell className="text-right tabular-nums">
-                              {Number(purchase.shipping ?? 0) > 0
-                                ? format(Number(purchase.shipping))
-                                : "—"}
-                            </TableCell>
-                          )}
-                          {showCosts && (
-                            <TableCell className="text-right font-semibold tabular-nums">
-                              {format(Number(purchase.total ?? 0))}
-                              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                {purchase.currency}
-                              </span>
-                            </TableCell>
-                          )}
-                          <TableCell className="max-w-52 truncate text-sm text-muted-foreground">
-                            {purchase.notes ?? "—"}
-                          </TableCell>
-                          {(canDelete || canEdit) && (
-                            <TableCell>
-                              <div className="flex justify-end gap-1.5">
-                                {canDelete && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={() => setToCancel(purchase)}
-                                    aria-label="Cancelar compra"
-                                    title="Cancelar compra"
-                                  >
-                                    <XCircle className="size-4" />
-                                  </Button>
-                                )}
-                                {canEdit && showCosts && (
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    className="gap-1.5"
-                                    onClick={() => setSelected(purchase)}
-                                  >
-                                    Confirmar llegada
-                                  </Button>
-                                )}
-                                {canEdit && !showCosts && (
-                                  <span className="self-center whitespace-nowrap text-xs text-muted-foreground">
-                                    Sin permiso de costos
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="hidden md:block">
+          <DataTableTimeSection
+            columns={columns}
+            data={pagePurchases}
+            getRowKey={(purchase) => purchase.id}
+            getGroupKey={(purchase) => dateKeyFormatter.format(new Date(purchase.purchased_at))}
+            renderGroupHeader={renderPurchaseDate}
+            rowClassName="bg-amber-50/20 dark:bg-amber-950/5"
+            isLoading={isLoading}
+            recordLabel={filteredPurchases.length === 1 ? "compra" : "compras"}
+            ariaLabel="Compras pendientes de llegada"
+            minWidth={showCosts ? 800 : 640}
+            stickyOffset="var(--data-table-sticky-offset)"
+            className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+            showFooterPagination={false}
+            pagination={{
+              page,
+              pageSize,
+              total: filteredPurchases.length,
+              onPageChange: setPage,
+              onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+            }}
+          />
+        </div>
       )}
 
       {/* Paginación */}
       {!isLoading && filteredPurchases.length > 0 && (
-        <PaginationControls
-          page={page}
-          totalPages={totalPages}
-          total={filteredPurchases.length}
-          label="compras"
-          onPageChange={setPage}
-        />
+        <div className="md:hidden">
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            total={filteredPurchases.length}
+            label="compras"
+            onPageChange={setPage}
+          />
+        </div>
       )}
 
       {/* Dialog de confirmación */}
@@ -388,12 +366,6 @@ function PurchaseCard({
             <div className="flex items-center gap-1.5">
               <Truck className="size-3 shrink-0" />
               <span>Envío: {format(Number(purchase.shipping))}</span>
-            </div>
-          )}
-          {purchase.notes && (
-            <div className="col-span-2 flex items-center gap-1.5">
-              <StickyNote className="size-3 shrink-0" />
-              <span className="truncate">{purchase.notes}</span>
             </div>
           )}
         </div>

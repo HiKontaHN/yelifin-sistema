@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  TableCell, TableRow,
 } from "@/components/ui/table";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -23,7 +23,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Package, Warehouse, AlertTriangle, OctagonX, createLucideIcon,
+  Package, createLucideIcon,
   Plus, MoreVertical, Pencil, Trash2, PackagePlus,
   SlidersHorizontal, ChevronDown, Layers, Box,
   X, Eye, FileSpreadsheet,
@@ -35,6 +35,10 @@ import {
 import Image from "next/image";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar"
+import {
+  DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import { cn } from "@/lib/utils";
 
 import { useInventory, VariantStock } from "@/hooks/swr/use-inventory";
@@ -528,7 +532,7 @@ export default function InventoryPage() {
     const p = Number(searchParams.get("page"));
     return Number.isInteger(p) && p > 0 ? p : 1;
   });
-  const pageLimit = 15;
+  const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -557,7 +561,7 @@ export default function InventoryPage() {
     search: debouncedSearch || undefined,
     stock: stockFilter !== "all" ? stockFilter : undefined,  // "all" omits the param so API returns everything
     page,
-    limit: pageLimit,
+    limit: pageSize,
   });
   const { products, mutate: mutateProducts } = useProducts();
   const { deleteVariant, isDeleting: isDeletingVariant } = useDeleteVariant();
@@ -620,40 +624,146 @@ export default function InventoryPage() {
     }
   };
 
-  const inventorySummary = [
+  const inventoryColumns: DataTableTimeSectionColumn<InventoryItem>[] = [
     {
-      label: "Unidades",
-      value: `${stats.total_stock.toLocaleString("es-HN")} uds`,
-      detail: `${stats.total_products.toLocaleString("es-HN")} productos`,
-      icon: Warehouse,
-      tone: "text-foreground",
-      iconTone: "text-muted-foreground",
+      id: "product", header: "Producto", width: "clamp(14rem, 25vw, 20rem)",
+      cell: (item) => {
+        const hasVariants = item.variants_stock.length > 0 && !item.is_service;
+        const isExpanded = expanded.has(item.product_id);
+        return (
+          <div className="flex items-center gap-3">
+            {hasVariants ? (
+              <ChevronDown className={cn(
+                "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+                isExpanded && "rotate-180",
+              )} />
+            ) : <div className="w-3.5 shrink-0" />}
+            <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+              {item.image_url
+                ? <Image src={item.image_url} alt={item.product_name} fill className="object-cover" />
+                : <Package className="size-5 text-muted-foreground/40" />
+              }
+            </div>
+            <div className="min-w-0">
+              <span className="block truncate font-medium">{item.product_name}</span>
+              {hasVariants && (
+                <p className="text-xs text-muted-foreground">
+                  {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}
+                  {" · "}{item.stock} uds total
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "sku", header: "SKU", width: "clamp(7rem, 12vw, 9rem)",
+      className: "font-mono text-sm text-muted-foreground",
+      cell: (item) => item.sku ?? "—",
+    },
+    {
+      id: "stock", header: "Stock", width: 110, align: "center", stopRowClick: true,
+      cell: (item) => getStockBadge(Number(item.stock), item.is_service),
     },
     ...(showCosts ? [{
-      label: "Valor",
-      value: format(Number(stats.total_value ?? 0)),
-      detail: "valor de inventario",
-      icon: BanknoteArrowUp,
-      tone: "text-foreground",
-      iconTone: "text-muted-foreground",
+      id: "cost", header: "Costo prom.", width: 125, align: "right" as const,
+      cell: (item: InventoryItem) => item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0)),
     }] : []),
     {
-      label: "Stock bajo",
-      value: stats.low_stock.toLocaleString("es-HN"),
-      detail: "stock bajo",
-      icon: AlertTriangle,
-      tone: "text-amber-600 dark:text-amber-400",
-      iconTone: "text-amber-500/70",
+      id: "price", header: "Precio venta", width: 125, align: "right",
+      cell: (item) => format(item.price),
+    },
+    ...(showCosts ? [{
+      id: "value", header: "Valor total", width: 125, align: "right" as const,
+      className: "font-medium",
+      cell: (item: InventoryItem) => item.is_service ? format(item.price) : format(Number(item.total_value ?? 0)),
+    }] : []),
+    {
+      id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
+      align: "right", stopRowClick: true,
+      cell: (item) => (
+        <ProductActionsMenu
+          item={item}
+          findProduct={findProduct}
+          setInventoryProduct={setInventoryProduct}
+          setAdjustProduct={setAdjustProduct}
+          setVariantProduct={setVariantProduct}
+          setEditProduct={setEditProduct}
+          setDeleteProduct={setDeleteProduct}
+          onViewDetail={(id) => push(`/inventory/${id}`)}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
+      ),
+    },
+  ];
+
+  const renderExpandedInventoryRows = (item: InventoryItem) => {
+    const hasVariants = item.variants_stock.length > 0 && !item.is_service;
+    if (!hasVariants || !expanded.has(item.product_id)) return null;
+
+    const product = findProduct(item.product_id);
+    return (
+      <Fragment>
+        {Number(item.base_stock) > 0 && (
+          <BaseTableRow
+            item={item}
+            format={format}
+            showCosts={showCosts}
+            onClick={() => push(`/inventory/${item.product_id}`)}
+          />
+        )}
+        {item.variants_stock.map((variantStock) => (
+          <VariantTableRow
+            key={`vs-${variantStock.variant_id}`}
+            variantStock={variantStock}
+            product={product}
+            format={format}
+            showCosts={showCosts}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            findVariant={findVariant}
+            setAdjustVariant={setAdjustVariant}
+            setEditVariant={setEditVariant}
+            setDeleteVariantTarget={setDeleteVariantTarget}
+            onClick={() => push(`/inventory/${item.product_id}`)}
+          />
+        ))}
+      </Fragment>
+    );
+  };
+
+  const stockSummary = [
+    {
+      label: "Disponibles",
+      count: Math.max(0, stats.total_products - stats.out_of_stock),
+      filter: "in_stock",
+      color: "bg-lime-500",
+      dot: "bg-lime-500",
+      glow: "hover:shadow-[0_0_12px_2px_rgba(132,204,22,0.7)]",
+    },
+    {
+      label: "Bajo stock",
+      count: stats.low_stock,
+      filter: "low",
+      color: "bg-orange-500",
+      dot: "bg-orange-500",
+      glow: "hover:shadow-[0_0_12px_2px_rgba(249,115,22,0.7)]",
     },
     {
       label: "Agotados",
-      value: stats.out_of_stock.toLocaleString("es-HN"),
-      detail: "agotados",
-      icon: OctagonX,
-      tone: "text-destructive",
-      iconTone: "text-destructive/60",
+      count: stats.out_of_stock,
+      filter: "out",
+      color: "bg-red-500",
+      dot: "bg-red-500",
+      glow: "hover:shadow-[0_0_12px_2px_rgba(239,68,68,0.7)]",
     },
   ];
+  const stockSummaryTotal = stockSummary.reduce((sum, item) => sum + item.count, 0);
+  const toggleStockSummaryFilter = (filter: string) => {
+    setStockFilter((current) => current === filter ? (filter === "in_stock" ? "all" : "in_stock") : filter);
+  };
 
   // ──────────────────────────────────────────────────────────────────
 
@@ -664,7 +774,7 @@ export default function InventoryPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inventario</h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-sm md:hidden">
             {loadingInventory
               ? "Cargando..."
               : `${stats.total_products} producto${stats.total_products !== 1 ? "s" : ""} · ${stats.total_stock} unidades`
@@ -673,52 +783,81 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <Card className="gap-0 overflow-hidden py-0 shadow-sm">
-        <div className={cn(
-          "grid grid-cols-2",
-          showCosts ? "md:grid-cols-4" : "md:grid-cols-3",
-        )}>
-          {inventorySummary.map((stat, index) => {
-            const isOddLastItem = inventorySummary.length % 2 === 1
-              && index === inventorySummary.length - 1;
-            const lastMobileRowStart = inventorySummary.length % 2 === 0
-              ? inventorySummary.length - 2
-              : inventorySummary.length - 1;
-            const isInLastMobileRow = index >= lastMobileRowStart;
-            const Icon = stat.icon;
+      {/* Resumen compacto de inventario */}
+      <section aria-label="Resumen de inventario" className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:gap-6">
+        <div className="flex min-w-0 items-center gap-3 sm:min-w-56 sm:border-r sm:pr-6">
+          {showCosts ? (
+            <BanknoteArrowUp className="size-8 shrink-0 stroke-[1.6] text-muted-foreground" />
+          ) : (
+            <Box className="size-8 shrink-0 stroke-[1.6] text-muted-foreground" />
+          )}
+          <div className="min-w-0">
+            {loadingInventory ? (
+              <Skeleton className="mb-1 h-6 w-32" />
+            ) : (
+              <p className="truncate text-lg font-semibold leading-tight tabular-nums sm:text-xl">
+                {showCosts
+                  ? format(Number(stats.total_value ?? 0))
+                  : `${stats.total_stock.toLocaleString("es-HN")} uds`}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {showCosts ? "valor de inventario" : "unidades en inventario"}
+            </p>
+          </div>
+        </div>
 
-            return (
-              <div
-                key={stat.label}
+        <div className="min-w-0 flex-1 sm:py-1">
+          <p className="mb-2 text-base font-medium leading-none tabular-nums text-muted-foreground">
+            {loadingInventory ? <Skeleton className="h-5 w-28" /> : `${stats.total_products.toLocaleString("es-HN")} productos`}
+          </p>
+
+          <div role="group" aria-label="Filtrar por estado de inventario" className="flex h-2.5 w-full rounded-full bg-muted md:w-2/3">
+            {stockSummary.map((item, index) => (
+              <button
+                key={item.filter}
+                type="button"
+                aria-label={`Filtrar ${item.label.toLocaleLowerCase("es-HN")}: ${item.count} productos`}
+                aria-pressed={stockFilter === item.filter}
+                title={`Filtrar por ${item.label.toLocaleLowerCase("es-HN")}`}
+                disabled={loadingInventory || item.count === 0 || stockSummaryTotal === 0}
+                onClick={() => toggleStockSummaryFilter(item.filter)}
+                style={{ width: stockSummaryTotal ? `${(item.count / stockSummaryTotal) * 100}%` : "0%" }}
                 className={cn(
-                  "flex min-w-0 items-center gap-3 px-4 py-4",
-                  index % 2 === 0 && !isOddLastItem && "border-r",
-                  !isInLastMobileRow && "border-b",
-                  isOddLastItem && "col-span-2",
-                  "md:col-span-1 md:border-b-0",
-                  index < inventorySummary.length - 1 ? "md:border-r" : "md:border-r-0",
+                  "relative h-full cursor-pointer transition-[transform,box-shadow] duration-200 hover:z-10 hover:scale-110 disabled:cursor-default disabled:hover:scale-100",
+                  item.color,
+                  item.glow,
+                  index < stockSummary.length - 1 && "border-r border-background/70",
+                  index === 0 && "rounded-l-full",
+                  index === stockSummary.length - 1 && "rounded-r-full",
+                  stockFilter === item.filter ? "opacity-100" : "opacity-90 hover:opacity-100",
+                )}
+              />
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {stockSummary.map((item) => (
+              <button
+                key={item.filter}
+                type="button"
+                aria-pressed={stockFilter === item.filter}
+                title={`Filtrar por ${item.label.toLocaleLowerCase("es-HN")}`}
+                disabled={loadingInventory || item.count === 0}
+                onClick={() => toggleStockSummaryFilter(item.filter)}
+                className={cn(
+                  "inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-60",
+                  stockFilter === item.filter && "text-foreground",
                 )}
               >
-                <Icon className={cn("size-7 shrink-0 stroke-[1.6]", stat.iconTone)} />
-                <div className="min-w-0">
-                  {loadingInventory ? (
-                    <Skeleton className="mb-1 h-5 w-24" />
-                  ) : (
-                    <p className={cn(
-                      "truncate text-lg font-semibold leading-tight tabular-nums md:text-xl",
-                      stat.tone,
-                    )}>
-                      {stat.value}
-                    </p>
-                  )}
-                  <p className="truncate text-xs text-muted-foreground">{stat.detail}</p>
-                </div>
-              </div>
-            );
-          })}
+                <span className={cn("size-1.5 rounded-full", item.dot)} aria-hidden="true" />
+                <span>{item.label}</span>
+                <span className="font-semibold tabular-nums text-foreground">{item.count.toLocaleString("es-HN")}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </Card>
+      </section>
 
       {/* Filtros */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -750,146 +889,33 @@ export default function InventoryPage() {
       </div>
 
       {/* ── Tabla — desktop ──────────────────────────────────────── */}
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Producto</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead className="text-center">Stock</TableHead>
-                {showCosts && <TableHead className="text-right">Costo prom.</TableHead>}
-                <TableHead className="text-right">Precio venta</TableHead>
-                {showCosts && <TableHead className="text-right">Valor total</TableHead>}
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loadingInventory ? (
-                /* skeleton - index key ok */
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: showCosts ? 7 : 5 }).map((_, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : inventory.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={showCosts ? 7 : 5} className="text-center py-12 text-muted-foreground">
-                    {hasFilters ? "No se encontraron productos" : "Agrega productos para visualizarlos aquí"}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                inventory.map((item) => {
-                  const product = findProduct(item.product_id);
-                  const hasVariants = item.variants_stock.length > 0 && !item.is_service;
-                  const isExpanded = expanded.has(item.product_id);
-
-                  return (
-                    <Fragment key={item.product_id}>
-                      {/* Fila del producto */}
-                      <TableRow
-                        className={cn(
-                          "cursor-pointer select-none",
-                          isExpanded && "bg-muted/20"
-                        )}
-                        onClick={() => hasVariants ? toggleExpand(item.product_id) : push(`/inventory/${item.product_id}`)}
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            {hasVariants ? (
-                              <ChevronDown className={cn(
-                                "size-3.5 text-muted-foreground shrink-0 transition-transform duration-200",
-                                isExpanded && "rotate-180"
-                              )} />
-                            ) : (
-                              <div className="w-3.5 shrink-0" />
-                            )}
-                            <div className="relative size-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
-                              {item.image_url
-                                ? <Image src={item.image_url} alt={item.product_name} fill className="object-cover" />
-                                : <Package className="size-5 text-muted-foreground/40" />
-                              }
-                            </div>
-                            <div>
-                              <span className="font-medium">{item.product_name}</span>
-                              {hasVariants && (
-                                <p className="text-xs text-muted-foreground">
-                                  {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}
-                                  {" · "}{item.stock} uds total
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">
-                          {item.sku ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                          {getStockBadge(Number(item.stock), item.is_service)}
-                        </TableCell>
-                        {showCosts && <TableCell className="text-right">{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</TableCell>}
-                        <TableCell className="text-right">{format(item.price)}</TableCell>
-                        {showCosts && (
-                          <TableCell className="text-right font-medium">
-                            {item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}
-                          </TableCell>
-                        )}
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <ProductActionsMenu
-                            item={item}
-                            findProduct={findProduct}
-                            setInventoryProduct={setInventoryProduct}
-                            setAdjustProduct={setAdjustProduct}
-                            setVariantProduct={setVariantProduct}
-                            setEditProduct={setEditProduct}
-                            setDeleteProduct={setDeleteProduct}
-                            onViewDetail={(id) => push(`/inventory/${id}`)}
-                            canEdit={canEdit}
-                            canDelete={canDelete}
-                          />
-                        </TableCell>
-                      </TableRow>
-
-                      {/* Acordeón: base + variantes (base oculto si su stock
-                          ya se convirtió en variante) */}
-                      {hasVariants && isExpanded && (
-                        <>
-                          {Number(item.base_stock) > 0 && (
-                            <BaseTableRow
-                              item={item}
-                              format={format}
-                              showCosts={showCosts}
-                              onClick={() => push(`/inventory/${item.product_id}`)}
-                            />
-                          )}
-                          {item.variants_stock.map((vs) => (
-                            <VariantTableRow
-                              key={`vs-${vs.variant_id}`}
-                              variantStock={vs}
-                              product={product}
-                              format={format}
-                              showCosts={showCosts}
-                              canEdit={canEdit}
-                              canDelete={canDelete}
-                              findVariant={findVariant}
-                              setAdjustVariant={setAdjustVariant}
-                              setEditVariant={setEditVariant}
-                              setDeleteVariantTarget={setDeleteVariantTarget}
-                              onClick={() => push(`/inventory/${item.product_id}`)}
-                            />
-                          ))}
-                        </>
-                      )}
-                    </Fragment>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="hidden md:block">
+        <DataTableTimeSection
+          columns={inventoryColumns}
+          data={inventory}
+          getRowKey={(item) => item.product_id}
+          isLoading={loadingInventory}
+          emptyState={hasFilters ? "No se encontraron productos" : "Agrega productos para visualizarlos aquí"}
+          recordLabel={total === 1 ? "producto" : "productos"}
+          ariaLabel="Productos del inventario"
+          onRowClick={(item) => item.variants_stock.length > 0 && !item.is_service
+            ? toggleExpand(item.product_id)
+            : push(`/inventory/${item.product_id}`)}
+          renderExpandedRows={renderExpandedInventoryRows}
+          rowClassName={(item) => expanded.has(item.product_id) ? "select-none bg-muted/20" : "select-none"}
+          minWidth={showCosts ? 900 : 700}
+          stickyOffset="var(--data-table-sticky-offset)"
+          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+          showFooterPagination={false}
+          pagination={{
+            page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+          }}
+        />
+      </div>
 
       {/* ── Cards — móvil ────────────────────────────────────────── */}
       <div className="space-y-3 md:hidden">
@@ -1041,7 +1067,7 @@ export default function InventoryPage() {
 
       {/* Paginación */}
       {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between md:hidden">
           <p className="text-sm text-muted-foreground order-2 sm:order-1">
             {total} producto{total !== 1 ? "s" : ""} · página {page} de {totalPages}
           </p>

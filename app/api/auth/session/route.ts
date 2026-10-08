@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
+import { hasValidRequestOrigin } from "@/lib/request-origin";
 
 const sql = neon(process.env.DATABASE_URL!);
 const SESSION_COOKIE = "hikonta_auth";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 5;
-
-function hasValidOrigin(request: NextRequest) {
-  return request.headers.get("origin") === request.nextUrl.origin;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +29,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!hasValidOrigin(request)) {
+  if (!hasValidRequestOrigin(request)) {
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
   }
 
@@ -93,7 +90,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!hasValidOrigin(request)) {
+  if (!hasValidRequestOrigin(request)) {
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
   }
 

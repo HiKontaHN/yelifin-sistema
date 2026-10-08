@@ -4,13 +4,14 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
+import { hasValidRequestOrigin } from "@/lib/request-origin";
 
 const sql = neon(process.env.DATABASE_URL!);
 const SESSION_COOKIE = "hikonta_auth";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 5;
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get("origin") !== req.nextUrl.origin) {
+  if (!hasValidRequestOrigin(req)) {
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
   }
 

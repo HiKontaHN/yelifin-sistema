@@ -1,7 +1,8 @@
 ﻿"use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import { Fab } from "@/components/ui/fab";
@@ -10,12 +11,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Pagination, PaginationContent, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
+  DataTableTimeSection, DATA_TABLE_PAGE_SIZE_OPTIONS, DEFAULT_DATA_TABLE_PAGE_SIZE,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -246,6 +244,13 @@ export default function SalesPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { format } = useCurrency();
+  const timezone = useTimezone();
+  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  }), [timezone]);
+  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
+    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
+  }), [timezone]);
   const { show_profit: showProfit, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("SALES");
 
   // Filtros restaurados desde la URL — así, al volver del detalle de una
@@ -262,7 +267,10 @@ export default function SalesPage() {
     const p = Number(searchParams.get("page"));
     return Number.isInteger(p) && p > 0 ? p : 1;
   });
-  const pageLimit = 15;
+  const [pageSize, setPageSize] = useState(() => {
+    const value = Number(searchParams.get("pageSize"));
+    return DATA_TABLE_PAGE_SIZE_OPTIONS.some((size) => size === value) ? value : DEFAULT_DATA_TABLE_PAGE_SIZE;
+  });
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -288,15 +296,16 @@ export default function SalesPage() {
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (page > 1) params.set("page", String(page));
+    if (pageSize !== DEFAULT_DATA_TABLE_PAGE_SIZE) params.set("pageSize", String(pageSize));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [preset, dateFrom, dateTo, paymentFilter, accountFilter, debouncedSearch, statusFilter, page, pathname, replace]);
+  }, [preset, dateFrom, dateTo, paymentFilter, accountFilter, debouncedSearch, statusFilter, page, pageSize, pathname, replace]);
 
   // Delete
   const [deletingSale,   setDeletingSale]   = useState<Sale | null>(null);
   const { deleteSale,    isDeleting }       = useDeleteSale();
 
-  const { sales, stats, total, totalPages, isLoading, mutate } = useSales({
+  const { sales, stats, total, isLoading, mutate } = useSales({
     preset,
     from:       dateFrom    || undefined,
     to:         dateTo      || undefined,
@@ -305,7 +314,7 @@ export default function SalesPage() {
     status:     statusFilter !== "all" ? statusFilter : undefined,
     account_id: accountFilter !== "all" ? accountFilter : undefined,
     page,
-    limit:      pageLimit,
+    limit:      pageSize,
   });
 
   const { accounts } = useAccounts();
@@ -360,6 +369,144 @@ export default function SalesPage() {
     } catch (err: any) {
       toast.error(err.message || "Error al anular la venta");
     }
+  };
+
+  const saleColumns: DataTableTimeSectionColumn<Sale>[] = [
+    {
+      id: "number", header: "Número", width: "clamp(7rem, 10vw, 8rem)",
+      cell: (sale) => <span className="block truncate font-mono font-medium" title={sale.sale_number}>{sale.sale_number}</span>,
+    },
+    {
+      id: "customer", header: "Cliente", width: "clamp(6rem, 12vw, 9rem)",
+      cell: (sale) => <span className={`block whitespace-normal break-words leading-snug ${sale.customer_name ? "" : "text-muted-foreground"}`} title={sale.customer_name ?? "Anónimo"}>{sale.customer_name ?? "Anónimo"}</span>,
+    },
+    {
+      id: "status", header: "Estado", width: "clamp(7rem, 11vw, 8.5rem)",
+      cell: (sale) => sale.status === "PENDING" ? (
+        <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline"><Clock className="size-3" /> Pendiente</Badge>
+      ) : sale.status === "CANCELLED" ? (
+        <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline"><XCircle className="size-3" /> Cancelada</Badge>
+      ) : (
+        <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline"><CheckCircle className="size-3" /> Completada</Badge>
+      ),
+    },
+    {
+      id: "products", header: "Productos", width: "clamp(6rem, 9vw, 7rem)",
+      cell: (sale) => <Badge variant="secondary">{sale.items_count} {sale.items_count === 1 ? "producto" : "productos"}</Badge>,
+    },
+    {
+      id: "account", header: "Cuenta", width: "clamp(5rem, 8vw, 7rem)", className: "text-sm text-muted-foreground",
+      cell: (sale) => <span className="block truncate" title={sale.account_name ?? undefined}>{sale.account_name ?? "—"}</span>,
+    },
+    {
+      id: "tax", header: "ISV", width: 52, align: "right",
+      cell: (sale) => getTaxRate(sale.tax_rate) > 0
+        ? <Badge className="bg-amber-100 text-amber-700 border-amber-200" variant="outline">{getTaxRate(sale.tax_rate)}%</Badge>
+        : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      id: "total", header: "Total", width: 96, align: "right", className: "font-medium",
+      cell: (sale) => format(Number(sale.total)),
+    },
+  ];
+  if (showProfit) saleColumns.push({
+    id: "profit", header: "Ganancia", width: 96, align: "right",
+    cell: (sale) => sale.status === "COMPLETED"
+      ? <span className="font-medium text-green-600">{format(Number((sale.net_profit ?? 0) - sale.discount))}</span>
+      : <span className="text-xs text-muted-foreground">—</span>,
+  });
+  saleColumns.push({
+    id: "actions", header: <span className="sr-only">Acciones</span>, width: 44, align: "right", stopRowClick: true,
+    cell: (sale) => sale.status === "PENDING"
+      ? <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
+      : sale.status === "COMPLETED"
+        ? <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
+        : null,
+  });
+
+  const renderSaleDate = (_key: string, rows: readonly Sale[]) => {
+    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].sold_at));
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
+    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
+    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+  };
+
+  const renderMobileSale = (sale: Sale) => {
+    const payment     = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
+    const PayIcon     = payment.icon;
+    const taxRate     = getTaxRate(sale.tax_rate);
+    const isPending   = sale.status === "PENDING";
+    const isCancelled = sale.status === "CANCELLED";
+    return (
+      <Card
+        key={sale.id}
+        className={`pt-1 pb-1 cursor-pointer active:scale-[0.99] transition-transform ${
+          isPending ? "border-amber-200 bg-amber-50/30 dark:bg-amber-950/10"
+          : isCancelled ? "opacity-60" : ""
+        }`}
+        onClick={() => push(`/sales/${sale.id}`)}
+      >
+        <CardContent className="px-4 py-3">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="font-mono text-sm font-semibold">{sale.sale_number}</p>
+                {isPending && (
+                  <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">
+                    <Clock className="size-2.5" /> Pendiente
+                  </Badge>
+                )}
+                {isCancelled && (
+                  <Badge className="text-[10px] px-1.5 py-0 bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
+                    <XCircle className="size-2.5" /> Cancelada
+                  </Badge>
+                )}
+                {taxRate > 0 && (
+                  <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
+                    ISV {taxRate}%
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                {sale.customer_name ?? "Anónimo"}
+              </p>
+            </div>
+            {isPending ? (
+              <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
+            ) : isCancelled ? (
+              <Badge variant="outline" className="gap-1 text-xs shrink-0">
+                <PayIcon className="size-3" /> {sale.account_name}
+              </Badge>
+            ) : (
+              <div className="flex items-center gap-1 shrink-0">
+                <Badge variant="outline" className="gap-1 text-xs">
+                  <PayIcon className="size-3" /> {sale.account_name}
+                </Badge>
+                <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
+              </div>
+            )}
+          </div>
+          <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && !isCancelled && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-0.5">Productos</p>
+              <p className="text-sm font-semibold">{sale.items_count}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
+              <p className="text-sm font-bold truncate">{format(Number(sale.total))}</p>
+            </div>
+            {!isPending && !isCancelled && showProfit && (
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-0.5">Ganancia</p>
+                <p className="text-sm font-bold text-green-600 truncate">
+                  {format(Number((sale.net_profit ?? 0) - sale.discount))}
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -491,266 +638,30 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* Cards móvil */}
-      <div className="space-y-2 lg:hidden">
-        {isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />) /* skeleton - index key ok */
-        ) : sales.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Receipt className="size-10 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">No se encontraron ventas</p>
-            </CardContent>
-          </Card>
-        ) : (
-          sales.map((sale) => {
-            const payment     = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
-            const PayIcon     = payment.icon;
-            const taxRate     = getTaxRate(sale.tax_rate);
-            const isPending   = sale.status === "PENDING";
-            const isCancelled = sale.status === "CANCELLED";
-            return (
-              <Card
-                key={sale.id}
-                className={`pt-1 pb-1 cursor-pointer active:scale-[0.99] transition-transform ${
-                  isPending ? "border-amber-200 bg-amber-50/30 dark:bg-amber-950/10"
-                  : isCancelled ? "opacity-60" : ""
-                }`}
-                onClick={() => push(`/sales/${sale.id}`)}
-              >
-                <CardContent className="px-4 py-3">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="font-mono text-sm font-semibold">{sale.sale_number}</p>
-                        {isPending && (
-                          <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">
-                            <Clock className="size-2.5" /> Pendiente
-                          </Badge>
-                        )}
-                        {isCancelled && (
-                          <Badge className="text-[10px] px-1.5 py-0 bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
-                            <XCircle className="size-2.5" /> Cancelada
-                          </Badge>
-                        )}
-                        {taxRate > 0 && (
-                          <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
-                            ISV {taxRate}%
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {sale.customer_name ?? "Anónimo"} · {formatDateOnly(sale.sold_at)}
-                      </p>
-                    </div>
-                    {isPending ? (
-                      <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
-                    ) : isCancelled ? (
-                      <Badge variant="outline" className="gap-1 text-xs shrink-0">
-                        <PayIcon className="size-3" /> {(sale as any).account_name}
-                      </Badge>
-                    ) : (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Badge variant="outline" className="gap-1 text-xs">
-                          <PayIcon className="size-3" /> {(sale as any).account_name}
-                        </Badge>
-                        <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
-                      </div>
-                    )}
-                  </div>
-                  <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && !isCancelled && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Productos</p>
-                      <p className="text-sm font-semibold">{sale.items_count}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
-                      <p className="text-sm font-bold truncate">{format(Number(sale.total))}</p>
-                    </div>
-                    {!isPending && !isCancelled && showProfit && (
-                      <div>
-                        <p className="text-[10px] text-muted-foreground mb-0.5">Ganancia</p>
-                        <p className="text-sm font-bold text-green-600 truncate">
-                          {format(Number((sale.net_profit ?? 0) - sale.discount))}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      {/* Tabla desktop */}
-      <Card className="hidden lg:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Número</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Productos</TableHead>
-                <TableHead>Método</TableHead>
-                <TableHead>Cuenta</TableHead>
-                <TableHead className="text-right">ISV</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                {showProfit && <TableHead className="text-right">Ganancia</TableHead>}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                /* skeleton - index key ok */
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: showProfit ? 11 : 10 }).map((__, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : sales.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={showProfit ? 11 : 10} className="text-center py-12 text-muted-foreground">
-                    Aún no se han registrado ventas en este período
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sales.map((sale) => {
-                  const payment     = paymentConfig[sale.payment_method] ?? paymentConfig.OTHER;
-                  const PayIcon     = payment.icon;
-                  const taxRate     = getTaxRate(sale.tax_rate);
-                  const isPending   = sale.status === "PENDING";
-                  const isCancelled = sale.status === "CANCELLED";
-                  return (
-                    <TableRow
-                      key={sale.id}
-                      className={`cursor-pointer hover:bg-muted/50 ${
-                        isPending ? "bg-amber-50/30 dark:bg-amber-950/10"
-                        : isCancelled ? "opacity-60" : ""
-                      }`}
-                      onClick={() => push(`/sales/${sale.id}`)}
-                    >
-                      <TableCell className="font-medium font-mono">{sale.sale_number}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{formatDateOnly(sale.sold_at)}</TableCell>
-                      <TableCell>{sale.customer_name ?? <span className="text-muted-foreground">Anónimo</span>}</TableCell>
-                      <TableCell>
-                        {isPending ? (
-                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">
-                            <Clock className="size-3" /> Pendiente
-                          </Badge>
-                        ) : isCancelled ? (
-                          <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline">
-                            <XCircle className="size-3" /> Cancelada
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline">
-                            <CheckCircle className="size-3" /> Completada
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {sale.items_count} {sale.items_count === 1 ? "producto" : "productos"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="gap-1">
-                          <PayIcon className="size-3" /> {payment.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {(sale as any).account_name ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {taxRate > 0
-                          ? <Badge className="bg-amber-100 text-amber-700 border-amber-200" variant="outline">{taxRate}%</Badge>
-                          : <span className="text-muted-foreground text-sm">—</span>
-                        }
-                      </TableCell>
-                      <TableCell className="text-right font-medium">{format(Number(sale.total))}</TableCell>
-                      {showProfit && (
-                        <TableCell className="text-right">
-                          {isPending || isCancelled
-                            ? <span className="text-muted-foreground text-xs">—</span>
-                            : <span className="text-green-600 font-medium">{format(Number((sale.net_profit ?? 0) - sale.discount))}</span>
-                          }
-                        </TableCell>
-                      )}
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        {isPending ? (
-                          <PendingActions saleId={sale.id} onMutate={mutate} canEdit={canEdit} />
-                        ) : !isCancelled ? (
-                          <CompletedActions sale={sale} onDeleteRequest={setDeletingSale} canDelete={canDelete} />
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Paginación */}
-      {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-sm text-muted-foreground order-2 sm:order-1">
-            {total} venta{total !== 1 ? "s" : ""} · página {page} de {totalPages}
-          </p>
-          <Pagination className="order-1 sm:order-2 w-auto mx-0 justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((p) =>
-                  p === 1 || p === totalPages ||
-                  (p >= page - 1 && p <= page + 1)
-                )
-                .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "…" ? (
-                    <PaginationItem key={`ellipsis-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        isActive={p === page}
-                        onClick={() => setPage(p as number)}
-                        className="cursor-pointer"
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
+      <DataTableTimeSection
+        columns={saleColumns}
+        data={sales}
+        getRowKey={(sale) => sale.id}
+        getGroupKey={(sale) => dateKeyFormatter.format(new Date(sale.sold_at))}
+        renderGroupHeader={renderSaleDate}
+        renderMobileRow={renderMobileSale}
+        onRowClick={(sale) => push(`/sales/${sale.id}`)}
+        rowClassName={(sale) => sale.status === "PENDING"
+          ? "bg-amber-50/30 dark:bg-amber-950/10"
+          : sale.status === "CANCELLED" ? "opacity-60" : undefined}
+        pagination={{
+          page, pageSize, total, onPageChange: setPage,
+          onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+        }}
+        hideFooterPaginationOnDesktop
+        recordLabel={total === 1 ? "venta" : "ventas"}
+        ariaLabel="Ventas"
+        isLoading={isLoading}
+        emptyState={<div className="flex flex-col items-center gap-3"><Receipt className="size-10 text-muted-foreground/40" /><span>No se encontraron ventas en este período</span></div>}
+        minWidth={showProfit ? 820 : 730}
+        stickyOffset="var(--data-table-sticky-offset)"
+        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+      />
 
       <Fab actions={[{ label: "Nueva venta", icon: ShoppingCart, onClick: () => push("/sales/new") }]} />
 

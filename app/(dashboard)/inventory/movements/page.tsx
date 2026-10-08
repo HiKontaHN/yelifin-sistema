@@ -1,7 +1,7 @@
 ﻿// app/(dashboard)/inventory/movements/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,6 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   ArrowDownCircle, ArrowUpCircle, Package, Layers,
   SlidersHorizontal, X, TrendingUp, TrendingDown, BoxIcon,
@@ -28,6 +25,8 @@ import {
   PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
 } from "@/components/ui/pagination";
 import { SearchBar } from "@/components/shared/search-bar";
+import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import {
   DateRangePicker,
@@ -350,13 +349,20 @@ function MobileDetail({ m, format, showCosts, showProfit }: { m: Movement; forma
 
 export default function MovementsPage() {
   const { push } = useRouter();
+  const timezone = useTimezone();
+  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  }), [timezone]);
+  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
+    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
+  }), [timezone]);
 
   const [search,        setSearch]        = useState("");
   const [dateRange,     setDateRange]     = useState<DateRangeValue>(currentMonthRange);
   const [productId,     setProductId]     = useState<number | undefined>();
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [page,          setPage]          = useState(1);
-  const pageLimit       = 10;
+  const [pageSize,      setPageSize]      = useState(10);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -372,7 +378,7 @@ export default function MovementsPage() {
     search:     debouncedSearch || undefined,
     type:       typeFilter !== "all" ? typeFilter : undefined,
     page,
-    limit:      pageLimit,
+    limit:      pageSize,
   });
 
   const { products }              = useProducts();
@@ -382,6 +388,21 @@ export default function MovementsPage() {
   const format = (v: number | null | undefined): string => {
     if (v == null) return "—";
     return formatCurrency(Number(v));
+  };
+
+  const columns: DataTableTimeSectionColumn<Movement>[] = [
+    { id: "product", header: "Producto", width: "clamp(12rem, 20vw, 16rem)", cell: (m) => <ProductCell m={m} /> },
+    { id: "type", header: "Tipo", width: "clamp(7rem, 12vw, 9rem)", cell: (m) => <TypeBadge m={m} /> },
+    { id: "quantity", header: "Cant.", width: 72, className: "font-medium tabular-nums", cell: (m) => m.quantity },
+    { id: "detail", header: "Detalle", cell: (m) => <MovementDetail m={m} format={format} showCosts={showCosts} /> },
+    ...(showCosts ? [{ id: "total", header: "Total", width: 110, align: "right" as const, cell: (m: Movement) => <MovementTotal m={m} format={format} /> }] : []),
+    ...(showProfit ? [{ id: "profit", header: "Ganancia", width: 110, align: "right" as const, cell: (m: Movement) => <MovementProfit m={m} format={format} /> }] : []),
+  ];
+  const renderMovementDate = (_key: string, rows: readonly Movement[]) => {
+    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].created_at));
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
+    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
+    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
   };
 
   const defaultRange = currentMonthRange();
@@ -463,55 +484,30 @@ export default function MovementsPage() {
       </div>
 
       {/* ── Tabla — desktop ──────────────────────────────────────── */}
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Producto</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Cant.</TableHead>
-                <TableHead>Detalle</TableHead>
-                {showCosts  && <TableHead className="text-right">Total</TableHead>}
-                {showProfit && <TableHead className="text-right">Ganancia</TableHead>}
-                <TableHead>Fecha</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                /* skeleton - index key ok */
-                Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 5 + (showCosts ? 1 : 0) + (showProfit ? 1 : 0) }).map((_, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : movements.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5 + (showCosts ? 1 : 0) + (showProfit ? 1 : 0)} className="text-center py-12 text-muted-foreground">
-                    No hay movimientos en este período
-                  </TableCell>
-                </TableRow>
-              ) : (
-                movements.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell><ProductCell m={m} /></TableCell>
-                    <TableCell><TypeBadge m={m} /></TableCell>
-                    <TableCell className="font-medium">{m.quantity}</TableCell>
-                    <TableCell><MovementDetail m={m} format={format} showCosts={showCosts} /></TableCell>
-                    {showCosts  && <TableCell className="text-right"><MovementTotal m={m} format={format} /></TableCell>}
-                    {showProfit && <TableCell className="text-right"><MovementProfit m={m} format={format} /></TableCell>}
-                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                      {formatDateOnly(m.created_at)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="hidden md:block">
+        <DataTableTimeSection
+          columns={columns}
+          data={movements}
+          getRowKey={(movement) => movement.id}
+          getGroupKey={(movement) => dateKeyFormatter.format(new Date(movement.created_at))}
+          renderGroupHeader={renderMovementDate}
+          isLoading={isLoading}
+          emptyState="No hay movimientos en este período"
+          recordLabel={total === 1 ? "movimiento" : "movimientos"}
+          ariaLabel="Movimientos de inventario"
+          minWidth={showCosts && showProfit ? 860 : showCosts || showProfit ? 750 : 640}
+          stickyOffset="var(--data-table-sticky-offset)"
+          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+          showFooterPagination={false}
+          pagination={{
+            page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+          }}
+        />
+      </div>
 
       {/* ── Cards — móvil ────────────────────────────────────────── */}
       <div className="space-y-3 md:hidden">
@@ -568,7 +564,7 @@ export default function MovementsPage() {
 
       {/* Paginación */}
       {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between md:hidden">
           <p className="text-sm text-muted-foreground order-2 sm:order-1">
             {total} movimiento{total !== 1 ? "s" : ""} · página {page} de {totalPages}
           </p>

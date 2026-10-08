@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { adminAuth } from "@/lib/firebase-admin";
+import { withDevelopmentCors } from "@/lib/request-origin";
 
 const PUBLIC_PATHS = ["", "/login", "/register", "/forgot-password"];
 const AUTH_ONLY_PATHS = ["/verify-email", "/onboarding"];
@@ -116,23 +117,31 @@ export async function proxy(request: NextRequest) {
   // (login, register) aplican además su propio límite más estricto dentro
   // del route handler. In-memory por instancia — ver lib/rate-limit.ts.
   if (pathname.startsWith("/api")) {
+    // Responder el preflight sin consumir el límite ni requerir una sesión.
+    if (process.env.NODE_ENV === "development" && request.method === "OPTIONS") {
+      return withDevelopmentCors(request, new NextResponse(null, { status: 204 }));
+    }
+
     const { allowed, retryAfterSec } = rateLimit(
       `api:${getClientIP(request)}`,
       300,
       60 * 1000, // 300 solicitudes por minuto por IP
     );
     if (!allowed) {
-      return NextResponse.json(
-        { error: "Demasiadas solicitudes. Intenta de nuevo en unos segundos." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(retryAfterSec) },
-        },
+      return withDevelopmentCors(
+        request,
+        NextResponse.json(
+          { error: "Demasiadas solicitudes. Intenta de nuevo en unos segundos." },
+          {
+            status: 429,
+            headers: { "Retry-After": String(retryAfterSec) },
+          },
+        ),
       );
     }
     const response = NextResponse.next();
     if (request.cookies.has("token")) clearLegacyTokenCookie(response);
-    return response;
+    return withDevelopmentCors(request, response);
   }
 
   if (
