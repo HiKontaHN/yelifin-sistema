@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
   Search, Receipt, Banknote, CreditCard, ArrowLeftRight,
-  TrendingUp, DollarSign, ShoppingCart, HelpCircle, X,
+  TrendingUp, Wallet, ShoppingCart, HelpCircle, X,
   CheckCircle, XCircle, Clock, Pencil, MoreVertical, Trash2,
 } from "lucide-react";
 import {
@@ -534,57 +534,59 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* Stats — "Ventas" es hidden en móvil (sm:block), así que el conteo de
-          columnas depende de showProfit para no dejar espacio vacío:
-          móvil = Ingresos [+ Ganancia]; desktop = Ventas + Ingresos [+ Ganancia] */}
-      <div className={`grid gap-2 sm:gap-3 ${showProfit ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>
-        <Card className="hidden sm:block pt-1 pb-1">
-          <CardContent className="pl-3.5 py-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-muted-foreground">Ventas</span>
-              <ShoppingCart className="size-3.5 text-muted-foreground shrink-0" />
-            </div>
-            {isLoading ? <Skeleton className="h-6 w-12" /> : (
-              <div className="flex items-baseline gap-1.5">
-                <p className="text-lg font-bold">{stats.completed_count}</p>
-                {stats.pending_count > 0 && <span className="text-xs text-amber-600">{stats.pending_count} pend.</span>}
-              </div>
+      {/* En móvil el conteo permanece en el título; los montos van centrados. */}
+      <dl
+        aria-label="Resumen de ventas"
+        aria-busy={isLoading}
+        className={`grid py-3 sm:py-4 ${showProfit ? "grid-cols-2 sm:max-w-4xl sm:grid-cols-3" : "grid-cols-1 sm:max-w-2xl sm:grid-cols-2"}`}
+      >
+        <div className="hidden min-w-0 space-y-2 px-4 py-4 sm:block sm:pr-8">
+          <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
+            Ventas
+          </dt>
+          <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            {isLoading ? <Skeleton className="h-8 w-12" /> : (
+              <>
+                <span className="text-2xl font-bold tabular-nums tracking-tight">{stats.completed_count}</span>
+                {stats.pending_count > 0 && <span className="text-sm text-amber-600 dark:text-amber-400">{stats.pending_count} pend.</span>}
+              </>
             )}
-          </CardContent>
-        </Card>
-        <Card className="pt-2 pb-2">
-          <CardContent className="pl-3.5 py-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-muted-foreground">Ingresos</span>
-              <DollarSign className="size-3.5 text-muted-foreground shrink-0" />
-            </div>
+          </dd>
+        </div>
+        <div className="min-w-0 space-y-2 px-3 py-3 text-center sm:border-l sm:px-8 sm:py-4 sm:text-left">
+          <dt className="flex items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-start">
+            <Wallet className="size-4 shrink-0" aria-hidden="true" />
+            Ingresos
+          </dt>
+          <dd className="flex justify-center sm:justify-start">
             {isLoading
-              ? <Skeleton className="h-6 w-20" />
-              : <p className="text-base font-bold sm:text-lg truncate">{format(stats.total_revenue)}</p>
+              ? <Skeleton className="h-7 w-28 sm:h-8" />
+              : <span className="min-w-0 max-w-full break-words text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{format(stats.total_revenue)}</span>
             }
-          </CardContent>
-        </Card>
+          </dd>
+        </div>
         {showProfit && (
-          <Card className="pt-2 pb-2">
-            <CardContent className="pl-3.5 py-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-muted-foreground">Ganancia</span>
-                <TrendingUp className="size-3.5 text-muted-foreground shrink-0" />
-              </div>
-              {isLoading ? <Skeleton className="h-6 w-20" /> : (
-                <div className="flex items-baseline gap-1.5">
-                  <p className="text-base font-bold text-green-600 sm:text-lg truncate">{format(stats.total_profit ?? 0)}</p>
+          <div className="min-w-0 space-y-2 border-l px-3 py-3 text-center sm:px-8 sm:py-4 sm:text-left">
+            <dt className="flex items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-start">
+              <TrendingUp className="size-4 shrink-0" aria-hidden="true" />
+              Ganancia
+            </dt>
+            <dd className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 sm:justify-start">
+              {isLoading ? <Skeleton className="h-7 w-28 sm:h-8" /> : (
+                <>
+                  <span className="min-w-0 max-w-full break-words text-xl font-bold tabular-nums tracking-tight text-green-600 sm:text-2xl dark:text-green-400">{format(stats.total_profit ?? 0)}</span>
                   {stats.total_revenue > 0 && (
-                    <span className="text-xs text-muted-foreground shrink-0">
+                    <span className="text-sm tabular-nums text-muted-foreground">
                       {(((stats.total_profit ?? 0) / stats.total_revenue) * 100).toFixed(0)}%
                     </span>
                   )}
-                </div>
+                </>
               )}
-            </CardContent>
-          </Card>
+            </dd>
+          </div>
         )}
-      </div>
+      </dl>
 
       {/* Filtros */}
       <div className="space-y-2">
