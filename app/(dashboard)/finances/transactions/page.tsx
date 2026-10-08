@@ -19,17 +19,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, SlidersHorizontal,
   TrendingUp, TrendingDown, MoreVertical, Pencil, Trash2, CreditCard,
   Banknote, Building2, Wallet,
 } from "lucide-react";
-import {
-  Pagination, PaginationContent, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -48,8 +41,13 @@ import { EditTransactionModal } from "@/components/transactions/edit-transaction
 import { PurchaseDetailDialog } from "@/components/products/purchase-detail-dialog";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar";
+import {
+  DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (d: string) =>
@@ -178,6 +176,13 @@ export default function TransactionsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
+  const timezone = useTimezone();
+  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  }), [timezone]);
+  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
+    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
+  }), [timezone]);
   const now = new Date();
 
   // Filtros restaurados desde la URL — "volver" desde /sales/[id] (cuando
@@ -210,7 +215,7 @@ export default function TransactionsPage() {
     const p = Number(searchParams.get("page"));
     return Number.isInteger(p) && p > 0 ? p : 1;
   });
-  const pageLimit = 15;
+  const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const debouncedSearch = useDebounce(search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
@@ -354,8 +359,13 @@ export default function TransactionsPage() {
 
   // ── Paginación client-side de rows ─────────────────────────────────
   const totalRows = rows.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageLimit));
-  const pagedRows = rows.slice((page - 1) * pageLimit, page * pageLimit);
+  const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
+  const renderTransactionDate = (_key: string, groupedRows: readonly Row[]) => {
+    const parts = dateTitleFormatter.formatToParts(new Date(groupedRows[0].data.occurred_at));
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
+    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
+    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+  };
 
   const PIE_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#f97316", "#14b8a6"];
 
@@ -433,7 +443,7 @@ export default function TransactionsPage() {
   const isEditable = (t: Transaction) => t.reference_type === "OTHER" || !t.reference_type;
 
   // ── Row renderers ──────────────────────────────────────────────────
-  const renderMobileCard = (row: Row, i: number) => {
+  const renderMobileCard = (row: Row) => {
     if (row._src === "account") {
       const t = row.data;
       const cfg = TYPE_CONFIG[t.type];
@@ -442,7 +452,6 @@ export default function TransactionsPage() {
       const isCancelled = !!t.deleted_at;
       return (
         <Card
-          key={`acc-${t.id}`}
           className={`pt-3 pb-2.5 ${isCancelled ? "opacity-60" : ""} ${clickable ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}`}
           onClick={() => handleTransactionClick(t)}
         >
@@ -461,7 +470,6 @@ export default function TransactionsPage() {
                       {t.account_name}
                       {t.to_account_name && <span> → {t.to_account_name}</span>}
                     </p>
-                    <p className="text-xs text-muted-foreground">{formatDate(t.occurred_at)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ActionsMenu t={t} isEditable={isEditable} onEdit={setEditingTx} onDelete={setDeletingTx} canEdit={canEdit} canDelete={canDelete} />
@@ -494,7 +502,7 @@ export default function TransactionsPage() {
     const Icon = cfg.icon;
     const isUsd = t.currency === "USD";
     return (
-      <Card key={`cc-${t.id}`} className="pt-3 pb-2.5">
+      <Card className="pt-3 pb-2.5">
         <CardContent className="pl-3.5">
           <div className="flex items-start gap-3">
             <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -509,7 +517,6 @@ export default function TransactionsPage() {
                   <p className="text-xs text-muted-foreground truncate">
                     {t.card_name}{t.last_four ? ` ···· ${t.last_four}` : ""}
                   </p>
-                  <p className="text-xs text-muted-foreground">{formatDate(t.occurred_at)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`text-sm font-bold ${cfg.color}`}>
@@ -536,107 +543,90 @@ export default function TransactionsPage() {
     );
   };
 
-  const renderDesktopRow = (row: Row) => {
-    if (row._src === "account") {
-      const t = row.data;
-      const cfg = TYPE_CONFIG[t.type];
-      const Icon = cfg.icon;
-      const clickable = (t.reference_type === "SALE" || isPurchaseRef(t)) && t.reference_id;
-      const isCancelled = !!t.deleted_at;
-      return (
-        <TableRow
-          key={`acc-${t.id}`}
-          className={`${isCancelled ? "opacity-60" : ""} ${clickable ? "cursor-pointer hover:bg-muted/50" : ""}`}
-          onClick={() => handleTransactionClick(t)}
-        >
-          <TableCell>
-            {isCancelled ? (
-              <Badge className="gap-1 bg-destructive/10 text-destructive border-destructive/30" variant="outline">
-                {cfg.label} · Cancelada
-              </Badge>
-            ) : (
-              <Badge className={`gap-1 ${cfg.badge}`} variant="outline">
-                <Icon className="size-3" />
-                {cfg.label}
-              </Badge>
-            )}
-          </TableCell>
-          <TableCell className={`max-w-48 truncate text-sm ${isCancelled ? "line-through" : ""}`}>
-            {t.description || "—"}
-          </TableCell>
-          <TableCell className="text-sm">
-            {t.account_name}
-            {t.to_account_name && (
-              <span className="text-muted-foreground"> → {t.to_account_name}</span>
-            )}
-          </TableCell>
-          <TableCell>
-            <Badge variant="secondary" className="text-xs">
-              {REF_LABELS[t.reference_type ?? "OTHER"] ?? "Manual"}
+  const transactionColumns: DataTableTimeSectionColumn<Row>[] = [
+    {
+      id: "type", header: "Tipo", width: 138,
+      cell: (row) => {
+        if (row._src === "account") {
+          const transaction = row.data;
+          const config = TYPE_CONFIG[transaction.type];
+          const Icon = config.icon;
+          return transaction.deleted_at ? (
+            <Badge className="gap-1 border-destructive/30 bg-destructive/10 text-destructive" variant="outline">
+              {config.label} · Cancelada
             </Badge>
-          </TableCell>
-          <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-            {formatDate(t.occurred_at)}
-          </TableCell>
-          <TableCell className={`text-right font-bold ${cfg.color}`}>
-            {cfg.sign}{format(Number(t.amount))}
-          </TableCell>
-          <TableCell>
-            <ActionsMenu t={t} isEditable={isEditable} onEdit={setEditingTx} onDelete={setDeletingTx} canEdit={canEdit} canDelete={canDelete} />
-          </TableCell>
-        </TableRow>
-      );
-    }
-
-    // CC transaction
-    const t = row.data;
-    const cfg = CC_TYPE_CONFIG[t.type];
-    const Icon = cfg.icon;
-    const isUsd = t.currency === "USD";
-    return (
-      <TableRow key={`cc-${t.id}`}>
-        <TableCell>
-          <Badge className={`gap-1 ${cfg.badge}`} variant="outline">
-            <Icon className="size-3" />
-            {cfg.label}
+          ) : (
+            <Badge className={`gap-1 ${config.badge}`} variant="outline"><Icon className="size-3" />{config.label}</Badge>
+          );
+        }
+        const config = CC_TYPE_CONFIG[row.data.type];
+        const Icon = config.icon;
+        return (
+          <Badge className={`gap-1 ${config.badge}`} variant="outline">
+            <Icon className="size-3" />{config.label}
           </Badge>
-        </TableCell>
-        <TableCell className="max-w-48 truncate text-sm">
-          {t.description || "—"}
-        </TableCell>
-        <TableCell className="text-sm">
-          <span className="flex items-center gap-1">
-            <CreditCard className="size-3 text-muted-foreground shrink-0" />
-            {t.card_name}{t.last_four ? ` ···· ${t.last_four}` : ""}
+        );
+      },
+    },
+    {
+      id: "description", header: "Descripción", width: "clamp(11rem, 22vw, 18rem)",
+      className: "text-sm",
+      cell: (row) => {
+        const description = row.data.description || "—";
+        const isCancelled = row._src === "account" && !!row.data.deleted_at;
+        return <span className={cn("block truncate", isCancelled && "line-through")} title={description}>{description}</span>;
+      },
+    },
+    {
+      id: "account", header: "Cuenta / Tarjeta", width: "clamp(10rem, 18vw, 15rem)",
+      className: "text-sm",
+      cell: (row) => row._src === "account" ? (
+        <span>
+          {row.data.account_name}
+          {row.data.to_account_name && <span className="text-muted-foreground"> → {row.data.to_account_name}</span>}
+        </span>
+      ) : (
+        <span className="flex items-center gap-1">
+          <CreditCard className="size-3 shrink-0 text-muted-foreground" />
+          {row.data.card_name}{row.data.last_four ? ` ···· ${row.data.last_four}` : ""}
+        </span>
+      ),
+    },
+    {
+      id: "origin", header: "Origen", width: 145,
+      cell: (row) => (
+        <Badge variant="secondary" className="text-xs">
+          {row._src === "account" ? REF_LABELS[row.data.reference_type ?? "OTHER"] ?? "Manual" : "Tarjeta crédito"}
+        </Badge>
+      ),
+    },
+    {
+      id: "amount", header: "Monto", width: 145, align: "right",
+      cell: (row) => {
+        if (row._src === "account") {
+          const config = TYPE_CONFIG[row.data.type];
+          return <span className={`font-bold ${config.color}`}>{config.sign}{format(Number(row.data.amount))}</span>;
+        }
+        const config = CC_TYPE_CONFIG[row.data.type];
+        const isUsd = row.data.currency === "USD";
+        return (
+          <span className={`font-bold ${config.color}`}>
+            {config.sign}{isUsd ? `$${Number(row.data.amount).toFixed(2)} USD` : format(Number(row.data.amount))}
+            {isUsd && row.data.amount_local != null && (
+              <span className="block text-[10px] font-normal text-muted-foreground">≈ {format(Number(row.data.amount_local))}</span>
+            )}
           </span>
-        </TableCell>
-        <TableCell>
-          <Badge variant="secondary" className="text-xs">
-            Tarjeta crédito
-          </Badge>
-        </TableCell>
-        <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-          {formatDate(t.occurred_at)}
-        </TableCell>
-        <TableCell className={`text-right font-bold ${cfg.color}`}>
-          <span>
-            {cfg.sign}{isUsd
-              ? `$${Number(t.amount).toFixed(2)} USD`
-              : format(Number(t.amount))
-            }
-          </span>
-          {isUsd && t.amount_local != null && (
-            <p className="text-[10px] font-normal text-muted-foreground">
-              ≈ {format(Number(t.amount_local))}
-            </p>
-          )}
-        </TableCell>
-        <TableCell>
-          <div className="w-8" />
-        </TableCell>
-      </TableRow>
-    );
-  };
+        );
+      },
+    },
+    {
+      id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
+      align: "right", stopRowClick: true,
+      cell: (row) => row._src === "account" ? (
+        <ActionsMenu t={row.data} isEditable={isEditable} onEdit={setEditingTx} onDelete={setDeletingTx} canEdit={canEdit} canDelete={canDelete} />
+      ) : <div className="w-8" />,
+    },
+  ];
 
   return (
     <div className="space-y-4 pb-8">
@@ -915,108 +905,39 @@ export default function TransactionsPage() {
         return null;
       })()}
 
-      {/* Cards — móvil */}
-      <div className="space-y-2.5 lg:hidden">
-        {isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-xl" />
-          ))
-        ) : rows.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <SlidersHorizontal className="size-10 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                No hay transacciones en este período
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          pagedRows.map((row, i) => renderMobileCard(row, i))
+      <DataTableTimeSection
+        columns={transactionColumns}
+        data={pagedRows}
+        getRowKey={(row) => row._src === "account" ? `acc-${row.data.id}` : `cc-${row.data.id}`}
+        getGroupKey={(row) => dateKeyFormatter.format(new Date(row.data.occurred_at))}
+        renderGroupHeader={renderTransactionDate}
+        renderMobileRow={(row) => renderMobileCard(row)}
+        onRowClick={(row) => row._src === "account" && handleTransactionClick(row.data)}
+        isRowClickable={(row) => row._src === "account" && (
+          row.data.reference_type === "SALE" || isPurchaseRef(row.data)
         )}
-      </div>
-
-      {/* Tabla — desktop */}
-      <Card className="hidden lg:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Cuenta / Tarjeta</TableHead>
-                <TableHead>Origen</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((__, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                    No hay transacciones en este período
-                  </TableCell>
-                </TableRow>
-              ) : (
-                pagedRows.map((row) => renderDesktopRow(row))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Paginación */}
-      {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-sm text-muted-foreground order-2 sm:order-1">
-            {totalRows} transacción{totalRows !== 1 ? "es" : ""} · página {page} de {totalPages}
-          </p>
-          <Pagination className="order-1 sm:order-2 w-auto mx-0 justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((p) => p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1))
-                .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "…" ? (
-                    <PaginationItem key={`ellipsis-${i}`}><PaginationEllipsis /></PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink isActive={p === page} onClick={() => setPage(p as number)} className="cursor-pointer">
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
+        rowClassName={(row) => row._src === "account" && row.data.deleted_at ? "opacity-60" : undefined}
+        isLoading={isLoading}
+        emptyState={(
+          <div className="flex flex-col items-center justify-center gap-2">
+            <SlidersHorizontal className="size-10 text-muted-foreground/40" />
+            <span>No hay transacciones en este período</span>
+          </div>
+        )}
+        recordLabel={totalRows === 1 ? "transacción" : "transacciones"}
+        ariaLabel="Transacciones"
+        minWidth={930}
+        stickyOffset="var(--data-table-sticky-offset)"
+        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+        showFooterPagination={false}
+        pagination={{
+          page,
+          pageSize,
+          total: totalRows,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+        }}
+      />
 
       {/* FAB */}
       {canEdit && (

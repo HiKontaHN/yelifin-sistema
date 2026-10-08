@@ -8,17 +8,15 @@ import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN, fmtPct } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, ReportSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportTableSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
-import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
 import { DollarSign, Package, TrendingUp, Percent, BarChart3, Receipt } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-
-const PRODUCT_PAGE_SIZE = 10;
 
 export default function ProfitReportPage() {
   return (
@@ -34,11 +32,24 @@ function ProfitReportPageInner() {
   const { firebaseUser }             = useAuth();
   const { summary, byMonth, byProduct, expenses, isLoading } = useProfitReport(from, to);
   const [productPage, setProductPage] = useState(1);
+  const [productPageSize, setProductPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
   const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("REPORTS", "PROFIT");
 
   useEffect(() => { setProductPage(1); }, [from, to]);
 
   const periodLabel = `${new Date(from + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })} — ${new Date(to + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}`;
+
+  const productColumns: DataTableTimeSectionColumn<(typeof byProduct)[number]>[] = [
+    { id: "product", header: "Producto", width: `${76 - (showCosts ? 14 : 0) - (showProfit ? 28 : 0)}%`, cell: (p) => <div className="min-w-0"><p className="truncate font-medium" title={p.product_name}>{p.product_name}</p>{p.sku && <p className="truncate text-xs text-muted-foreground">{p.sku}</p>}</div> },
+    { id: "qty", header: "Cant.", width: "10%", align: "right", className: "text-muted-foreground", cell: (p) => p.qty_sold },
+    { id: "revenue", header: "Ingresos", width: "14%", align: "right", cell: (p) => format(p.revenue) },
+    ...(showCosts ? [{ id: "cost", header: "Costo", width: "14%", align: "right" as const, cell: (p: (typeof byProduct)[number]) => <span className="text-muted-foreground">{format(p.cogs)}</span> }] : []),
+    ...(showProfit ? [
+      { id: "profit", header: "Utilidad", width: "14%", align: "right" as const, cell: (p: (typeof byProduct)[number]) => <span className="font-medium text-green-700 dark:text-green-400">{format(p.profit)}</span> },
+      { id: "margin", header: "Margen", width: "14%", align: "right" as const, cell: (p: (typeof byProduct)[number]) => <Badge variant="outline" className={`text-xs ${p.margin_pct >= 30 ? "border-green-200 text-green-700" : p.margin_pct >= 10 ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"}`}>{fmtPct(p.margin_pct)}</Badge> },
+    ] : []),
+  ];
+  const productRows = byProduct.slice((productPage - 1) * productPageSize, productPage * productPageSize);
 
   // ── Exportación via servidor ──────────────────────────────────────
   const handlePDFExport = async () => {
@@ -132,52 +143,14 @@ function ProfitReportPageInner() {
       {/* By product */}
       {!isLoading && byProduct.length > 0 && (
         <div className="space-y-2">
-          <ReportSection title="Rentabilidad por producto" icon={Package} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Producto</th>
-                    <th className="text-right px-4 py-2">Cant.</th>
-                    <th className="text-right px-4 py-2">Ingresos</th>
-                    {showCosts  && <th className="text-right px-4 py-2 hidden md:table-cell">Costo</th>}
-                    {showProfit && <th className="text-right px-4 py-2">Utilidad</th>}
-                    {showProfit && <th className="text-right px-4 py-2">Margen</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {byProduct
-                    .slice((productPage - 1) * PRODUCT_PAGE_SIZE, productPage * PRODUCT_PAGE_SIZE)
-                    .map((p) => (
-                      <tr key={`${p.product_name}-${p.sku}`} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2.5 font-medium max-w-[200px] truncate">
-                          {p.product_name}
-                          {p.sku && <span className="ml-1 text-xs text-muted-foreground">· {p.sku}</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-muted-foreground">{p.qty_sold}</td>
-                        <td className="px-4 py-2.5 text-right">{format(p.revenue)}</td>
-                        {showCosts  && <td className="px-4 py-2.5 text-right text-muted-foreground hidden md:table-cell">{format(p.cogs)}</td>}
-                        {showProfit && <td className="px-4 py-2.5 text-right font-medium text-green-700 dark:text-green-400">{format(p.profit)}</td>}
-                        {showProfit && (
-                          <td className="px-4 py-2.5 text-right">
-                            <Badge variant="outline" className={`text-xs ${p.margin_pct >= 30 ? "border-green-200 text-green-700" : p.margin_pct >= 10 ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"}`}>
-                              {fmtPct(p.margin_pct)}
-                            </Badge>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
-          <PaginationControls
-            page={productPage}
-            totalPages={Math.ceil(byProduct.length / PRODUCT_PAGE_SIZE)}
-            total={byProduct.length}
-            label="productos"
-            onPageChange={setProductPage}
-          />
+          <ReportTableSection title="Rentabilidad por producto" icon={Package}>
+            <DataTableTimeSection
+              columns={productColumns} data={productRows} getRowKey={(p) => `${p.product_name}-${p.sku}`}
+              pagination={{ page: productPage, pageSize: productPageSize, total: byProduct.length, onPageChange: setProductPage, onPageSizeChange: setProductPageSize }}
+              recordLabel="productos" minWidth="100%" ariaLabel="Rentabilidad por producto"
+              emptyState="No hay productos para mostrar" showFooterPagination={false}
+            />
+          </ReportTableSection>
         </div>
       )}
 

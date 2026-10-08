@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useId, useMemo, useRef, type CSSProperties, type Key, type ReactNode, type UIEvent } from "react";
+import { Fragment, useId, useLayoutEffect, useMemo, useRef, type CSSProperties, type Key, type ReactNode, type UIEvent } from "react";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,11 +46,12 @@ export interface DataTableTimeSectionProps<T> {
   isLoading?: boolean;
   emptyState?: ReactNode;
   onRowClick?: (row: T) => void;
+  isRowClickable?: (row: T) => boolean;
   /** Optional subordinate table rows rendered immediately after each row. */
   renderExpandedRows?: (row: T) => ReactNode;
   rowClassName?: string | ((row: T) => string | undefined);
   stickyHeader?: boolean;
-  /** CSS offset relative to the page's scroll container, including its padding. */
+  /** Relative to the scroll container; defaults to its --data-table-sticky-offset or 0. */
   stickyOffset?: CSSProperties["top"];
   minWidth?: CSSProperties["minWidth"];
   /** Optional card presentation below lg; the renderer owns card interactions. */
@@ -125,11 +126,14 @@ function PageNavigation({
 export function DataTableTimeSection<T>({
   columns, data, getRowKey, getGroupKey, renderGroupHeader, pagination,
   recordLabel = "registros", isLoading = false, emptyState = "No hay registros para mostrar",
-  onRowClick, renderExpandedRows, rowClassName, stickyHeader = true, stickyOffset = 0, minWidth,
+  onRowClick, isRowClickable, renderExpandedRows, rowClassName, stickyHeader = true,
+  stickyOffset = "var(--data-table-sticky-offset, 0px)", minWidth,
   renderMobileRow, className, ariaLabel = "Datos", showFooterPagination = true,
   hideFooterPaginationOnDesktop = false,
 }: DataTableTimeSectionProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const stickyHeaderRef = useRef<HTMLDivElement>(null);
+  const scrollToStartPending = useRef(false);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   const pageSizeId = useId();
@@ -157,10 +161,38 @@ export function DataTableTimeSection<T>({
   };
 
   const changePage = (page: number) => {
+    scrollToStartPending.current = true;
     pagination?.onPageChange(page);
-    rootRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
   };
   const navigation = pagination ? { ...pagination, onPageChange: changePage } : undefined;
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!scrollToStartPending.current || isLoading || !root) return;
+    scrollToStartPending.current = false;
+
+    // Wait for the new rows/page size before scrolling; the old shorter table
+    // can clamp the scroll position and leave the header halfway down the page.
+    const headerTop = stickyHeader && stickyHeaderRef.current
+      ? parseFloat(getComputedStyle(stickyHeaderRef.current).top) || 0
+      : 0;
+    let container = root.parentElement;
+    while (container) {
+      const styles = getComputedStyle(container);
+      if (/(auto|scroll)/.test(styles.overflowY)) {
+        const targetTop = container.getBoundingClientRect().top + container.clientTop
+          + (parseFloat(styles.paddingTop) || 0) + headerTop;
+        container.scrollTo({
+          top: container.scrollTop + root.getBoundingClientRect().top - targetTop,
+          behavior: "instant",
+        });
+        return;
+      }
+      container = container.parentElement;
+    }
+    // Standalone tables can also use the document as their scroll container.
+    window.scrollBy({ top: root.getBoundingClientRect().top - headerTop, behavior: "instant" });
+  }, [data, isLoading, pagination?.page, pagination?.pageSize, stickyHeader]);
 
   const columnWidths = () => (
     <colgroup>
@@ -187,6 +219,7 @@ export function DataTableTimeSection<T>({
   return (
     <div ref={rootRef} data-slot="data-table-time-section" className={cn("space-y-0", className)} aria-busy={isLoading}>
       <div
+        ref={stickyHeaderRef}
         data-slot="data-table-sticky-header"
         className={cn("z-10 bg-background", stickyHeader && "sticky")}
         style={stickyHeader ? { top: stickyOffset } : undefined}
@@ -269,31 +302,34 @@ export function DataTableTimeSection<T>({
                         </TableCell>
                       </TableRow>
                     )}
-                    {group.rows.map((row) => (
-                      <Fragment key={getRowKey(row)}>
-                        <TableRow
-                          className={cn(onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring", typeof rowClassName === "function" ? rowClassName(row) : rowClassName)}
-                          tabIndex={onRowClick ? 0 : undefined}
-                          onClick={onRowClick ? () => onRowClick(row) : undefined}
-                          onKeyDown={onRowClick ? (event) => {
+                    {group.rows.map((row) => {
+                      const clickable = !!onRowClick && (isRowClickable?.(row) ?? true);
+                      return (
+                        <Fragment key={getRowKey(row)}>
+                          <TableRow
+                            className={cn(clickable && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring", typeof rowClassName === "function" ? rowClassName(row) : rowClassName)}
+                            tabIndex={clickable ? 0 : undefined}
+                            onClick={clickable ? () => onRowClick?.(row) : undefined}
+                            onKeyDown={clickable ? (event) => {
                             if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
                               event.preventDefault();
-                              onRowClick(row);
+                                onRowClick?.(row);
                             }
-                          } : undefined}
-                        >
-                          {columns.map((column) => (
-                            <TableCell
-                              key={column.id} className={cn("px-3", alignment[column.align ?? "left"], column.className)}
-                              onClick={column.stopRowClick ? (event) => event.stopPropagation() : undefined}
-                            >
-                              {column.cell(row)}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                        {renderExpandedRows?.(row)}
-                      </Fragment>
-                    ))}
+                            } : undefined}
+                          >
+                            {columns.map((column) => (
+                              <TableCell
+                                key={column.id} className={cn("px-3", alignment[column.align ?? "left"], column.className)}
+                                onClick={column.stopRowClick ? (event) => event.stopPropagation() : undefined}
+                              >
+                                {column.cell(row)}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                          {renderExpandedRows?.(row)}
+                        </Fragment>
+                      );
+                    })}
                   </TableBody>
                 ))}
               </table>

@@ -8,9 +8,9 @@ import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, ReportSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportTableSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
-import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
 import { Calendar, DollarSign, Receipt, TrendingUp, BarChart3, CalendarDays } from "lucide-react";
@@ -29,8 +29,6 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: "bg-green-100 text-green-700 border-green-200",
 };
 
-const EVENT_PAGE_SIZE = 10;
-
 export default function EventsReportPage() {
   return (
     <FeatureGate feature="reports.events">
@@ -45,6 +43,7 @@ function EventsReportPageInner() {
   const { firebaseUser }             = useAuth();
   const { summary, events, isLoading } = useEventsReport(from, to);
   const [eventPage, setEventPage] = useState(1);
+  const [eventPageSize, setEventPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
   const { show_profit: showProfit } = useModulePermissions("REPORTS", "EVENTS");
 
   useEffect(() => { setEventPage(1); }, [from, to]);
@@ -89,6 +88,19 @@ function EventsReportPageInner() {
       utilidad: Number(e.net_profit),
     }))
     .reverse();
+
+  const eventColumns: DataTableTimeSectionColumn<(typeof events)[number]>[] = [
+    { id: "event", header: "Evento", width: showProfit ? "25%" : "41%", cell: (event) => <div className="min-w-0"><p className="truncate font-medium" title={event.name}>{event.name}</p>{event.location && <p className="truncate text-xs text-muted-foreground">{event.location}</p>}</div> },
+    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (event) => <span suppressHydrationWarning>{new Date(event.starts_at).toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}</span> },
+    { id: "sales", header: "Ventas", width: "10%", align: "right", cell: (event) => event.sales_count },
+    { id: "revenue", header: "Ingresos", width: "15%", align: "right", cell: (event) => <span className="font-medium">{format(event.total_revenue)}</span> },
+    ...(showProfit ? [
+      { id: "expenses", header: "Gastos", width: "14%", align: "right" as const, cell: (event: (typeof events)[number]) => <span className="text-muted-foreground">{format(Number(event.fixed_cost) + Number(event.extra_expenses))}</span> },
+      { id: "profit", header: "Utilidad neta", width: "14%", align: "right" as const, cell: (event: (typeof events)[number]) => <span className={`font-semibold ${Number(event.net_profit) >= 0 ? "text-green-700 dark:text-green-400" : "text-destructive"}`}>{Number(event.net_profit) < 0 ? "−" : ""}{format(Math.abs(Number(event.net_profit)))}</span> },
+    ] : []),
+    { id: "status", header: "Estado", width: showProfit ? "6%" : "18%", align: "center", cell: (event) => <Badge className={`${STATUS_COLOR[event.status] ?? ""} border text-xs`}>{STATUS_LABEL[event.status] ?? event.status}</Badge> },
+  ];
+  const eventRows = events.slice((eventPage - 1) * eventPageSize, eventPage * eventPageSize);
 
   return (
     <ReportShell
@@ -141,64 +153,14 @@ function EventsReportPageInner() {
       {/* Events table */}
       {!isLoading && events.length > 0 && (
         <div className="space-y-2">
-          <ReportSection title="Detalle por evento" icon={CalendarDays} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Evento</th>
-                    <th className="text-left px-4 py-2 hidden sm:table-cell">Fecha</th>
-                    <th className="text-right px-4 py-2">Ventas</th>
-                    <th className="text-right px-4 py-2">Ingresos</th>
-                    {showProfit && <th className="text-right px-4 py-2 hidden md:table-cell">Gastos</th>}
-                    {showProfit && <th className="text-right px-4 py-2">Utilidad neta</th>}
-                    <th className="text-left px-4 py-2 hidden lg:table-cell">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events
-                    .slice((eventPage - 1) * EVENT_PAGE_SIZE, eventPage * EVENT_PAGE_SIZE)
-                    .map((e) => (
-                      <tr key={e.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2.5">
-                          <p className="font-medium max-w-[160px] truncate">{e.name}</p>
-                          {e.location && <p className="text-xs text-muted-foreground">{e.location}</p>}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground text-xs hidden sm:table-cell" suppressHydrationWarning>
-                          {new Date(e.starts_at).toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">{e.sales_count}</td>
-                        <td className="px-4 py-2.5 text-right font-medium">{format(e.total_revenue)}</td>
-                        {showProfit && (
-                          <td className="px-4 py-2.5 text-right text-muted-foreground hidden md:table-cell">
-                            {format(Number(e.fixed_cost) + Number(e.extra_expenses))}
-                          </td>
-                        )}
-                        {showProfit && (
-                          <td className="px-4 py-2.5 text-right font-semibold">
-                            <span className={Number(e.net_profit) >= 0 ? "text-green-700 dark:text-green-400" : "text-destructive"}>
-                              {Number(e.net_profit) < 0 ? "-" : ""}{format(Math.abs(Number(e.net_profit)))}
-                            </span>
-                          </td>
-                        )}
-                        <td className="px-4 py-2.5 hidden lg:table-cell">
-                          <Badge className={`${STATUS_COLOR[e.status] ?? ""} border text-xs`}>
-                            {STATUS_LABEL[e.status] ?? e.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
-          <PaginationControls
-            page={eventPage}
-            totalPages={Math.ceil(events.length / EVENT_PAGE_SIZE)}
-            total={events.length}
-            label="eventos"
-            onPageChange={setEventPage}
-          />
+          <ReportTableSection title="Detalle por evento" icon={CalendarDays}>
+            <DataTableTimeSection
+              columns={eventColumns} data={eventRows} getRowKey={(event) => event.id}
+              pagination={{ page: eventPage, pageSize: eventPageSize, total: events.length, onPageChange: setEventPage, onPageSizeChange: setEventPageSize }}
+              recordLabel="eventos" minWidth="100%" ariaLabel="Detalle por evento"
+              emptyState="No hay eventos para mostrar" showFooterPagination={false}
+            />
+          </ReportTableSection>
         </div>
       )}
 

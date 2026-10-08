@@ -7,9 +7,6 @@ import { Button }   from "@/components/ui/button";
 import { Badge }    from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -36,6 +33,10 @@ import { DeleteCustomerDialog }    from "@/components/customers/delete-customer-
 import { LoyaltyPoliciesDialog }   from "@/components/customers/loyalty-policies-dialog";
 import { Fab }                     from "@/components/ui/fab";
 import { SearchBar }               from "@/components/shared/search-bar";
+import {
+  DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import { FeatureGate }             from "@/components/shared/feature-gate";
 import { cn }                      from "@/lib/utils";
 
@@ -51,7 +52,7 @@ function CustomersPageInner() {
   const { push } = useRouter();
   const [search,          setSearch]          = useState("");
   const [page,            setPage]            = useState(1);
-  const pageLimit = 15;
+  const [pageSize,        setPageSize]        = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -60,7 +61,7 @@ function CustomersPageInner() {
   const { customers, stats, total, totalPages, isLoading, mutate } = useCustomers({
     search: debouncedSearch || undefined,
     page,
-    limit: pageLimit,
+    limit: pageSize,
   });
   const { policies } = useLoyaltyPolicies();
   const { format }   = useCurrency();
@@ -70,6 +71,58 @@ function CustomersPageInner() {
   const [loyaltyOpen,     setLoyaltyOpen]     = useState(false);
   const [editCustomer,    setEditCustomer]    = useState<Customer | null>(null);
   const [deleteCustomer,  setDeleteCustomer]  = useState<Customer | null>(null);
+
+  const customerColumns: DataTableTimeSectionColumn<Customer>[] = [
+    {
+      id: "customer", header: "Cliente", width: "clamp(13rem, 25vw, 20rem)",
+      cell: (customer) => {
+        const tier = computeLoyaltyTier(customer, policies);
+        const tierColors = tier ? (TIER_COLOR_CLASSES[tier.color] ?? TIER_COLOR_CLASSES.amber) : null;
+        return (
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
+            <span className="font-medium">{customer.name}</span>
+            {tier && tierColors && (
+              <span className={cn("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium", tierColors.bg, tierColors.text, tierColors.border)}>
+                <Star className="size-2.5" />{tier.tier_name}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "phone", header: "Teléfono", width: "clamp(7rem, 13vw, 10rem)",
+      className: "text-muted-foreground",
+      cell: (customer) => customer.phone ?? "—",
+    },
+    {
+      id: "email", header: "Email", width: "clamp(11rem, 22vw, 16rem)",
+      className: "text-muted-foreground",
+      cell: (customer) => <span className="block truncate" title={customer.email ?? undefined}>{customer.email ?? "—"}</span>,
+    },
+    {
+      id: "orders", header: "Órdenes", width: 85,
+      cell: (customer) => <Badge variant="secondary">{customer.total_orders}</Badge>,
+    },
+    {
+      id: "spent", header: "Total gastado", width: 130, align: "right",
+      className: "font-medium tabular-nums",
+      cell: (customer) => format(Number(customer.total_spent)),
+    },
+    {
+      id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
+      align: "right", stopRowClick: true,
+      cell: (customer) => (
+        <ActionsDropdown
+          onView={() => push(`/customers/${customer.id}`)}
+          onEdit={() => setEditCustomer(customer)}
+          onDelete={() => setDeleteCustomer(customer)}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-5 pb-24">
@@ -119,79 +172,29 @@ function CustomersPageInner() {
       <SearchBar value={search} onChange={setSearch} placeholder="Buscar por nombre, email o teléfono..." />
 
       {/* Tabla — desktop */}
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Teléfono</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Órdenes</TableHead>
-                <TableHead className="text-right">Total gastado</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : customers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                    No se encontraron clientes
-                  </TableCell>
-                </TableRow>
-              ) : (
-                customers.map((customer) => {
-                  const tier       = computeLoyaltyTier(customer, policies);
-                  const tierColors = tier ? (TIER_COLOR_CLASSES[tier.color] ?? TIER_COLOR_CLASSES.amber) : null;
-                  return (
-                    <TableRow
-                      key={customer.id}
-                      className="cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => push(`/customers/${customer.id}`)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium">{customer.name}</span>
-                          {tier && tierColors && (
-                            <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full border", tierColors.bg, tierColors.text, tierColors.border)}>
-                              <Star className="size-2.5" />{tier.tier_name}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{customer.phone ?? "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">{customer.email ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{customer.total_orders}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {format(Number(customer.total_spent))}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <ActionsDropdown
-                          onView={()   => push(`/customers/${customer.id}`)}
-                          onEdit={()   => setEditCustomer(customer)}
-                          onDelete={() => setDeleteCustomer(customer)}
-                          canEdit={canEdit}
-                          canDelete={canDelete}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="hidden md:block">
+        <DataTableTimeSection
+          columns={customerColumns}
+          data={customers}
+          getRowKey={(customer) => customer.id}
+          onRowClick={(customer) => push(`/customers/${customer.id}`)}
+          isLoading={isLoading}
+          emptyState="No se encontraron clientes"
+          recordLabel={total === 1 ? "cliente" : "clientes"}
+          ariaLabel="Clientes"
+          minWidth={760}
+          stickyOffset="var(--data-table-sticky-offset)"
+          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+          showFooterPagination={false}
+          pagination={{
+            page,
+            pageSize,
+            total,
+            onPageChange: setPage,
+            onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
+          }}
+        />
+      </div>
 
       {/* Cards — móvil */}
       <div className="space-y-2 md:hidden">
@@ -258,7 +261,7 @@ function CustomersPageInner() {
 
       {/* Paginación */}
       {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between md:hidden">
           <p className="text-sm text-muted-foreground order-2 sm:order-1">
             {total} cliente{total !== 1 ? "s" : ""} · página {page} de {totalPages}
           </p>

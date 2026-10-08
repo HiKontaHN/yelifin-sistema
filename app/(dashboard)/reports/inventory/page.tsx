@@ -3,14 +3,14 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { useInventoryReport } from "@/hooks/swr/use-reports";
+import { useInventoryReport, type InventoryVelocityItem } from "@/hooks/swr/use-reports";
 import { useCurrency }        from "@/hooks/swr/use-currency";
 import { useAuth }            from "@/hooks/use-auth";
 import { fmtN } from "@/lib/export";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
-import { ReportShell, StatCard, ReportSection } from "@/components/reports/report-shell";
+import { ReportShell, StatCard, ReportSection, ReportTableSection } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
-import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge }    from "@/components/ui/badge";
 import { Button }   from "@/components/ui/button";
@@ -23,9 +23,6 @@ const MOVE_COLOR: Record<string, string> = {
   OUT:    "bg-red-100   text-red-700   border-red-200",
   ADJUST: "bg-amber-100 text-amber-700 border-amber-200",
 };
-
-const PRODUCT_PAGE_SIZE  = 10;
-const MOVEMENT_PAGE_SIZE = 10;
 
 export default function InventoryReportPage() {
   return (
@@ -43,13 +40,50 @@ function InventoryReportPageInner() {
   const [search,       setSearch]       = useState("");
   const [tab,          setTab]          = useState<"stock" | "movements" | "velocity">("stock");
   const [productPage,  setProductPage]  = useState(1);
+  const [productPageSize, setProductPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
   const [movementPage, setMovementPage] = useState(1);
+  const [movementPageSize, setMovementPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   useEffect(() => { setProductPage(1); }, [search]);
 
   const filtered = products.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
   );
+
+  const productColumns: DataTableTimeSectionColumn<(typeof products)[number]>[] = [
+    { id: "product", header: "Producto", width: `${63 - (showCosts ? 26 : 0) - (showProfit ? 10 : 0)}%`, cell: (p) => <span className="block truncate font-medium" title={p.name}>{p.name}</span> },
+    { id: "sku", header: "SKU", width: "15%", className: "text-muted-foreground", cell: (p) => p.sku || "—" },
+    { id: "stock", header: "Stock", width: "10%", align: "right", cell: (p) => <span className={p.stock === 0 ? "font-medium text-destructive" : p.stock <= 5 ? "font-medium text-amber-600" : ""}>{p.stock}</span> },
+    { id: "price", header: "Precio", width: "12%", align: "right", cell: (p) => format(p.price) },
+    ...(showCosts ? [
+      { id: "avg-cost", header: "Costo prom.", width: "13%", align: "right" as const, cell: (p: (typeof products)[number]) => <span className="text-muted-foreground">{format(p.avg_cost)}</span> },
+      { id: "stock-value", header: "Valor inv.", width: "13%", align: "right" as const, cell: (p: (typeof products)[number]) => <span className="font-medium">{format(p.stock_value)}</span> },
+    ] : []),
+    ...(showProfit ? [{ id: "margin", header: "Margen", width: "10%", align: "right" as const, cell: (p: (typeof products)[number]) => p.margin_pct != null ? <Badge variant="outline" className={`text-xs ${p.margin_pct >= 30 ? "border-green-200 text-green-700" : p.margin_pct >= 10 ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"}`}>{fmtN(p.margin_pct, 1)}%</Badge> : "—" }] : []),
+  ];
+  const productRows = filtered.slice((productPage - 1) * productPageSize, productPage * productPageSize);
+
+  const movementColumns: DataTableTimeSectionColumn<(typeof movements)[number]>[] = [
+    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (m) => <span suppressHydrationWarning>{new Date(m.created_at).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}</span> },
+    { id: "type", header: "Tipo", width: "16%", cell: (m) => <Badge className={`${MOVE_COLOR[m.movement_type] ?? ""} border text-xs`}>{MOVE_LABEL[m.movement_type] ?? m.movement_type}</Badge> },
+    { id: "product", header: "Producto", width: "30%", cell: (m) => <span className="block truncate font-medium" title={m.product_name}>{m.product_name}</span> },
+    { id: "quantity", header: "Cantidad", width: "14%", align: "right", cell: (m) => <span className="font-medium">{m.quantity}</span> },
+    { id: "reference", header: "Referencia", width: "24%", className: "text-muted-foreground", cell: (m) => m.reference_type || "—" },
+  ];
+  const movementRows = movements.slice((movementPage - 1) * movementPageSize, movementPage * movementPageSize);
+
+  const topMoverColumns: DataTableTimeSectionColumn<InventoryVelocityItem>[] = [
+    { id: "product", header: "Producto", width: "40%", cell: (p) => <span className="block truncate font-medium" title={p.name}>{p.name}</span> },
+    { id: "sku", header: "SKU", width: "20%", className: "text-muted-foreground", cell: (p) => p.sku || "—" },
+    { id: "qty", header: "Vendidos", width: "16%", align: "right", cell: (p) => <span className="font-medium text-green-700 dark:text-green-400">{p.qty_sold}</span> },
+    { id: "revenue", header: "Ingresos", width: "24%", align: "right", cell: (p) => format(p.revenue) },
+  ];
+  const slowMoverColumns: DataTableTimeSectionColumn<InventoryVelocityItem>[] = [
+    { id: "product", header: "Producto", width: "45%", cell: (p) => <span className="block truncate font-medium" title={p.name}>{p.name}</span> },
+    { id: "sku", header: "SKU", width: "22%", className: "text-muted-foreground", cell: (p) => p.sku || "—" },
+    { id: "stock", header: "Stock", width: showCosts ? "13%" : "33%", align: "right", cell: (p) => p.stock },
+    ...(showCosts ? [{ id: "value", header: "Valor en stock", width: "20%", align: "right" as const, cell: (p: InventoryVelocityItem) => <span className="font-medium text-amber-700 dark:text-amber-400">{format(p.stock_value)}</span> }] : []),
+  ];
 
   // ── Exportación via servidor ──────────────────────────────────────
   const handlePDFExport = async () => {
@@ -145,110 +179,28 @@ function InventoryReportPageInner() {
       {/* Stock table */}
       {tab === "stock" && !isLoading && (
         <div className="space-y-2">
-          <ReportSection title="Stock por producto" icon={Package} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Producto</th>
-                    <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
-                    <th className="text-right px-4 py-2">Stock</th>
-                    <th className="text-right px-4 py-2 hidden md:table-cell">Precio</th>
-                    {showCosts  && <th className="text-right px-4 py-2 hidden md:table-cell">Costo prom.</th>}
-                    {showCosts  && <th className="text-right px-4 py-2">Valor inv.</th>}
-                    {showProfit && <th className="text-right px-4 py-2 hidden lg:table-cell">Margen</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered
-                    .slice((productPage - 1) * PRODUCT_PAGE_SIZE, productPage * PRODUCT_PAGE_SIZE)
-                    .map((p) => (
-                      <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2.5 font-medium max-w-[180px] truncate">{p.name}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{p.sku || "—"}</td>
-                        <td className="px-4 py-2.5 text-right">
-                          <span className={p.stock === 0 ? "text-destructive font-medium" : p.stock <= 5 ? "text-amber-600 font-medium" : ""}>
-                            {p.stock}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right hidden md:table-cell">{format(p.price)}</td>
-                        {showCosts  && <td className="px-4 py-2.5 text-right text-muted-foreground hidden md:table-cell">{format(p.avg_cost)}</td>}
-                        {showCosts  && <td className="px-4 py-2.5 text-right font-medium">{format(p.stock_value)}</td>}
-                        {showProfit && (
-                          <td className="px-4 py-2.5 text-right hidden lg:table-cell">
-                            {p.margin_pct != null ? (
-                              <Badge variant="outline" className={`text-xs ${p.margin_pct >= 30 ? "border-green-200 text-green-700" : p.margin_pct >= 10 ? "border-amber-200 text-amber-700" : "border-red-200 text-red-700"}`}>
-                                {fmtN(p.margin_pct, 1)}%
-                              </Badge>
-                            ) : "—"}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={showCosts && showProfit ? 7 : showCosts ? 6 : 5} className="px-4 py-10 text-center text-muted-foreground">Sin resultados</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
-          <PaginationControls
-            page={productPage}
-            totalPages={Math.ceil(filtered.length / PRODUCT_PAGE_SIZE)}
-            total={filtered.length}
-            label="productos"
-            onPageChange={setProductPage}
-          />
+          <ReportTableSection title="Stock por producto" icon={Package}>
+            <DataTableTimeSection
+              columns={productColumns} data={productRows} getRowKey={(product) => product.id}
+              pagination={{ page: productPage, pageSize: productPageSize, total: filtered.length, onPageChange: setProductPage, onPageSizeChange: setProductPageSize }}
+              recordLabel="productos" minWidth="100%" ariaLabel="Stock por producto"
+              emptyState="Sin resultados" showFooterPagination={false}
+            />
+          </ReportTableSection>
         </div>
       )}
 
       {/* Movements table */}
       {tab === "movements" && !isLoading && (
         <div className="space-y-2">
-          <ReportSection title="Movimientos (30 días)" icon={ArrowLeftRight} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Fecha</th>
-                    <th className="text-left px-4 py-2">Tipo</th>
-                    <th className="text-left px-4 py-2">Producto</th>
-                    <th className="text-right px-4 py-2">Cantidad</th>
-                    <th className="text-left px-4 py-2 hidden md:table-cell">Referencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movements
-                    .slice((movementPage - 1) * MOVEMENT_PAGE_SIZE, movementPage * MOVEMENT_PAGE_SIZE)
-                    .map((m) => (
-                      <tr key={`${m.product_name}-${m.created_at}-${m.movement_type}`} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2.5 text-muted-foreground text-xs" suppressHydrationWarning>
-                          {new Date(m.created_at).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <Badge className={`${MOVE_COLOR[m.movement_type] ?? ""} border text-xs`}>
-                            {MOVE_LABEL[m.movement_type] ?? m.movement_type}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-2.5 font-medium max-w-[160px] truncate">{m.product_name}</td>
-                        <td className="px-4 py-2.5 text-right font-medium">{m.quantity}</td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground hidden md:table-cell">{m.reference_type}</td>
-                      </tr>
-                    ))}
-                  {movements.length === 0 && (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">Sin movimientos en los últimos 30 días</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
-          <PaginationControls
-            page={movementPage}
-            totalPages={Math.ceil(movements.length / MOVEMENT_PAGE_SIZE)}
-            total={movements.length}
-            label="movimientos"
-            onPageChange={setMovementPage}
-          />
+          <ReportTableSection title="Movimientos (30 días)" icon={ArrowLeftRight}>
+            <DataTableTimeSection
+              columns={movementColumns} data={movementRows} getRowKey={(movement) => `${movement.product_name}-${movement.created_at}-${movement.movement_type}`}
+              pagination={{ page: movementPage, pageSize: movementPageSize, total: movements.length, onPageChange: setMovementPage, onPageSizeChange: setMovementPageSize }}
+              recordLabel="movimientos" minWidth="100%" ariaLabel="Movimientos de inventario"
+              emptyState="Sin movimientos en los últimos 30 días" showFooterPagination={false}
+            />
+          </ReportTableSection>
         </div>
       )}
 
@@ -293,61 +245,21 @@ function InventoryReportPageInner() {
             )
           )}
           <div className="grid gap-4 lg:grid-cols-2">
-            <ReportSection title="Productos más vendidos" icon={TrendingUp} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Producto</th>
-                    <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
-                    <th className="text-right px-4 py-2">Vendidos</th>
-                    <th className="text-right px-4 py-2">Ingresos</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {velocity.top_movers.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 font-medium max-w-[180px] truncate">{p.name}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{p.sku || "—"}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-green-700 dark:text-green-400">{p.qty_sold}</td>
-                      <td className="px-4 py-2.5 text-right">{format(p.revenue)}</td>
-                    </tr>
-                  ))}
-                  {velocity.top_movers.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">Sin ventas en los últimos {velocity.window_days} días</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
+            <ReportTableSection title="Productos más vendidos" icon={TrendingUp}>
+              <DataTableTimeSection
+                columns={topMoverColumns} data={velocity.top_movers} getRowKey={(product) => product.id}
+                recordLabel="productos" minWidth="100%" ariaLabel="Productos más vendidos"
+                emptyState={`Sin ventas en los últimos ${velocity.window_days} días`} showFooterPagination={false}
+              />
+            </ReportTableSection>
 
-          <ReportSection title="Productos sin movimiento" icon={TrendingDown} noPadding>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/10 text-xs text-muted-foreground">
-                    <th className="text-left px-4 py-2">Producto</th>
-                    <th className="text-left px-4 py-2 hidden sm:table-cell">SKU</th>
-                    <th className="text-right px-4 py-2">Stock</th>
-                    {showCosts && <th className="text-right px-4 py-2">Valor en stock</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {velocity.slow_movers.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 font-medium max-w-[180px] truncate">{p.name}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{p.sku || "—"}</td>
-                      <td className="px-4 py-2.5 text-right">{p.stock}</td>
-                      {showCosts && <td className="px-4 py-2.5 text-right font-medium text-amber-700 dark:text-amber-400">{format(p.stock_value)}</td>}
-                    </tr>
-                  ))}
-                  {velocity.slow_movers.length === 0 && (
-                    <tr><td colSpan={showCosts ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">Todo el stock tuvo ventas en los últimos {velocity.window_days} días</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </ReportSection>
+            <ReportTableSection title="Productos sin movimiento" icon={TrendingDown}>
+              <DataTableTimeSection
+                columns={slowMoverColumns} data={velocity.slow_movers} getRowKey={(product) => product.id}
+                recordLabel="productos" minWidth="100%" ariaLabel="Productos sin movimiento"
+                emptyState={`Todo el stock tuvo ventas en los últimos ${velocity.window_days} días`} showFooterPagination={false}
+              />
+            </ReportTableSection>
           </div>
         </div>
       )}

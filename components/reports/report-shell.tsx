@@ -75,7 +75,7 @@ export function ReportShell({
   const busy = isLoading || exportingPDF;
 
   return (
-    <div className="space-y-5 pb-10">
+    <div className="space-y-5">
       {/* Top bar */}
       <div className="flex flex-wrap items-start gap-3">
         <Button variant="ghost" size="icon" onClick={() => back()} className="shrink-0">
@@ -185,6 +185,21 @@ export function ReportSection({
         {children}
       </CardContent>
     </Card>
+  );
+}
+
+/** A lightweight heading for sections whose content is already a bordered table. */
+export function ReportTableSection({
+  title, icon: Icon, children,
+}: { title: string; icon?: LucideIcon; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h2 className="flex items-center gap-2 px-1 text-base font-semibold tracking-tight">
+        {Icon && <Icon className="size-4 text-muted-foreground" />}
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 

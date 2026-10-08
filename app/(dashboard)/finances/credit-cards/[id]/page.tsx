@@ -1,7 +1,7 @@
 ﻿// app/(dashboard)/finances/credit-cards/[id]/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -35,6 +35,11 @@ import {
   CreditCardTransaction,
 } from "@/hooks/swr/use-credit-cards";
 import { SearchBar } from "@/components/shared/search-bar";
+import {
+  DataTableTimeSection,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
@@ -66,6 +71,8 @@ export default function CreditCardDetailPage({
   const [editingTxn, setEditingTxn] = useState<CreditCardTransaction | null>(null);
   const [deletingTxn, setDeletingTxn] = useState<CreditCardTransaction | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const { creditCard, isLoading: loadingCard, mutate: mutateCard } = useCreditCard(cardId);
   const { transactions, totals, isLoading: loadingTxns, mutate: mutateTxns } = useCreditCardTransactions(cardId, {
@@ -88,6 +95,16 @@ export default function CreditCardDetailPage({
     isSearching,
   } = useCreditCardTxnSearch(cardId, search, transactions);
   const isGlobalResult = search.trim() !== "" && searchSource === "remote";
+  const totalPages = Math.max(1, Math.ceil(visibleTxns.length / pageSize));
+  const pageTxns = visibleTxns.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, totalPages));
+  }, [totalPages]);
 
   const handlePaySuccess = () => {
     mutateCard();
@@ -126,6 +143,91 @@ export default function CreditCardDetailPage({
 
   const yearOptions  = availableYears;
   const monthOptions = monthsForYear(selectedYear);
+
+  const transactionColumns: DataTableTimeSectionColumn<CreditCardTransaction>[] = [
+    {
+      id: "type", header: "Tipo", width: 130,
+      cell: (txn) => (
+        <Badge
+          variant="outline"
+          className={txn.type === "CHARGE"
+            ? "gap-1 border-destructive/30 bg-destructive/10 text-destructive"
+            : "gap-1 border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400"}
+        >
+          {txn.type === "CHARGE"
+            ? <ShoppingBag className="size-3" />
+            : <Banknote className="size-3" />}
+          {txn.type === "CHARGE" ? "Compra" : "Pago"}
+        </Badge>
+      ),
+    },
+    {
+      id: "description", header: "Descripción", width: "clamp(12rem, 26vw, 22rem)",
+      cell: (txn) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium" title={txn.description || undefined}>
+            {txn.description || (txn.type === "CHARGE" ? "Compra" : "Pago de tarjeta")}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            {txn.category && <span>{txn.category}</span>}
+            {txn.sale_number && (
+              <Link href={`/sales/${txn.sale_id}`} className="text-primary hover:underline">
+                {txn.sale_number}
+              </Link>
+            )}
+            {txn.currency === "USD" && txn.exchange_rate && (
+              <span>@{Number(txn.exchange_rate).toFixed(2)}</span>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "account", header: "Cuenta", width: "clamp(7rem, 14vw, 12rem)",
+      cell: (txn) => txn.account_name || "—",
+    },
+    {
+      id: "date", header: "Fecha", width: 130,
+      className: "whitespace-nowrap text-muted-foreground",
+      cell: (txn) => new Date(txn.occurred_at).toLocaleDateString("es-HN", {
+        day: "numeric", month: "short", year: "numeric",
+      }),
+    },
+    {
+      id: "amount", header: "Monto", width: 150, align: "right",
+      cell: (txn) => (
+        <span className={txn.type === "CHARGE" ? "font-semibold text-destructive" : "font-semibold text-green-600"}>
+          {txn.type === "CHARGE" ? "+" : "−"}
+          {txn.currency === "USD" ? `$${Number(txn.amount).toFixed(2)} USD` : format(Number(txn.amount))}
+          {txn.currency === "USD" && txn.amount_local != null && (
+            <span className="block text-xs font-normal text-muted-foreground">≈ {format(Number(txn.amount_local))}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
+      align: "right", stopRowClick: true,
+      cell: (txn) => txn.type === "CHARGE" && !txn.sale_id ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Acciones del movimiento">
+              <MoreVertical className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setEditingTxn(txn)}>
+              <Pencil className="mr-2 size-4" />Editar
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeletingTxn(txn)}>
+              <Trash2 className="mr-2 size-4" />Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null,
+    },
+  ];
 
   return (
     <div className="space-y-4 pb-24">
@@ -308,46 +410,44 @@ export default function CreditCardDetailPage({
           />
         </div>
 
-        <Card className="pt-1 pb-1">
-          <CardContent className="p-0">
-            {loadingTxns || isSearching ? (
-              <div className="divide-y">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3.5">
-                    <Skeleton className="size-8 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3.5 w-32" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                    <Skeleton className="h-4 w-16" />
-                  </div>
-                ))}
-              </div>
-            ) : visibleTxns.length === 0 ? (
-              <div className="py-10 flex flex-col items-center justify-center gap-1">
-                <CreditCard className="size-8 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">
-                  {search.trim()
-                    ? `Sin resultados para "${search.trim()}" en ningún período`
-                    : "Sin movimientos en este periodo"}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {visibleTxns.map((txn) => (
-                  <CreditCardTxnRow
-                    key={txn.id}
-                    txn={txn}
-                    format={format}
-                    currency={currency}
-                    onEdit={() => setEditingTxn(txn)}
-                    onDelete={() => setDeletingTxn(txn)}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <DataTableTimeSection
+          columns={transactionColumns}
+          data={pageTxns}
+          getRowKey={(txn) => txn.id}
+          pagination={{
+            page,
+            pageSize,
+            total: visibleTxns.length,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+          }}
+          recordLabel={visibleTxns.length === 1 ? "movimiento" : "movimientos"}
+          isLoading={loadingTxns || isSearching}
+          stickyOffset="var(--data-table-sticky-offset)"
+          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
+          minWidth={850}
+          ariaLabel="Movimientos de la tarjeta"
+          emptyState={
+            <div className="flex flex-col items-center justify-center gap-1">
+              <CreditCard className="size-8 text-muted-foreground/30" />
+              <p>
+                {search.trim()
+                  ? `Sin resultados para "${search.trim()}" en ningún período`
+                  : "Sin movimientos en este periodo"}
+              </p>
+            </div>
+          }
+          renderMobileRow={(txn) => (
+            <CreditCardTxnRow
+              txn={txn}
+              format={format}
+              currency={currency}
+              onEdit={() => setEditingTxn(txn)}
+              onDelete={() => setDeletingTxn(txn)}
+            />
+          )}
+          showFooterPagination={false}
+        />
       </div>
 
       <Fab

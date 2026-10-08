@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { usePathname } from "next/navigation";
 import { useRequireAuth } from "@/hooks/use-require-auth";
 import { useOnboardingGuard } from "@/hooks/use-onboarding-guard";
@@ -77,25 +77,6 @@ export function DashboardLayoutClient({
   initialSidebarOpen: boolean;
 }) {
   const pathname = usePathname();
-  const [pageTitle, setPageTitle] = useState(() => getPageTitle(pathname));
-
-  useEffect(() => {
-    const fallbackTitle = getPageTitle(pathname);
-    const main = document.querySelector("main");
-    const updateTitle = () => {
-      const heading = main?.querySelector("h1");
-      const contentTitle = heading?.textContent?.replace(/\s+/g, " ").trim();
-      setPageTitle(contentTitle || fallbackTitle);
-    };
-
-    updateTitle();
-    if (!main) return;
-
-    const observer = new MutationObserver(updateTitle);
-    observer.observe(main, { childList: true, characterData: true, subtree: true });
-    return () => observer.disconnect();
-  }, [pathname]);
-
   const { firebaseUser, loading } = useRequireAuth();
   const { checking } = useOnboardingGuard();
   usePlanGuard();
@@ -109,12 +90,12 @@ export function DashboardLayoutClient({
         <SidebarProvider defaultOpen={initialSidebarOpen} className="h-svh overflow-hidden rounded-none">
           <AppSidebar />
 
-          <SidebarInset className="flex flex-col overflow-hidden rounded-none">
+          <SidebarInset className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-none">
             <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4 py-4 lg:px-6">
               <SidebarTrigger className="-ml-1 md:hidden" />
               <Separator orientation="vertical" className="mr-2 h-4 md:hidden" />
               <h1 className="hidden min-w-0 truncate text-2xl font-semibold tracking-tight md:block">
-                {pageTitle}
+                {getPageTitle(pathname)}
               </h1>
               <Breadcrumb className="md:hidden">
                 <BreadcrumbList>
@@ -132,7 +113,8 @@ export function DashboardLayoutClient({
               </div>
             </header>
 
-            <main className="flex-1 overflow-auto pb-0 p-4 lg:p-6 h-full md:[&_h1]:hidden">
+            {/* Tables cancel this scroll container's padding, not the navbar height. */}
+            <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 [--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem] md:[&_h1]:hidden">
               {children}
             </main>
           </SidebarInset>
