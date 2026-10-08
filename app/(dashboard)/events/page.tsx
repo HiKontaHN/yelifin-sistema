@@ -8,6 +8,7 @@ import { es } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SummaryStats } from "@/components/shared/summary-stats";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -196,27 +197,24 @@ export default function EventsPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { title: "Eventos",       value: String(displayedEvents.length), sub: `${activeCount} activos`,    icon: Calendar,   cls: "" },
-          { title: "Ventas",        value: format(totalSales),       sub: "total acumulado",           icon: DollarSign, cls: "" },
-          { title: "Ganancia neta", value: format(totalProfit),      sub: "ingresos − gastos",         icon: TrendingUp, cls: totalProfit >= 0 ? "text-green-600" : "text-destructive", hidden: !showProfit },
-          { title: "ROI promedio",  value: `${avgRoi.toFixed(1)}%`,  sub: "retorno sobre inversión",   icon: BarChart3,  cls: avgRoi >= 0 ? "text-green-600" : "text-destructive",        hidden: !showProfit },
-        ].filter((s) => !(s as any).hidden).map((s) => (
-          <Card key={s.title} >
-            <CardContent>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{s.title}</span>
-                <s.icon className="size-3.5 text-muted-foreground shrink-0" />
-              </div>
-              <div className={`text-lg font-bold ${s.cls}`}>
-                {isLoading ? <Skeleton className="h-6 w-20" /> : s.value}
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <SummaryStats
+        ariaLabel="Resumen de eventos"
+        isLoading={isLoading}
+        items={[
+          { label: "Eventos", icon: Calendar, value: displayedEvents.length, detail: `${activeCount} activos` },
+          { label: "Ventas", icon: DollarSign, value: format(totalSales), detail: "total acumulado" },
+          ...(showProfit ? [
+            {
+              label: "Ganancia neta", icon: TrendingUp, value: format(totalProfit), detail: "ingresos − gastos",
+              valueClassName: totalProfit >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive",
+            },
+            {
+              label: "ROI promedio", icon: BarChart3, value: `${avgRoi.toFixed(1)}%`, detail: "retorno sobre inversión",
+              valueClassName: avgRoi >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive",
+            },
+          ] : []),
+        ]}
+      />
 
       {/* Eventos grid / empty */}
       {isLoading ? (

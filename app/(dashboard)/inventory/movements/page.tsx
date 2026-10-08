@@ -5,7 +5,6 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -20,10 +19,6 @@ import { useProducts } from "@/hooks/swr/use-products";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { Fab } from "@/components/ui/fab";
-import {
-  Pagination, PaginationContent, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
 import { SearchBar } from "@/components/shared/search-bar";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { useTimezone } from "@/hooks/swr/use-timezone";
@@ -371,7 +366,7 @@ export default function MovementsPage() {
     dateRange.from, dateRange.to,
   ]);
 
-  const { movements, isLoading, total, totalPages } = useMovements({
+  const { movements, isLoading, total } = useMovements({
     from:       dateRange.from,
     to:         dateRange.to,
     product_id: productId,
@@ -484,13 +479,32 @@ export default function MovementsPage() {
       </div>
 
       {/* ── Tabla — desktop ──────────────────────────────────────── */}
-      <div className="hidden md:block">
-        <DataTableTimeSection
+      <DataTableTimeSection
           columns={columns}
           data={movements}
           getRowKey={(movement) => movement.id}
           getGroupKey={(movement) => dateKeyFormatter.format(new Date(movement.created_at))}
           renderGroupHeader={renderMovementDate}
+          renderMobileRow={(m) => (
+            <Card key={m.id}>
+              <CardContent className="pl-3.5">
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                    {m.image_url ? (
+                      <img src={m.image_url} alt={m.product_name} className="absolute inset-0 size-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    ) : <Package className="size-5 text-muted-foreground/40" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{m.product_name}</p>
+                    {m.variant_name && <div className="flex items-center gap-1"><Layers className="size-2.5 shrink-0 text-muted-foreground" /><span className="truncate text-xs text-muted-foreground">{m.variant_name}</span></div>}
+                    <p className="text-xs text-muted-foreground">{formatDateOnly(m.created_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1"><TypeBadge m={m} /><span className="text-xs text-muted-foreground">{m.quantity} uds</span></div>
+                </div>
+                <MobileDetail m={m} format={format} showCosts={showCosts} showProfit={showProfit} />
+              </CardContent>
+            </Card>
+          )}
           isLoading={isLoading}
           emptyState="No hay movimientos en este período"
           recordLabel={total === 1 ? "movimiento" : "movimientos"}
@@ -507,116 +521,6 @@ export default function MovementsPage() {
             onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
           }}
         />
-      </div>
-
-      {/* ── Cards — móvil ────────────────────────────────────────── */}
-      <div className="space-y-3 md:hidden">
-        {isLoading ? (
-          /* skeleton - index key ok */
-          Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full rounded-xl" />
-          ))
-        ) : movements.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <SlidersHorizontal className="size-10 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">No hay movimientos</p>
-            </CardContent>
-          </Card>
-        ) : (
-          movements.map((m) => (
-            <Card key={m.id}>
-              <CardContent className="pl-3.5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="relative size-10 rounded-lg overflow-hidden bg-muted shrink-0 flex items-center justify-center">
-                    {m.image_url ? (
-                      <img
-                        src={m.image_url}
-                        alt={m.product_name}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      />
-                    ) : (
-                      <Package className="size-5 text-muted-foreground/40" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{m.product_name}</p>
-                    {m.variant_name && (
-                      <div className="flex items-center gap-1">
-                        <Layers className="size-2.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-muted-foreground truncate">{m.variant_name}</span>
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">{formatDateOnly(m.created_at)}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <TypeBadge m={m} />
-                    <span className="text-xs text-muted-foreground">{m.quantity} uds</span>
-                  </div>
-                </div>
-                <MobileDetail m={m} format={format} showCosts={showCosts} showProfit={showProfit} />
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-
-      {/* Paginación */}
-      {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between md:hidden">
-          <p className="text-sm text-muted-foreground order-2 sm:order-1">
-            {total} movimiento{total !== 1 ? "s" : ""} · página {page} de {totalPages}
-          </p>
-          <Pagination className="order-1 sm:order-2 w-auto mx-0 justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((p) =>
-                  p === 1 || p === totalPages ||
-                  (p >= page - 1 && p <= page + 1)
-                )
-                .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "…" ? (
-                    <PaginationItem key={`ellipsis-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        isActive={p === page}
-                        onClick={() => setPage(p as number)}
-                        className="cursor-pointer"
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
 
       {/* FAB */}
       <Fab

@@ -39,6 +39,7 @@ import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
+import { SummaryStats } from "@/components/shared/summary-stats";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -163,7 +164,7 @@ export default function SaleDetailPage({ params }: Props) {
             <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
               <Link href={`/sales/${sale.id}/invoice`}>
                 <FileText className="size-3.5" />
-                Factura PDF
+                Ticket PDF
               </Link>
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
@@ -176,14 +177,14 @@ export default function SaleDetailPage({ params }: Props) {
         </div>
 
         {/* Botones factura/ticket en móvil — segunda fila */}
-        <div className="flex sm:hidden gap-2 pl-11">
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs flex-1" asChild>
+        <div className="grid grid-cols-2 gap-2 sm:hidden">
+          <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
             <Link href={`/sales/${sale.id}/invoice`}>
               <FileText className="size-3.5" />
               Factura PDF
             </Link>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs flex-1" asChild>
+          <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
             <Link href={`/sales/${sale.id}/receipt`}>
               <Printer className="size-3.5" />
               Ticket
@@ -259,8 +260,35 @@ export default function SaleDetailPage({ params }: Props) {
       )}
 
 
+      {/* Resumen financiero */}
+      <SummaryStats
+        ariaLabel="Resumen financiero de la venta"
+        items={[
+          {
+            label: "Total cobrado",
+            icon: Receipt,
+            value: format(Number(sale.total)),
+            detail: (shippingAmount > 0 || taxRate > 0) && (
+              <>
+                {shippingAmount > 0 && <>Incluye envío {format(shippingAmount)}</>}
+                {shippingAmount > 0 && taxRate > 0 && " · "}
+                {taxRate > 0 && <span className="text-amber-600">Incluye ISV {format(taxAmount)}</span>}
+              </>
+            ),
+          },
+          ...(showProfit ? [{
+            label: profitLabel,
+            icon: TrendingUp,
+            value: format(totalProfit),
+            valueClassName: isPending ? "text-amber-700 dark:text-amber-400" : "text-green-600 dark:text-green-400",
+            inlineNote: `${margin.toFixed(1)}% margen`,
+            inlineNoteClassName: isPending ? "text-amber-700" : "text-green-600 dark:text-green-400",
+          }] : []),
+        ]}
+      />
+
       {/* Cliente + Cuenta */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid max-w-2xl grid-cols-2 gap-3">
         <Card>
           <CardContent className="pl-3 flex items-center gap-2.5">
             <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -268,9 +296,7 @@ export default function SaleDetailPage({ params }: Props) {
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Cliente</p>
-              <p className="font-medium text-sm truncate">
-                {sale.customer_name ?? "Anónimo"}
-              </p>
+              <p className="font-medium text-sm truncate">{sale.customer_name ?? "Anónimo"}</p>
             </div>
           </CardContent>
         </Card>
@@ -282,55 +308,10 @@ export default function SaleDetailPage({ params }: Props) {
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Cuenta</p>
-              <p className="font-medium text-sm truncate">
-                {sale.account_name ?? "—"}
-              </p>
+              <p className="font-medium text-sm truncate">{sale.account_name ?? "—"}</p>
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Resumen financiero */}
-      <div className={`grid gap-3 ${showProfit ? "grid-cols-2" : "grid-cols-1"}`}>
-        <Card>
-          <CardContent className="pl-3.5 text-center">
-            <p className="text-xs text-muted-foreground">Total cobrado</p>
-            <p className="text-lg md:text-xl font-bold mt-0.5">
-              {format(Number(sale.total))}
-            </p>
-            {shippingAmount > 0 && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                incl. envío {format(shippingAmount)}
-              </p>
-            )}
-            {taxRate > 0 && (
-              <p className="text-xs text-amber-600 mt-0.5">
-                incl. ISV {format(taxAmount)}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {showProfit && (
-          <Card className={isPending
-            ? "border-amber-200 bg-amber-50 dark:bg-amber-950/20"
-            : "border-green-200 bg-green-50 dark:bg-green-950/20"}
-          >
-            <CardContent className="pl-3.5 text-center">
-              <p className="text-xs text-muted-foreground">{profitLabel}</p>
-              <p className={`text-lg md:text-xl font-bold mt-0.5 ${
-                isPending ? "text-amber-700" : "text-green-600"
-              }`}>
-                {format(totalProfit)}
-              </p>
-              <p className={`text-xs ${
-                isPending ? "text-amber-700" : "text-green-600"
-              }`}>
-                {margin.toFixed(1)}% margen
-              </p>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Productos vendidos */}
@@ -589,10 +570,14 @@ function SaleDetailSkeleton() {
         <Skeleton className="h-20 rounded-xl" />
         <Skeleton className="h-20 rounded-xl" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Skeleton className="h-20 rounded-xl" />
-        <Skeleton className="h-20 rounded-xl" />
-      </div>
+      <SummaryStats
+        ariaLabel="Cargando resumen financiero de la venta"
+        isLoading
+        items={[
+          { label: "Total cobrado", icon: Receipt, value: "" },
+          { label: "Ganancia neta", icon: TrendingUp, value: "" },
+        ]}
+      />
       <Skeleton className="h-48 rounded-xl" />
       <Skeleton className="h-36 rounded-xl" />
     </div>

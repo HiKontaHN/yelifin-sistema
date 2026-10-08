@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SummaryStats } from "@/components/shared/summary-stats";
 import {
   DataTableTimeSection, DATA_TABLE_PAGE_SIZE_OPTIONS, DEFAULT_DATA_TABLE_PAGE_SIZE,
   type DataTableTimeSectionColumn,
@@ -535,58 +536,26 @@ export default function SalesPage() {
       </div>
 
       {/* En móvil el conteo permanece en el título; los montos van centrados. */}
-      <dl
-        aria-label="Resumen de ventas"
-        aria-busy={isLoading}
-        className={`grid py-3 sm:py-4 ${showProfit ? "grid-cols-2 sm:max-w-4xl sm:grid-cols-3" : "grid-cols-1 sm:max-w-2xl sm:grid-cols-2"}`}
-      >
-        <div className="hidden min-w-0 space-y-2 px-4 py-4 sm:block sm:pr-8">
-          <dt className="flex items-center gap-2 text-sm text-muted-foreground">
-            <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
-            Ventas
-          </dt>
-          <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            {isLoading ? <Skeleton className="h-8 w-12" /> : (
-              <>
-                <span className="text-2xl font-bold tabular-nums tracking-tight">{stats.completed_count}</span>
-                {stats.pending_count > 0 && <span className="text-sm text-amber-600 dark:text-amber-400">{stats.pending_count} pend.</span>}
-              </>
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0 space-y-2 px-3 py-3 text-center sm:border-l sm:px-8 sm:py-4 sm:text-left">
-          <dt className="flex items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-start">
-            <Wallet className="size-4 shrink-0" aria-hidden="true" />
-            Ingresos
-          </dt>
-          <dd className="flex justify-center sm:justify-start">
-            {isLoading
-              ? <Skeleton className="h-7 w-28 sm:h-8" />
-              : <span className="min-w-0 max-w-full break-words text-xl font-bold tabular-nums tracking-tight sm:text-2xl">{format(stats.total_revenue)}</span>
-            }
-          </dd>
-        </div>
-        {showProfit && (
-          <div className="min-w-0 space-y-2 border-l px-3 py-3 text-center sm:px-8 sm:py-4 sm:text-left">
-            <dt className="flex items-center justify-center gap-2 text-sm text-muted-foreground sm:justify-start">
-              <TrendingUp className="size-4 shrink-0" aria-hidden="true" />
-              Ganancia
-            </dt>
-            <dd className="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 sm:justify-start">
-              {isLoading ? <Skeleton className="h-7 w-28 sm:h-8" /> : (
-                <>
-                  <span className="min-w-0 max-w-full break-words text-xl font-bold tabular-nums tracking-tight text-green-600 sm:text-2xl dark:text-green-400">{format(stats.total_profit ?? 0)}</span>
-                  {stats.total_revenue > 0 && (
-                    <span className="text-sm tabular-nums text-muted-foreground">
-                      {(((stats.total_profit ?? 0) / stats.total_revenue) * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </>
-              )}
-            </dd>
-          </div>
-        )}
-      </dl>
+      <SummaryStats
+        ariaLabel="Resumen de ventas"
+        isLoading={isLoading}
+        items={[
+          {
+            label: "Ventas", icon: ShoppingCart, value: stats.completed_count,
+            inlineNote: stats.pending_count > 0 ? `${stats.pending_count} pend.` : undefined,
+            inlineNoteClassName: "text-amber-600 dark:text-amber-400",
+            hideOnMobile: true,
+          },
+          { label: "Ingresos", icon: Wallet, value: format(stats.total_revenue) },
+          ...(showProfit ? [{
+            label: "Ganancia", icon: TrendingUp, value: format(stats.total_profit ?? 0),
+            valueClassName: "text-green-600 dark:text-green-400",
+            inlineNote: stats.total_revenue > 0
+              ? `${(((stats.total_profit ?? 0) / stats.total_revenue) * 100).toFixed(0)}%`
+              : undefined,
+          }] : []),
+        ]}
+      />
 
       {/* Filtros */}
       <div className="space-y-2">

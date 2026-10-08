@@ -6,11 +6,10 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, PackageCheck, XCircle, Package,
-  Wallet, CalendarDays, Truck,
+  Wallet, CalendarDays, Truck, Boxes,
 } from "lucide-react";
 
 import { usePendingPurchases, PurchaseWithItems, Purchase } from "@/hooks/swr/use-purchases";
@@ -20,9 +19,8 @@ import { useCurrency }   from "@/hooks/swr/use-currency";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmPurchaseArrivalDialog } from "@/components/products/confirm-purchase-arrival-dialog";
 import { CancelPurchaseDialog } from "@/components/products/cancel-purchase-dialog";
-import { StatCard } from "@/components/reports/report-shell";
+import { SummaryStats } from "@/components/shared/summary-stats";
 import { SearchBar } from "@/components/shared/search-bar";
-import { PaginationControls } from "@/components/shared/pagination-controls";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 
@@ -65,7 +63,6 @@ export default function PendingPurchasesPage() {
 
   useEffect(() => { setPage(1); }, [search]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredPurchases.length / pageSize));
   const pagePurchases = filteredPurchases.slice((page - 1) * pageSize, page * pageSize);
 
   const columns: DataTableTimeSectionColumn<PurchaseWithItems>[] = [
@@ -184,16 +181,16 @@ export default function PendingPurchasesPage() {
       </div>
 
       {/* Stats */}
-      {isLoading ? (
-        <div className={`grid gap-3 ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
-          {(showCosts ? [1, 2, 3] : [1, 2]).map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-        </div>
-      ) : purchases.length > 0 && (
-        <div className={`grid gap-3 ${showCosts ? "grid-cols-3" : "grid-cols-2"}`}>
-          <StatCard label="Productos pendientes" value={String(stats.productKeys.size)} />
-          <StatCard label="Unidades totales" value={stats.totalUnits.toLocaleString("es-HN")} />
-          {showCosts && <StatCard label="Inversión" value={format(stats.totalMoney)} />}
-        </div>
+      {(isLoading || purchases.length > 0) && (
+        <SummaryStats
+          ariaLabel="Resumen de compras en camino"
+          isLoading={isLoading}
+          items={[
+            { label: "Productos pendientes", icon: Package, value: stats.productKeys.size },
+            { label: "Unidades totales", icon: Boxes, value: stats.totalUnits.toLocaleString("es-HN") },
+            ...(showCosts ? [{ label: "Inversión", icon: Wallet, value: format(stats.totalMoney) }] : []),
+          ]}
+        />
       )}
 
       {/* Empty state */}
@@ -228,37 +225,26 @@ export default function PendingPurchasesPage() {
         </div>
       )}
 
-      {/* Tarjetas — móvil */}
-      <div className="space-y-3 md:hidden">
-        {isLoading ? (
-          Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-64 w-full rounded-xl" />
-          ))
-        ) : (
-          pagePurchases.map((purchase) => (
-            <PurchaseCard
-              key={purchase.id}
-              purchase={purchase}
-              format={format}
-              showCosts={showCosts}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              onConfirm={() => setSelected(purchase)}
-              onCancel={() => setToCancel(purchase)}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Tabla reutilizable — tablet y escritorio */}
+      {/* Tabla reutilizable y tarjetas móviles */}
       {(isLoading || pagePurchases.length > 0) && (
-        <div className="hidden md:block">
-          <DataTableTimeSection
+        <DataTableTimeSection
             columns={columns}
             data={pagePurchases}
             getRowKey={(purchase) => purchase.id}
             getGroupKey={(purchase) => dateKeyFormatter.format(new Date(purchase.purchased_at))}
             renderGroupHeader={renderPurchaseDate}
+            renderMobileRow={(purchase) => (
+              <PurchaseCard
+                key={purchase.id}
+                purchase={purchase}
+                format={format}
+                showCosts={showCosts}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onConfirm={() => setSelected(purchase)}
+                onCancel={() => setToCancel(purchase)}
+              />
+            )}
             rowClassName="bg-amber-50/20 dark:bg-amber-950/5"
             isLoading={isLoading}
             recordLabel={filteredPurchases.length === 1 ? "compra" : "compras"}
@@ -275,20 +261,6 @@ export default function PendingPurchasesPage() {
               onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
             }}
           />
-        </div>
-      )}
-
-      {/* Paginación */}
-      {!isLoading && filteredPurchases.length > 0 && (
-        <div className="md:hidden">
-          <PaginationControls
-            page={page}
-            totalPages={totalPages}
-            total={filteredPurchases.length}
-            label="compras"
-            onPageChange={setPage}
-          />
-        </div>
       )}
 
       {/* Dialog de confirmación */}

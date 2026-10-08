@@ -28,10 +28,6 @@ import {
   SlidersHorizontal, ChevronDown, Layers, Box,
   X, Eye, FileSpreadsheet,
 } from "lucide-react";
-import {
-  Pagination, PaginationContent, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
 import Image from "next/image";
 import { toast } from "sonner";
 import { SearchBar } from "@/components/shared/search-bar"
@@ -557,7 +553,7 @@ export default function InventoryPage() {
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [debouncedSearch, stockFilter, page, pathname, replace]);
 
-  const { inventory, stats, total, totalPages, isLoading: loadingInventory, mutate: mutateInventory } = useInventory({
+  const { inventory, stats, total, isLoading: loadingInventory, mutate: mutateInventory } = useInventory({
     search: debouncedSearch || undefined,
     stock: stockFilter !== "all" ? stockFilter : undefined,  // "all" omits the param so API returns everything
     page,
@@ -888,9 +884,8 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* ── Tabla — desktop ──────────────────────────────────────── */}
-      <div className="hidden md:block">
-        <DataTableTimeSection
+      {/* Tabla reutilizable y tarjetas móviles */}
+      <DataTableTimeSection
           columns={inventoryColumns}
           data={inventory}
           getRowKey={(item) => item.product_id}
@@ -898,6 +893,59 @@ export default function InventoryPage() {
           emptyState={hasFilters ? "No se encontraron productos" : "Agrega productos para visualizarlos aquí"}
           recordLabel={total === 1 ? "producto" : "productos"}
           ariaLabel="Productos del inventario"
+          renderMobileRow={(item) => {
+            const product = findProduct(item.product_id);
+            const hasVariants = item.variants_stock.length > 0 && !item.is_service;
+            const isExpanded = expanded.has(item.product_id);
+
+            return (
+              <Card
+                key={item.product_id}
+                className={!hasVariants ? "cursor-pointer" : undefined}
+                onClick={!hasVariants ? () => push(`/inventory/${item.product_id}`) : undefined}
+              >
+                <CardContent className="pl-3 pr-2">
+                  <div className="flex items-center gap-3">
+                    <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+                      {item.image_url ? <Image src={item.image_url} alt={item.product_name} fill className="object-cover" /> : <Package className="size-6 text-muted-foreground/40" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{item.product_name}</p>
+                          {hasVariants && <p className="text-xs text-muted-foreground">{item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""} · {item.stock} uds total</p>}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {getStockBadge(Number(item.stock), item.is_service)}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <ProductActionsMenu item={item} findProduct={findProduct} setInventoryProduct={setInventoryProduct} setAdjustProduct={setAdjustProduct} setVariantProduct={setVariantProduct} setEditProduct={setEditProduct} setDeleteProduct={setDeleteProduct} onViewDetail={(id) => push(`/inventory/${id}`)} canEdit={canEdit} canDelete={canDelete} />
+                          </div>
+                        </div>
+                      </div>
+                      {item.sku && <p className="font-mono text-xs text-muted-foreground">{item.sku}</p>}
+                    </div>
+                  </div>
+
+                  <div className={cn("mt-3 grid gap-2 border-t pt-3 text-center", showCosts ? "grid-cols-3" : "grid-cols-1")}>
+                    {showCosts && <div><p className="text-xs text-muted-foreground">Costo prom.</p><p className="text-sm font-medium">{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</p></div>}
+                    <div><p className="text-xs text-muted-foreground">Precio venta</p><p className="text-sm font-medium">{format(item.price)}</p></div>
+                    {showCosts && <div><p className="text-xs text-muted-foreground">Valor total</p><p className="text-sm font-bold text-primary">{item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}</p></div>}
+                  </div>
+
+                  {hasVariants && <>
+                    <button type="button" onClick={() => toggleExpand(item.product_id)} className="mt-3 flex w-full items-center justify-between border-t pt-3 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                      <span className="font-medium">Ver desglose — base + {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}</span>
+                      <ChevronDown className={cn("size-3.5 transition-transform duration-200", isExpanded && "rotate-180")} />
+                    </button>
+                    {isExpanded && <div className="mt-2 space-y-2">
+                      {Number(item.base_stock) > 0 && <BaseCard item={item} format={format} showCosts={showCosts} onClick={() => push(`/inventory/${item.product_id}`)} />}
+                      {item.variants_stock.map((vs) => <VariantCard key={vs.variant_id} variantStock={vs} product={product} format={format} showCosts={showCosts} canEdit={canEdit} canDelete={canDelete} findVariant={findVariant} setAdjustVariant={setAdjustVariant} setEditVariant={setEditVariant} setDeleteVariantTarget={setDeleteVariantTarget} onClick={() => push(`/inventory/${item.product_id}`)} />)}
+                    </div>}
+                  </>}
+                </CardContent>
+              </Card>
+            );
+          }}
           onRowClick={(item) => item.variants_stock.length > 0 && !item.is_service
             ? toggleExpand(item.product_id)
             : push(`/inventory/${item.product_id}`)}
@@ -915,211 +963,6 @@ export default function InventoryPage() {
             onPageSizeChange: (size) => { setPage(1); setPageSize(size); },
           }}
         />
-      </div>
-
-      {/* ── Cards — móvil ────────────────────────────────────────── */}
-      <div className="space-y-3 md:hidden">
-        {loadingInventory ? (
-          /* skeleton - index key ok */
-          Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full rounded-xl" />
-          ))
-        ) : inventory.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Package className="size-10 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                {hasFilters ? "No se encontraron productos" : "Agrega productos para visualizarlos aquí"}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          inventory.map((item) => {
-            const product = findProduct(item.product_id);
-            const hasVariants = item.variants_stock.length > 0 && !item.is_service;
-            const isExpanded = expanded.has(item.product_id);
-
-            return (
-              <Card
-                key={item.product_id}
-                className={!hasVariants ? "cursor-pointer" : undefined}
-                onClick={!hasVariants ? () => push(`/inventory/${item.product_id}`) : undefined}
-              >
-                <CardContent className="pl-3 pr-2">
-                  {/* Cabecera del producto */}
-                  <div className="flex items-center gap-3">
-                    <div className="relative size-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
-                      {item.image_url
-                        ? <Image src={item.image_url} alt={item.product_name} fill className="object-cover" />
-                        : <Package className="size-6 text-muted-foreground/40" />
-                      }
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{item.product_name}</p>
-                          {hasVariants && (
-                            <p className="text-xs text-muted-foreground">
-                              {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}
-                              {" · "}{item.stock} uds total
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {getStockBadge(Number(item.stock), item.is_service)}
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <ProductActionsMenu
-                              item={item}
-                              findProduct={findProduct}
-                              setInventoryProduct={setInventoryProduct}
-                              setAdjustProduct={setAdjustProduct}
-                              setVariantProduct={setVariantProduct}
-                              setEditProduct={setEditProduct}
-                              setDeleteProduct={setDeleteProduct}
-                              onViewDetail={(id) => push(`/inventory/${id}`)}
-                              canEdit={canEdit}
-                              canDelete={canDelete}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      {item.sku && (
-                        <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Resumen general del producto */}
-                  <div className={`grid gap-2 mt-3 pt-3 border-t text-center ${showCosts ? "grid-cols-3" : "grid-cols-1"}`}>
-                    {showCosts && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">Costo prom.</p>
-                        <p className="text-sm font-medium">{item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0))}</p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-xs text-muted-foreground">Precio venta</p>
-                      <p className="text-sm font-medium">{format(item.price)}</p>
-                    </div>
-                    {showCosts && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">Valor total</p>
-                        <p className="text-sm font-bold text-primary">
-                          {item.is_service ? format(item.price) : format(Number(item.total_value ?? 0))}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Acordeón de variantes */}
-                  {hasVariants && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(item.product_id)}
-                        className="w-full flex items-center justify-between mt-3 pt-3 border-t text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <span className="font-medium">
-                          Ver desglose — base + {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}
-                        </span>
-                        <ChevronDown className={cn(
-                          "size-3.5 transition-transform duration-200",
-                          isExpanded && "rotate-180"
-                        )} />
-                      </button>
-
-                      {isExpanded && (
-                        <div className="mt-2 space-y-2">
-                          {Number(item.base_stock) > 0 && (
-                            <BaseCard
-                              item={item}
-                              format={format}
-                              showCosts={showCosts}
-                              onClick={() => push(`/inventory/${item.product_id}`)}
-                            />
-                          )}
-                          {item.variants_stock.map((vs) => (
-                            <VariantCard
-                              key={vs.variant_id}
-                              variantStock={vs}
-                              product={product}
-                              format={format}
-                              showCosts={showCosts}
-                              canEdit={canEdit}
-                              canDelete={canDelete}
-                              findVariant={findVariant}
-                              setAdjustVariant={setAdjustVariant}
-                              setEditVariant={setEditVariant}
-                              setDeleteVariantTarget={setDeleteVariantTarget}
-                              onClick={() => push(`/inventory/${item.product_id}`)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      {/* Paginación */}
-      {totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between md:hidden">
-          <p className="text-sm text-muted-foreground order-2 sm:order-1">
-            {total} producto{total !== 1 ? "s" : ""} · página {page} de {totalPages}
-          </p>
-          <Pagination className="order-1 sm:order-2 w-auto mx-0 justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((p) =>
-                  p === 1 || p === totalPages ||
-                  (p >= page - 1 && p <= page + 1)
-                )
-                .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "…" ? (
-                    <PaginationItem key={`ellipsis-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        isActive={p === page}
-                        onClick={() => setPage(p as number)}
-                        className="cursor-pointer"
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
 
       {/* FAB */}
       {canEdit && (
