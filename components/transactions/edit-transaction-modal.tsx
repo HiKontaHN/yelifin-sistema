@@ -92,8 +92,8 @@ export function EditTransactionModal({
         amount:        Number(amount),
         account_id:    Number(accountId),
         to_account_id: type === "TRANSFER" ? Number(toAccountId) : undefined,
-        category:      category    || undefined,
-        description:   description || undefined,
+        category:      category.trim() || null,
+        description:   description.trim() || null,
         occurred_at:   localDateToISO(occurredAt),
       });
 

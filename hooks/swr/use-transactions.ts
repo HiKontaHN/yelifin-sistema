@@ -36,8 +36,8 @@ export type CreateTransactionInput = {
   account_id: number;
   to_account_id?: number;
   amount: number;
-  category?: string;
-  description?: string;
+  category?: string | null;
+  description?: string | null;
   occurred_at?: string;
 };
 
@@ -45,8 +45,8 @@ export type UpdateTransactionInput = {
   amount?: number;
   account_id?: number;
   to_account_id?: number;
-  category?: string;
-  description?: string;
+  category?: string | null;
+  description?: string | null;
   occurred_at?: string;
 };
 
