@@ -2,8 +2,15 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
-import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
+import {
+  consumeFifo,
+  InsufficientStockError,
+  recordSaleItemBatchAllocations,
+  supportsSaleItemBatchAllocations,
+  type FifoTake,
+} from "@/lib/fifo";
 import { getDefaultWarehouseForUser } from "@/lib/warehouses";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -490,11 +497,11 @@ export async function POST(request: NextRequest) {
     const occurredAt = sold_at ?? new Date().toISOString();
 
     // ══════════════════════════════════════════════════════════════════
-    await sql`BEGIN`;
     try {
+      return await withTransaction(async (tx) => {
       // ── Número de venta (advisory lock evita duplicados bajo concurrencia) ──
-      await sql`SELECT pg_advisory_xact_lock(${orgId})`;
-      const [lastSale] = await sql`
+      await tx`SELECT pg_advisory_xact_lock(${orgId})`;
+      const [lastSale] = await tx`
         SELECT MAX(CAST(REGEXP_REPLACE(sale_number, '[^0-9]', '', 'g') AS INTEGER)) AS last_num
         FROM sales
         WHERE org_id = ${orgId}
@@ -511,7 +518,7 @@ export async function POST(request: NextRequest) {
           ? `${txParts[0]} (${txParts.slice(1).join(", ")})`
           : txParts[0];
       // 1. Crear venta
-      const [sale] = await sql`
+      const [sale] = await tx`
         INSERT INTO sales (
           org_id, created_by, sale_number, customer_id,
           subtotal, discount, tax_rate, tax, shipping_cost, total,
@@ -527,21 +534,26 @@ export async function POST(request: NextRequest) {
         RETURNING id
       `;
       const saleId = sale.id as number;
+      const allocationsSupported = processedItems.some((item) => !item.is_service)
+        ? await supportsSaleItemBatchAllocations(tx)
+        : false;
 
       // 2. Items + FIFO con variantes
       // El descuento de lotes es atómico y con guarda (ver lib/fifo.ts):
       // bajo concurrencia nunca sobregira el stock. El costo real consumido
       // reemplaza al estimado del pre-chequeo.
       for (const item of processedItems) {
+        let fifoTakes: FifoTake[] = [];
         if (!item.is_service) {
           const consumed = await consumeFifo(
-            sql, orgId, item.product_id, item.variant_id, item.quantity, userId, warehouseId
+            tx, orgId, item.product_id, item.variant_id, item.quantity, userId, warehouseId
           );
           if (!consumed) throw new InsufficientStockError(item.label);
           item.unit_cost = consumed.totalCost / item.quantity;
+          fifoTakes = consumed.takes;
         }
 
-        await sql`
+        const [saleItem] = await tx`
           INSERT INTO sale_items (
             org_id, created_by, sale_id, product_id, variant_id,
             quantity, unit_price, unit_cost, line_total
@@ -551,10 +563,22 @@ export async function POST(request: NextRequest) {
             ${item.quantity}, ${item.unit_price},
             ${item.unit_cost}, ${item.line_total}
           )
+          RETURNING id
         `;
 
+        if (allocationsSupported && !item.is_service) {
+          await recordSaleItemBatchAllocations(
+            tx,
+            orgId,
+            saleId,
+            Number(saleItem.id),
+            fifoTakes,
+            userId,
+          );
+        }
+
         if (!item.is_service) {
-          await sql`
+          await tx`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
               quantity, reference_type, reference_id, warehouse_id
@@ -569,7 +593,7 @@ export async function POST(request: NextRequest) {
 
       // 3. Suministros (SIEMPRE)
       for (const s of normalizedSupplies) {
-        await sql`
+        await tx`
           INSERT INTO sale_supplies (
             org_id, created_by, sale_id, supply_id,
             quantity, unit_cost, line_total
@@ -579,12 +603,12 @@ export async function POST(request: NextRequest) {
             ${s.quantity}, ${s.unit_cost}, ${s.line_total}
           )
         `;
-        await sql`
+        await tx`
           UPDATE supplies
           SET stock = GREATEST(0, stock - ${s.quantity})
           WHERE id = ${s.supply_id} AND org_id = ${orgId}
         `;
-        await sql`
+        await tx`
           INSERT INTO supply_movements (
             org_id, created_by, movement_type, supply_id,
             quantity, reference_type, reference_id
@@ -603,7 +627,7 @@ export async function POST(request: NextRequest) {
         // cancelación/eliminación puede encontrarla y revertirla. Los reportes de
         // eventos calculan sus totales sumando sales.total directamente, no a través
         // de este tag, así que no dependen de reference_type='EVENT' para el ingreso.
-        await sql`
+        await tx`
           INSERT INTO transactions (
             org_id, created_by, type, account_id, amount,
             category, description,
@@ -615,14 +639,14 @@ export async function POST(request: NextRequest) {
           )
         `;
 
-        await sql`
+        await tx`
           UPDATE accounts
           SET balance = balance + ${grandTotal}
           WHERE id = ${account_id} AND org_id = ${orgId}
         `;
 
         if (customer_id) {
-          await sql`
+          await tx`
             UPDATE customers
             SET total_orders = total_orders + 1,
                 total_spent  = total_spent  + ${grandTotal},
@@ -632,8 +656,6 @@ export async function POST(request: NextRequest) {
           `;
         }
       }
-
-      await sql`COMMIT`;
 
       return Response.json(
         {
@@ -656,8 +678,8 @@ export async function POST(request: NextRequest) {
         },
         { status: 201 },
       );
+      });
     } catch (innerError) {
-      await sql`ROLLBACK`;
       if (innerError instanceof InsufficientStockError) {
         return createErrorResponse(
           `${innerError.message}. Otra venta pudo haber consumido el stock al mismo tiempo`,

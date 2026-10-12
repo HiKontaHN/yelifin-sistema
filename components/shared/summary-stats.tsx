@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 export interface SummaryStat {
   label: string;
   icon: LucideIcon;
+  labelAdornment?: ReactNode;
   value: ReactNode;
   inlineNote?: ReactNode;
   inlineNoteClassName?: string;
@@ -83,6 +84,7 @@ export function SummaryStats({
             )}>
               <item.icon className={cn("shrink-0", itemCompact ? "size-3.5" : "size-4")} aria-hidden="true" />
               {item.label}
+              {item.labelAdornment}
             </dt>
             <dd className={cn(
               "flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1",

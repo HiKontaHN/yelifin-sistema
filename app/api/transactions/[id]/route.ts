@@ -1,9 +1,7 @@
 // app/api/transactions/[id]/route.ts
 import { NextRequest } from "next/server";
-import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { withTransaction } from "@/lib/db-transaction";
 
 export async function DELETE(
   request: NextRequest,
@@ -21,47 +19,65 @@ export async function DELETE(
 
     if (isNaN(transactionId)) return createErrorResponse("ID inválido", 400);
 
-    // 1. Obtener la transacción con sus cuentas
-    const [transaction] = await sql`
-      SELECT id, type, amount, account_id, to_account_id
-      FROM transactions
-      WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
-    `;
-
-    if (!transaction) return createErrorResponse("Transacción no encontrada", 404);
-
-    const amt = Number(transaction.amount);
-
-    // 2. Revertir balances según el tipo
-    if (transaction.type === "INCOME") {
-      // Se sumó al account → restar
-      await sql`
-        UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
-        WHERE id = ${transaction.account_id} AND org_id = ${orgId}
+    const result = await withTransaction(async (tx) => {
+      const [transaction] = await tx`
+        SELECT id, type, amount, account_id, to_account_id, reference_type
+        FROM transactions
+        WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
+        FOR UPDATE
       `;
-    } else if (transaction.type === "EXPENSE") {
-      // Se restó del account → sumar de vuelta
-      await sql`
-        UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
-        WHERE id = ${transaction.account_id} AND org_id = ${orgId}
-      `;
-    } else if (transaction.type === "TRANSFER") {
-      // Se restó del origen y se sumó al destino → invertir ambos
-      await sql`
-        UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
-        WHERE id = ${transaction.account_id} AND org_id = ${orgId}
-      `;
-      await sql`
-        UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
-        WHERE id = ${transaction.to_account_id} AND org_id = ${orgId}
-      `;
-    }
 
-    // 3. Eliminar la transacción
-    await sql`
-      DELETE FROM transactions
-      WHERE id = ${transactionId} AND org_id = ${orgId}
-    `;
+      if (!transaction)
+        return { ok: false as const, error: "Transacción no encontrada", status: 404 as const };
+      if (transaction.reference_type && transaction.reference_type !== "OTHER") {
+        return {
+          ok: false as const,
+          error: "Esta transacción está vinculada a otro movimiento. Elimínala desde su origen.",
+          status: 422 as const,
+        };
+      }
+
+      const accountIds = [...new Set([
+        Number(transaction.account_id),
+        transaction.type === "TRANSFER" ? Number(transaction.to_account_id) : null,
+      ].filter((value): value is number => Number.isSafeInteger(value) && Number(value) > 0))]
+        .sort((a, b) => a - b);
+
+      for (const accountId of accountIds) {
+        await tx`SELECT id FROM accounts WHERE id = ${accountId} AND org_id = ${orgId} FOR UPDATE`;
+      }
+
+      const amt = Number(transaction.amount);
+      if (transaction.type === "INCOME") {
+        await tx`
+          UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
+          WHERE id = ${transaction.account_id} AND org_id = ${orgId}
+        `;
+      } else if (transaction.type === "EXPENSE") {
+        await tx`
+          UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
+          WHERE id = ${transaction.account_id} AND org_id = ${orgId}
+        `;
+      } else if (transaction.type === "TRANSFER") {
+        await tx`
+          UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId}
+          WHERE id = ${transaction.account_id} AND org_id = ${orgId}
+        `;
+        await tx`
+          UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId}
+          WHERE id = ${transaction.to_account_id} AND org_id = ${orgId}
+        `;
+      }
+
+      await tx`
+        DELETE FROM transactions
+        WHERE id = ${transactionId} AND org_id = ${orgId}
+      `;
+
+      return { ok: true as const };
+    });
+
+    if (!result.ok) return createErrorResponse(result.error, result.status);
 
     return Response.json({ message: "Transacción eliminada y balances revertidos" });
   } catch (error) {
@@ -91,80 +107,111 @@ export async function PATCH(
     const body = await request.json();
     const { amount, account_id, to_account_id, category, description, occurred_at } = body;
 
-    // 1. Obtener transacción actual
-    const [old] = await sql`
-      SELECT id, type, amount, account_id, to_account_id, reference_type
-      FROM transactions
-      WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
-    `;
+    if (amount !== undefined && (!Number.isFinite(Number(amount)) || Number(amount) <= 0))
+      return createErrorResponse("El monto debe ser mayor a 0", 400);
+    if (account_id !== undefined && (!Number.isSafeInteger(Number(account_id)) || Number(account_id) <= 0))
+      return createErrorResponse("Cuenta origen no encontrada", 404);
+    if (to_account_id !== undefined && (!Number.isSafeInteger(Number(to_account_id)) || Number(to_account_id) <= 0))
+      return createErrorResponse("Cuenta destino no encontrada", 404);
 
-    if (!old) return createErrorResponse("Transacción no encontrada", 404);
-
-    if (old.reference_type === "SALE" || old.reference_type === "PURCHASE") {
-      return createErrorResponse(
-        "Esta transacción está vinculada a una venta/compra. Edítala desde ahí.",
-        422
-      );
-    }
-
-    const oldAmt = Number(old.amount);
-    const newAmt = amount ? Number(amount) : oldAmt;
-    const newAccountId = account_id ?? old.account_id;
-    const newToAccountId = to_account_id ?? old.to_account_id;
-
-    if (newAmt <= 0) return createErrorResponse("El monto debe ser mayor a 0", 400);
-
-    // 2. Revertir efecto de la transacción VIEJA
-    if (old.type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
-    } else if (old.type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
-    } else if (old.type === "TRANSFER") {
-      await sql`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.to_account_id} AND org_id = ${orgId}`;
-    }
-
-    // 3. Validar cuentas nuevas
-    const [newAccount] = await sql`
-      SELECT id FROM accounts WHERE id = ${newAccountId} AND org_id = ${orgId} AND is_active = TRUE
-    `;
-    if (!newAccount) return createErrorResponse("Cuenta origen no encontrada", 404);
-
-    if (old.type === "TRANSFER") {
-      if (!newToAccountId) return createErrorResponse("La cuenta destino es requerida", 400);
-      if (newAccountId === newToAccountId) return createErrorResponse("Las cuentas deben ser diferentes", 400);
-
-      const [newToAccount] = await sql`
-        SELECT id FROM accounts WHERE id = ${newToAccountId} AND org_id = ${orgId} AND is_active = TRUE
+    const result = await withTransaction(async (tx) => {
+      const [old] = await tx`
+        SELECT
+          id, type, amount, account_id, to_account_id, reference_type,
+          category, description, occurred_at
+        FROM transactions
+        WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
+        FOR UPDATE
       `;
-      if (!newToAccount) return createErrorResponse("Cuenta destino no encontrada", 404);
-    }
 
-    // 4. Aplicar efecto de la transacción NUEVA
-    if (old.type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
-    } else if (old.type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
-    } else if (old.type === "TRANSFER") {
-      await sql`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newToAccountId} AND org_id = ${orgId}`;
-    }
+      if (!old) return { ok: false as const, error: "Transacción no encontrada", status: 404 as const };
+      if (old.reference_type && old.reference_type !== "OTHER") {
+        return {
+          ok: false as const,
+          error: "Esta transacción está vinculada a otro movimiento. Edítala desde su origen.",
+          status: 422 as const,
+        };
+      }
 
-    // 5. Actualizar la transacción
-    const [updated] = await sql`
-      UPDATE transactions SET
-        amount        = ${newAmt},
-        account_id    = ${newAccountId},
-        to_account_id = ${old.type === "TRANSFER" ? newToAccountId : null},
-        category      = ${category    ?? old.category},
-        description   = ${description ?? old.description},
-        occurred_at   = ${occurred_at ?? old.occurred_at},
-        updated_by    = ${userId}
-      WHERE id = ${transactionId} AND org_id = ${orgId}
-      RETURNING *
-    `;
+      const oldAmt = Number(old.amount);
+      const newAmt = amount !== undefined ? Number(amount) : oldAmt;
+      const newAccountId = account_id !== undefined ? Number(account_id) : Number(old.account_id);
+      const newToAccountId = old.type === "TRANSFER"
+        ? (to_account_id !== undefined ? Number(to_account_id) : Number(old.to_account_id))
+        : null;
 
-    return Response.json({ message: "Transacción actualizada", data: updated });
+      if (old.type === "TRANSFER") {
+        if (!Number.isSafeInteger(newToAccountId) || Number(newToAccountId) <= 0)
+          return { ok: false as const, error: "La cuenta destino es requerida", status: 400 as const };
+        if (newAccountId === newToAccountId)
+          return { ok: false as const, error: "Las cuentas deben ser diferentes", status: 400 as const };
+      }
+
+      const accountIds = [...new Set([
+        Number(old.account_id),
+        old.type === "TRANSFER" ? Number(old.to_account_id) : null,
+        newAccountId,
+        old.type === "TRANSFER" ? Number(newToAccountId) : null,
+      ].filter((value): value is number => Number.isSafeInteger(value) && Number(value) > 0))]
+        .sort((a, b) => a - b);
+      const lockedAccounts = [] as Array<{ id: number; is_active: boolean }>;
+
+      for (const accountId of accountIds) {
+        const [account] = await tx<{ id: number; is_active: boolean }>`
+          SELECT id, is_active FROM accounts
+          WHERE id = ${accountId} AND org_id = ${orgId}
+          FOR UPDATE
+        `;
+        if (account) lockedAccounts.push(account);
+      }
+
+      const newAccount = lockedAccounts.find((account) => Number(account.id) === newAccountId);
+      if (!newAccount?.is_active)
+        return { ok: false as const, error: "Cuenta origen no encontrada", status: 404 as const };
+      if (old.type === "TRANSFER") {
+        const newToAccount = lockedAccounts.find((account) => Number(account.id) === newToAccountId);
+        if (!newToAccount?.is_active)
+          return { ok: false as const, error: "Cuenta destino no encontrada", status: 404 as const };
+      }
+
+      if (old.type === "INCOME") {
+        await tx`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
+      } else if (old.type === "EXPENSE") {
+        await tx`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id} AND org_id = ${orgId}`;
+      } else {
+        await tx`UPDATE accounts SET balance = balance + ${oldAmt}, updated_by = ${userId} WHERE id = ${old.account_id}    AND org_id = ${orgId}`;
+        await tx`UPDATE accounts SET balance = balance - ${oldAmt}, updated_by = ${userId} WHERE id = ${old.to_account_id} AND org_id = ${orgId}`;
+      }
+
+      if (old.type === "INCOME") {
+        await tx`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
+      } else if (old.type === "EXPENSE") {
+        await tx`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId} AND org_id = ${orgId}`;
+      } else {
+        await tx`UPDATE accounts SET balance = balance - ${newAmt}, updated_by = ${userId} WHERE id = ${newAccountId}    AND org_id = ${orgId}`;
+        await tx`UPDATE accounts SET balance = balance + ${newAmt}, updated_by = ${userId} WHERE id = ${newToAccountId}  AND org_id = ${orgId}`;
+      }
+
+      const categoryValue = category !== undefined ? category?.trim() || null : old.category;
+      const descriptionValue = description !== undefined ? description?.trim() || null : old.description;
+      const [updated] = await tx`
+        UPDATE transactions SET
+          amount        = ${newAmt},
+          account_id    = ${newAccountId},
+          to_account_id = ${old.type === "TRANSFER" ? newToAccountId : null},
+          category      = ${categoryValue},
+          description   = ${descriptionValue},
+          occurred_at   = ${occurred_at ?? old.occurred_at},
+          updated_by    = ${userId}
+        WHERE id = ${transactionId} AND org_id = ${orgId}
+        RETURNING *
+      `;
+
+      return { ok: true as const, data: updated };
+    });
+
+    if (!result.ok) return createErrorResponse(result.error, result.status);
+    return Response.json({ message: "Transacción actualizada", data: result.data });
   } catch (error) {
     console.error("PATCH /api/transactions/[id]:", error);
     return createErrorResponse("Error al editar transacción", 500);

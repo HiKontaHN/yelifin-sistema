@@ -36,6 +36,7 @@ export type CreditCardTransaction = {
   exchange_rate: number | null;
   amount_local: number | null;
   sale_id: number | null;
+  purchase_batch_id: number | null;
   sale_number: string | null;
   account_transaction_id: number | null;
   account_name: string | null;
@@ -327,7 +328,7 @@ export function useUpdateCCTransaction() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const updateTransaction = async (id: number, data: {
-    description?: string;
+    description?: string | null;
     category?: string | null;
     occurred_at?: string;
     amount?: number;

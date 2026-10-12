@@ -97,7 +97,10 @@ function EditSaleContent() {
   const { accounts } = useAccounts();
   const { customers } = useCustomers({ limit: 500 });
   const { supplies } = useSupplies();
-  const { inventory, mutate: mutateInventory } = useInventory({ limit: 500 });
+  const { inventory, mutate: mutateInventory } = useInventory({
+    limit: 500,
+    warehouse: sale?.warehouse_id ?? "assigned",
+  });
   const { editSale, confirmSale, cancelSale, isPatching } = usePatchSale(saleId);
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -182,9 +185,9 @@ function EditSaleContent() {
   useEffect(() => {
     if (!sale || initialized) return;
 
-    if (sale.status !== "PENDING") {
-      toast.error("Solo se pueden editar ventas pendientes");
-      push("/sales");
+    if (sale.status === "CANCELLED") {
+      toast.error("No se puede editar una venta cancelada");
+      push(`/sales/${sale.id}`);
       return;
     }
 
@@ -248,7 +251,19 @@ function EditSaleContent() {
   // productos disponibles
   const availableProducts = useMemo(
     () =>
-      products.filter((p) => {
+      products
+      .map((product) => {
+        const scopedInventory = inventory.find(
+          (item) => item.product_id === product.id,
+        );
+        return {
+          ...product,
+          stock: product.is_service
+            ? product.stock
+            : Number(scopedInventory?.stock ?? 0),
+        };
+      })
+      .filter((p) => {
         const hasStock = p.is_service || (p.stock ?? 0) > 0;
         if (!hasStock) return false;
         if (!search.trim()) return true;
@@ -258,7 +273,7 @@ function EditSaleContent() {
           (p.sku?.toLowerCase().includes(q) ?? false)
         );
       }),
-    [products, search]
+    [products, inventory, search]
   );
 
   // carrito

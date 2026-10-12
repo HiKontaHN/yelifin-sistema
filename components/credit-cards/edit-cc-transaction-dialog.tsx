@@ -91,7 +91,7 @@ export function EditCCTransactionDialog({
     if (!txn) return;
     try {
       await updateTransaction(txn.id, {
-        description:   data.description || undefined,
+        description:   data.description?.trim() || null,
         category:      data.category || null,
         occurred_at:   localDateToISO(data.occurred_at),
         amount:        data.amount,

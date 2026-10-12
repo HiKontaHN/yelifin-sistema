@@ -68,6 +68,7 @@ export type Sale = {
   account_id:     number;
   account_name:   string;
   event_id:       number | null;
+  warehouse_id:   number;
   status:         SaleStatus;
   sold_at:        string;
   notes:          string | null;

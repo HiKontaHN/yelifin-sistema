@@ -34,6 +34,7 @@ import { CreateCreditCardDialog } from "@/components/credit-cards/create-credit-
 import { PayCreditCardDialog } from "@/components/credit-cards/pay-credit-card-dialog";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { Fab } from "@/components/ui/fab";
+import { SummaryStats } from "@/components/shared/summary-stats";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -235,28 +236,33 @@ export default function CreditCardsPage() {
         {/* ── Left column (60%) ── */}
         <div className="flex flex-col gap-3">
 
-          {/* Stat mini-cards */}
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: "Cargos del mes", value: totalCharges, color: "text-destructive", icon: ArrowUpCircle },
-              { label: "Pagos del mes",  value: totalPayments, color: "text-green-600",  icon: ArrowDownCircle },
-            ].map((s) => (
-              <Card key={s.label}>
-                <CardContent className="pl-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-medium text-muted-foreground">{s.label}</span>
-                    <s.icon className="size-3 text-muted-foreground shrink-0" />
-                  </div>
-                  <div className={`text-sm font-bold ${s.color}`}>
-                    {loadingTxs
-                      ? <Skeleton className="h-4 w-16" />
-                      : <span className={isPrivate ? "blur-sm select-none" : ""}>{format(s.value)}</span>
-                    }
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <SummaryStats
+            ariaLabel="Resumen mensual de tarjetas"
+            isLoading={loadingTxs}
+            columns="two"
+            items={[
+              {
+                label: "Cargos del mes",
+                value: (
+                  <span className={isPrivate ? "blur-sm select-none" : ""}>
+                    {format(totalCharges)}
+                  </span>
+                ),
+                valueClassName: "text-destructive",
+                icon: ArrowUpCircle,
+              },
+              {
+                label: "Pagos del mes",
+                value: (
+                  <span className={isPrivate ? "blur-sm select-none" : ""}>
+                    {format(totalPayments)}
+                  </span>
+                ),
+                valueClassName: "text-green-600 dark:text-green-400",
+                icon: ArrowDownCircle,
+              },
+            ]}
+          />
 
           {/* Deuda total */}
           {(totalDebtLocal > 0 || totalDebtUsd > 0) && !isLoading && (

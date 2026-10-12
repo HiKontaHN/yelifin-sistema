@@ -38,6 +38,7 @@ export async function GET(
         cct.amount_local,
         cct.category,
         cct.sale_id,
+        cct.purchase_batch_id,
         cct.account_transaction_id,
         cct.occurred_at,
         cct.created_at,

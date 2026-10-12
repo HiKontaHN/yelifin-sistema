@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -152,10 +153,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Transacción atómica ─────────────────────────────────────────
-    await sql`BEGIN`;
-    try {
+    return await withTransaction(async (tx) => {
       // 1. Crear purchase_batch
-      const [batch] = await sql`
+      const [batch] = await tx`
         INSERT INTO purchase_batches (
           org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
           subtotal, shipping, tax, total,
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
 
       // 2. Items (+ inventory sólo si status = COMPLETED)
       for (const item of processedItems) {
-        const [batchItem] = await sql`
+        const [batchItem] = await tx`
           INSERT INTO purchase_batch_items (
             org_id, created_by, purchase_batch_id, product_id, variant_id,
             quantity, unit_cost_usd, unit_cost, total_cost
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
         `;
 
         if (status === "COMPLETED") {
-          await sql`
+          await tx`
             INSERT INTO inventory_batches (
               org_id, created_by, product_id, variant_id, purchase_batch_item_id,
               qty_in, qty_available, unit_cost, received_at, warehouse_id
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
             )
           `;
 
-          await sql`
+          await tx`
             INSERT INTO inventory_movements (
               org_id, created_by, movement_type, product_id, variant_id,
               quantity, reference_type, reference_id, notes, warehouse_id
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
         // CC se carga solo por los productos; el envío va a cuenta separada (si aplica)
         const ccAmount      = totalInCurrency; // siempre productos en moneda de compra
         const ccAmountLocal = hasShippingAccount ? productsLocal : totalLocal;
-        await sql`
+        await tx`
           INSERT INTO credit_card_transactions (
             org_id, created_by, credit_card_id, type, description,
             amount, currency, exchange_rate, amount_local,
@@ -228,12 +228,12 @@ export async function POST(request: NextRequest) {
           )
         `;
         if (isUsd) {
-          await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+          await tx`UPDATE credit_cards SET balance_usd = balance_usd + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
         } else {
-          await sql`UPDATE credit_cards SET balance = balance + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
+          await tx`UPDATE credit_cards SET balance = balance + ${ccAmount}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
         }
         if (hasShippingAccount) {
-          await sql`
+          await tx`
             INSERT INTO transactions (
               org_id, created_by, account_id, type, amount,
               description, category, reference_type, reference_id, occurred_at
@@ -242,11 +242,11 @@ export async function POST(request: NextRequest) {
               ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
             )
           `;
-          await sql`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
+          await tx`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
         }
       } else if (hasShippingAccount) {
         // Productos desde cuenta principal; envío desde cuenta separada
-        await sql`
+        await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
             description, category, reference_type, reference_id, occurred_at
@@ -255,8 +255,8 @@ export async function POST(request: NextRequest) {
             ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${productsLocal}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
-        await sql`
+        await tx`UPDATE accounts SET balance = balance - ${productsLocal}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
+        await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
             description, category, reference_type, reference_id, occurred_at
@@ -265,9 +265,9 @@ export async function POST(request: NextRequest) {
             ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
+        await tx`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
       } else {
-        await sql`
+        await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
             description, category, reference_type, reference_id, occurred_at
@@ -276,10 +276,8 @@ export async function POST(request: NextRequest) {
             ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
           )
         `;
-        await sql`UPDATE accounts SET balance = balance - ${total}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
+        await tx`UPDATE accounts SET balance = balance - ${total}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
       }
-
-      await sql`COMMIT`;
 
       return Response.json(
         {
@@ -294,11 +292,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 201 }
       );
-
-    } catch (innerError) {
-      await sql`ROLLBACK`;
-      throw innerError;
-    }
+    });
 
   } catch (error) {
     console.error("POST /api/purchases:", error);

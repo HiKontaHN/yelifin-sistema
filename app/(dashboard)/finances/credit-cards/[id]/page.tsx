@@ -208,7 +208,7 @@ export default function CreditCardDetailPage({
     {
       id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
       align: "right", stopRowClick: true,
-      cell: (txn) => txn.type === "CHARGE" && !txn.sale_id ? (
+      cell: (txn) => txn.type === "CHARGE" && !txn.sale_id && !txn.purchase_batch_id ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Acciones del movimiento">
@@ -529,7 +529,7 @@ function CreditCardTxnRow({
 }) {
   const isCharge   = txn.type === "CHARGE";
   const isUsd      = txn.currency === "USD";
-  const isEditable = txn.type === "CHARGE" && !txn.sale_id;
+  const isEditable = txn.type === "CHARGE" && !txn.sale_id && !txn.purchase_batch_id;
 
   return (
     <div className="flex items-start gap-3 p-3.5">

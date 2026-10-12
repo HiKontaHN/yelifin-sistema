@@ -63,6 +63,9 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
   const watchRate = watch("exchange_rate", 0);
   const isUsd = watchCurrency === "USD";
   const localEquivalent = isUsd && watchAmount && watchRate ? watchAmount * watchRate : null;
+  const outstandingAmount = card
+    ? Number(isUsd ? card.balance_usd : card.balance)
+    : 0;
 
   // Al pasar a USD, precargar la tasa del BCH (editable) si está vacía.
   const { rate: suggestedRate } = useSuggestedExchangeRate();
@@ -87,6 +90,10 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
     }
     if (isUsd && (!data.exchange_rate || data.exchange_rate <= 0)) {
       toast.error("La tasa de cambio es requerida para pagos en USD");
+      return;
+    }
+    if (data.amount > outstandingAmount) {
+      toast.error("El pago no puede superar el saldo pendiente de la tarjeta");
       return;
     }
     try {
@@ -237,7 +244,7 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
                 {isUsd ? "$" : symbol}
               </span>
               <Input
-                type="number" step="0.01" min="0.01" placeholder="0.00"
+                type="number" step="0.01" min="0.01" max={outstandingAmount || undefined} placeholder="0.00"
                 {...register("amount")}
                 disabled={isPaying}
                 className="h-11 pl-8 text-base"

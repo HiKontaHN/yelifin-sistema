@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -404,18 +405,18 @@ export function CreateTransactionModal({
                 opcional
               </span>
             </Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="h-11 w-full">
-                <SelectValue placeholder="Sin categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeCategories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={category}
+              onValueChange={setCategory}
+              items={activeCategories.map((cat) => ({
+                value: cat.name,
+                label: cat.name,
+              }))}
+              placeholder="Sin categoría"
+              searchPlaceholder="Buscar categoría..."
+              defaultOption={{ value: "", label: "Sin categoría" }}
+              className="h-11 w-full"
+            />
           </div>
 
           <div className="space-y-1.5">

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, verifyResourceLimit } from "@/lib/auth";
 import { getUtcBounds } from "@/lib/date-bounds";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -105,55 +106,73 @@ export async function POST(request: NextRequest) {
 
     if (!type || !["INCOME", "EXPENSE", "TRANSFER"].includes(type))
       return createErrorResponse("Tipo de transacción inválido", 400);
-    if (!amount || Number(amount) <= 0)
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0)
       return createErrorResponse("El monto debe ser mayor a 0", 400);
 
     const isCreditCardExpense = type === "EXPENSE" && !!credit_card_id;
+    const sourceAccountId = account_id === undefined || account_id === null
+      ? null
+      : Number(account_id);
+    const destinationAccountId = to_account_id === undefined || to_account_id === null
+      ? null
+      : Number(to_account_id);
 
-    if (!isCreditCardExpense && !account_id)
+    if (!isCreditCardExpense && (!Number.isSafeInteger(sourceAccountId) || Number(sourceAccountId) <= 0))
       return createErrorResponse("La cuenta es requerida", 400);
-    if (type === "TRANSFER" && !to_account_id)
+    if (type === "TRANSFER" && (!Number.isSafeInteger(destinationAccountId) || Number(destinationAccountId) <= 0))
       return createErrorResponse("La cuenta destino es requerida", 400);
-    if (type === "TRANSFER" && account_id === to_account_id)
+    if (type === "TRANSFER" && sourceAccountId === destinationAccountId)
       return createErrorResponse("Las cuentas deben ser diferentes", 400);
 
-    const amt = Number(amount);
     const occurredAt = occurred_at ?? new Date().toISOString();
 
     // ── Egreso con tarjeta de crédito ──────────────────────────────────
     if (isCreditCardExpense) {
-      const [card] = await sql`
-        SELECT id, balance, balance_usd FROM credit_cards
-        WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId} AND is_active = TRUE
-      `;
-      if (!card) return createErrorResponse("Tarjeta no encontrada", 404);
-
+      const cardId = Number(credit_card_id);
+      if (!Number.isSafeInteger(cardId) || cardId <= 0)
+        return createErrorResponse("Tarjeta no encontrada", 404);
       const isUsd = currency === "USD";
-      const rateNum = isUsd ? Number(exchange_rate ?? 1) : null;
-      const amountLocal = isUsd ? amt * Number(exchange_rate ?? 1) : amt;
+      const rateNum = isUsd ? Number(exchange_rate) : null;
+      if (isUsd && (!Number.isFinite(rateNum) || Number(rateNum) <= 0))
+        return createErrorResponse("La tasa de cambio es requerida para cargos en USD", 400);
+      const amountLocal = isUsd ? amt * Number(rateNum) : amt;
 
-      const [ccTxn] = await sql`
-        INSERT INTO credit_card_transactions (
-          org_id, created_by, credit_card_id, type, description,
-          amount, currency, exchange_rate, amount_local, category, occurred_at
-        ) VALUES (
-          ${orgId}, ${userId}, ${Number(credit_card_id)}, 'CHARGE',
-          ${description ?? null},
-          ${amt}, ${currency ?? "LOCAL"}, ${rateNum}, ${amountLocal},
-          ${category ?? null},
-          ${occurredAt}
-        )
-        RETURNING id
-      `;
+      const result = await withTransaction(async (tx) => {
+        const [card] = await tx`
+          SELECT id FROM credit_cards
+          WHERE id = ${cardId} AND org_id = ${orgId} AND is_active = TRUE
+          FOR UPDATE
+        `;
+        if (!card) return { ok: false as const, error: "Tarjeta no encontrada", status: 404 as const };
 
-      if (isUsd) {
-        await sql`UPDATE credit_cards SET balance_usd = balance_usd + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
-      } else {
-        await sql`UPDATE credit_cards SET balance = balance + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${Number(credit_card_id)} AND org_id = ${orgId}`;
-      }
+        const [ccTxn] = await tx`
+          INSERT INTO credit_card_transactions (
+            org_id, created_by, credit_card_id, type, description,
+            amount, currency, exchange_rate, amount_local, category, occurred_at
+          ) VALUES (
+            ${orgId}, ${userId}, ${cardId}, 'CHARGE',
+            ${description ?? null},
+            ${amt}, ${currency ?? "LOCAL"}, ${rateNum}, ${amountLocal},
+            ${category ?? null},
+            ${occurredAt}
+          )
+          RETURNING id
+        `;
+
+        if (isUsd) {
+          await tx`UPDATE credit_cards SET balance_usd = balance_usd + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${cardId} AND org_id = ${orgId}`;
+        } else {
+          await tx`UPDATE credit_cards SET balance = balance + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${cardId} AND org_id = ${orgId}`;
+        }
+
+        return { ok: true as const, id: Number(ccTxn.id) };
+      });
+
+      if (!result.ok) return createErrorResponse(result.error, result.status);
 
       return Response.json(
-        { message: "Cargo a tarjeta registrado", data: { id: ccTxn.id } },
+        { message: "Cargo a tarjeta registrado", data: { id: result.id } },
         { status: 201 }
       );
     }
@@ -165,40 +184,60 @@ export async function POST(request: NextRequest) {
       : "OTHER";
     const refId = reference_id ? Number(reference_id) : null;
 
-    const [account] = await sql`
-      SELECT id, balance FROM accounts
-      WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
-    `;
-    if (!account) return createErrorResponse("Cuenta no encontrada", 404);
+    const result = await withTransaction(async (tx) => {
+      const accountIds = type === "TRANSFER"
+        ? [Number(sourceAccountId), Number(destinationAccountId)].sort((a, b) => a - b)
+        : [Number(sourceAccountId)];
+      const lockedAccounts = [] as Array<{ id: number; is_active: boolean }>;
 
-    const [transaction] = await sql`
-      INSERT INTO transactions (
-        org_id, created_by, type, account_id, to_account_id,
-        amount, category, description,
-        reference_type, reference_id, occurred_at
-      ) VALUES (
-        ${orgId}, ${userId}, ${type}, ${account_id}, ${to_account_id ?? null},
-        ${amt}, ${category ?? null}, ${description ?? null},
-        ${refType}, ${refId}, ${occurredAt}
-      )
-      RETURNING id
-    `;
+      for (const accountId of accountIds) {
+        const [lockedAccount] = await tx<{ id: number; is_active: boolean }>`
+          SELECT id, is_active FROM accounts
+          WHERE id = ${accountId} AND org_id = ${orgId}
+          FOR UPDATE
+        `;
+        if (lockedAccount) lockedAccounts.push(lockedAccount);
+      }
 
-    if (type === "INCOME") {
-      await sql`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
-    } else if (type === "EXPENSE") {
-      await sql`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
-    } else if (type === "TRANSFER") {
-      const [toAccount] = await sql`
-        SELECT id FROM accounts WHERE id = ${to_account_id} AND org_id = ${orgId} AND is_active = TRUE
+      const sourceAccount = lockedAccounts.find((account) => Number(account.id) === sourceAccountId);
+      if (!sourceAccount?.is_active)
+        return { ok: false as const, error: "Cuenta no encontrada", status: 404 as const };
+
+      if (type === "TRANSFER") {
+        const destinationAccount = lockedAccounts.find((account) => Number(account.id) === destinationAccountId);
+        if (!destinationAccount?.is_active)
+          return { ok: false as const, error: "Cuenta destino no encontrada", status: 404 as const };
+      }
+
+      const [transaction] = await tx`
+        INSERT INTO transactions (
+          org_id, created_by, type, account_id, to_account_id,
+          amount, category, description,
+          reference_type, reference_id, occurred_at
+        ) VALUES (
+          ${orgId}, ${userId}, ${type}, ${sourceAccountId}, ${type === "TRANSFER" ? destinationAccountId : null},
+          ${amt}, ${category ?? null}, ${description ?? null},
+          ${refType}, ${refId}, ${occurredAt}
+        )
+        RETURNING id
       `;
-      if (!toAccount) return createErrorResponse("Cuenta destino no encontrada", 404);
-      await sql`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${account_id}    AND org_id = ${orgId}`;
-      await sql`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${to_account_id} AND org_id = ${orgId}`;
-    }
+
+      if (type === "INCOME") {
+        await tx`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${sourceAccountId} AND org_id = ${orgId}`;
+      } else if (type === "EXPENSE") {
+        await tx`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${sourceAccountId} AND org_id = ${orgId}`;
+      } else {
+        await tx`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${sourceAccountId}      AND org_id = ${orgId}`;
+        await tx`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${destinationAccountId} AND org_id = ${orgId}`;
+      }
+
+      return { ok: true as const, id: Number(transaction.id) };
+    });
+
+    if (!result.ok) return createErrorResponse(result.error, result.status);
 
     return Response.json(
-      { message: "Transacción registrada", data: { id: transaction.id } },
+      { message: "Transacción registrada", data: { id: result.id } },
       { status: 201 }
     );
   } catch (error) {

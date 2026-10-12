@@ -1,7 +1,7 @@
 // hooks/swr/use-purchases.ts
 'use client';
 
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -54,12 +54,17 @@ export type Purchase = {
 };
 
 export type PurchaseItemDetail = {
+  id: number;
   product_id: number;
+  variant_id: number | null;
   product_name: string;
   variant_name: string | null;
   quantity: number;
   unit_cost: number | null;     // null sin show_costs
   unit_cost_usd: number | null; // null sin show_costs
+  total_cost: number | null;
+  inventory_batch_id: number | null;
+  consumed_quantity: number;
 };
 
 export type PurchaseWithItems = Purchase & {
@@ -71,11 +76,17 @@ export type PurchaseWithItems = Purchase & {
 // account_name/status son null cuando el grupo mezcla varios valores.
 export type PurchaseDetail = {
   id: number;
+  public_id: string | null;
   is_group: boolean;
   batches_count: number;
+  account_id: number | null;
   account_name: string | null;
+  shipping_account_id: number | null;
   shipping_account_name: string | null;
   status: 'PENDING' | 'COMPLETED' | null;
+  exchange_rate: number | null;
+  is_paid: boolean | null;
+  warehouse_id: number | null;
   purchased_at: string;
   notes: string | null;
   currency: string;
@@ -167,11 +178,11 @@ export function useCancelPurchase() {
   return { cancelPurchase, isCancelling };
 }
 
-export function usePurchase(id: number | null) {
+export function usePurchase(id: number | null, options?: { edit?: boolean }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
   const { data, error, isLoading, mutate } = useSWR(
-    firebaseUser && id ? `${KEY}/${id}` : null,
+    firebaseUser && id ? `${KEY}/${id}${options?.edit ? '?edit=true' : ''}` : null,
     (url: string) => authFetch(url),
     {
       revalidateOnFocus: false,
@@ -183,6 +194,50 @@ export function usePurchase(id: number | null) {
     error:    error?.message ?? null,
     mutate,
   };
+}
+
+export type EditPurchaseItemInput = {
+  item_id: number;
+  quantity: number;
+  unit_cost?: number;
+  purchased_at?: string;
+  notes?: string | null;
+};
+
+export function useEditPurchaseItem(id: number | null) {
+  const authFetch = useAuthFetch();
+  const { mutate: globalMutate } = useSWRConfig();
+  const [isEditing, setIsEditing] = useState(false);
+
+  const editPurchaseItem = async (input: EditPurchaseItemInput) => {
+    if (!id) throw new Error('ID de compra requerido');
+    setIsEditing(true);
+    try {
+      const result = await authFetch(`${KEY}/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'edit', ...input }),
+      });
+      await globalMutate(
+        (key) =>
+          typeof key === 'string' && (
+            key.startsWith('/api/purchases') ||
+            key.startsWith('/api/accounts') ||
+            key.startsWith('/api/finances') ||
+            key.startsWith('/api/dashboard') ||
+            key.startsWith('/api/inventory') ||
+            key.startsWith('/api/products') ||
+            key.startsWith('/api/sales')
+          ),
+        undefined,
+        { revalidate: true },
+      );
+      return result;
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  return { editPurchaseItem, isEditing };
 }
 
 export function useConfirmPurchaseArrival(id: number | null) {

@@ -21,6 +21,7 @@ import {
 } from "@/lib/import-inventory";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -95,9 +96,9 @@ export async function POST(request: NextRequest) {
 
     // ── Ejecución por lotes: el cliente pide un rango [offset, offset+limit)
     // de filas ya resueltas para mantener cada request muy por debajo del
-    // timeout de la función serverless (la escritura es secuencial, fila por
-    // fila, con varios round-trips SQL cada una — no es paralelizable con el
-    // driver HTTP de Neon, que no soporta transacciones reales entre queries).
+    // timeout de la función serverless. Cada fila se escribe en su propia
+    // transacción para que pueda fallar sin dejar producto, compra, stock o
+    // saldo parcialmente actualizados.
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
     const limitParam = url.searchParams.get("limit");
     const limit = limitParam ? Number(limitParam) || resolved.length : resolved.length;
@@ -222,9 +223,9 @@ function rowResult(row: ResolvedRow, status: "ok" | "failed", error?: string): R
 }
 
 // Ejecuta una fila según la matriz de acciones. Devuelve el id de la compra
-// creada (si la fila generó una). Cada fila es autocontenida: el driver HTTP
-// de Neon no tiene transacciones reales, así que una fila fallida no deja
-// compras a medias de otras filas.
+// creada (si la fila generó una). Cada fila usa una transacción independiente:
+// una fila fallida no revierte las anteriores ni deja sus propias escrituras a
+// medias.
 async function executeRow(
   row: ResolvedRow,
   orgId: number,
@@ -232,6 +233,7 @@ async function executeRow(
   importBatchId: string | null,
   warehouseId: number
 ): Promise<number | null> {
+  return withTransaction(async (tx) => {
   let productId = row.productId;
 
   // 1. Crear producto si no existe
@@ -239,7 +241,7 @@ async function executeRow(
     const finalSku =
       row.sku ??
       `PRD-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-    const [product] = await sql`
+    const [product] = await tx`
       INSERT INTO products (org_id, created_by, name, description, sku, barcode, price, image_url, is_service)
       VALUES (
         ${orgId}, ${userId}, ${row.nombre!.trim()}, ${row.descripcion},
@@ -267,7 +269,7 @@ async function executeRow(
 
   // 2. Compra individual (con cuenta, o pendiente sin fuente de pago)
   if (hasPayment || isPending) {
-    const [batch] = await sql`
+    const [batch] = await tx`
       INSERT INTO purchase_batches (
         org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
         subtotal, shipping, tax, total, is_paid, purchased_at, notes, status, import_batch_id, warehouse_id
@@ -282,7 +284,7 @@ async function executeRow(
     `;
     purchaseId = Number(batch.id);
 
-    const [batchItem] = await sql`
+    const [batchItem] = await tx`
       INSERT INTO purchase_batch_items (
         org_id, created_by, purchase_batch_id, product_id, variant_id,
         quantity, unit_cost_usd, unit_cost, total_cost
@@ -295,7 +297,7 @@ async function executeRow(
 
     // 3. Movimiento financiero (solo si la fila trae cuenta)
     if (hasPayment && isCreditCard) {
-      await sql`
+      await tx`
         INSERT INTO credit_card_transactions (
           org_id, created_by, credit_card_id, type, description,
           amount, currency, exchange_rate, amount_local,
@@ -306,12 +308,12 @@ async function executeRow(
           ${purchaseId}, ${INVENTORY_PURCHASE_CATEGORY}, ${occurredAt}
         )
       `;
-      await sql`
+      await tx`
         UPDATE credit_cards SET balance = balance + ${totalCost}, updated_at = NOW(), updated_by = ${userId}
         WHERE id = ${row.account!.id} AND org_id = ${orgId}
       `;
     } else if (hasPayment) {
-      await sql`
+      await tx`
         INSERT INTO transactions (
           org_id, created_by, account_id, type, amount,
           description, category, reference_type, reference_id, occurred_at
@@ -320,7 +322,7 @@ async function executeRow(
           ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseId}, ${occurredAt}
         )
       `;
-      await sql`
+      await tx`
         UPDATE accounts SET balance = balance - ${totalCost}, updated_by = ${userId}
         WHERE id = ${row.account!.id} AND org_id = ${orgId}
       `;
@@ -328,7 +330,7 @@ async function executeRow(
 
     // 4. Inventario inmediato solo si está listo (pendiente lo genera el PATCH al llegar)
     if (!isPending) {
-      await sql`
+      await tx`
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id, purchase_batch_item_id,
           qty_in, qty_available, unit_cost, received_at, warehouse_id
@@ -337,7 +339,7 @@ async function executeRow(
           ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
         )
       `;
-      await sql`
+      await tx`
         INSERT INTO inventory_movements (
           org_id, created_by, movement_type, product_id, variant_id,
           quantity, reference_type, reference_id, notes, warehouse_id
@@ -349,7 +351,7 @@ async function executeRow(
     }
   } else {
     // Sin cuenta y listo: inventario inicial, sin compra ni finanzas
-    await sql`
+    await tx`
       INSERT INTO inventory_batches (
         org_id, created_by, product_id, variant_id, purchase_batch_item_id,
         qty_in, qty_available, unit_cost, received_at, warehouse_id
@@ -358,7 +360,7 @@ async function executeRow(
         ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
       )
     `;
-    await sql`
+    await tx`
       INSERT INTO inventory_movements (
         org_id, created_by, movement_type, product_id, variant_id,
         quantity, reference_type, reference_id, notes, warehouse_id
@@ -370,4 +372,5 @@ async function executeRow(
   }
 
   return purchaseId;
+  });
 }

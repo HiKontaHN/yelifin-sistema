@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { resolveWarehouseId } from "@/lib/warehouses";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -63,9 +64,8 @@ export async function POST(request: NextRequest) {
     const finalNotes = notes?.trim() || "Inventario inicial";
 
     // ── Transacción atómica ────────────────────────────────────────
-    await sql`BEGIN`;
-    try {
-      const [batch] = await sql`
+    return await withTransaction(async (tx) => {
+      const [batch] = await tx`
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id,
           purchase_batch_item_id,
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         RETURNING id
       `;
 
-      await sql`
+      await tx`
         INSERT INTO inventory_movements (
           org_id, created_by, movement_type, product_id, variant_id,
           quantity, reference_type, reference_id, notes, warehouse_id
@@ -87,8 +87,6 @@ export async function POST(request: NextRequest) {
           ${quantity}, 'INITIAL', ${batch.id}, ${finalNotes}, ${warehouseId}
         )
       `;
-
-      await sql`COMMIT`;
 
       return Response.json(
         {
@@ -103,11 +101,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 201 }
       );
-
-    } catch (innerError) {
-      await sql`ROLLBACK`;
-      throw innerError;
-    }
+    });
 
   } catch (error) {
     console.error("POST /api/inventory/existing:", error);

@@ -217,19 +217,28 @@ export async function GET(request: NextRequest, { params }: Params) {
         pv.variant_name,
         im.created_at,
         s.sale_number,
-        pb.public_id AS purchase_public_id
+        pb.public_id AS purchase_public_id,
+        pbi.id AS purchase_item_id
       FROM inventory_movements im
       LEFT JOIN product_variants pv
         ON  pv.id     = im.variant_id
         AND pv.org_id = ${orgId}
       LEFT JOIN sales s
         ON  s.id      = im.reference_id
-        AND im.reference_type = 'SALE'
+        AND im.reference_type IN ('SALE', 'SALE_EDITED', 'SALE_CANCELLED')
         AND s.org_id  = ${orgId}
       LEFT JOIN purchase_batches pb
         ON  pb.id     = im.reference_id
-        AND im.reference_type = 'PURCHASE'
+        AND im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED')
         AND pb.org_id = ${orgId}
+      LEFT JOIN purchase_batch_items pbi
+        ON pbi.purchase_batch_id = pb.id
+        AND pbi.product_id = im.product_id
+        AND pbi.org_id = ${orgId}
+        AND (
+          (im.variant_id IS NULL AND pbi.variant_id IS NULL)
+          OR pbi.variant_id = im.variant_id
+        )
       WHERE im.product_id = ${productId}
         AND im.org_id     = ${orgId}
       ORDER BY im.created_at DESC
