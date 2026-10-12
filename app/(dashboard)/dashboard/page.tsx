@@ -65,8 +65,6 @@ export default function DashboardPage() {
     period: isToday ? "today" : undefined,
   });
   const { periods } = useDashboardPeriods();
-  const { accounts } = useAccounts();
-  const { creditCards } = useCreditCards();
   const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("DASHBOARD");
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort(
@@ -280,16 +278,39 @@ export default function DashboardPage() {
         ]}
       />
 
-      <CreateTransactionModal
-        open={transactionOpen}
-        onOpenChange={setTransactionOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-        onSuccess={() => {
-          mutate();
-          setTransactionOpen(false);
-        }}
-      />
+      {transactionOpen && (
+        <DashboardTransactionModal
+          onOpenChange={setTransactionOpen}
+          onSuccess={() => {
+            mutate();
+            setTransactionOpen(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function DashboardTransactionModal({
+  onOpenChange,
+  onSuccess,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}) {
+  // Estas colecciones solo se necesitan para crear una transacción. Al
+  // montar este componente únicamente con la modal abierta, la recarga del
+  // dashboard deja de precargar cuentas, tarjetas, categorías y tipo de cambio.
+  const { accounts } = useAccounts();
+  const { creditCards } = useCreditCards();
+
+  return (
+    <CreateTransactionModal
+      open
+      onOpenChange={onOpenChange}
+      accounts={accounts}
+      creditCards={creditCards}
+      onSuccess={onSuccess}
+    />
   );
 }
