@@ -19,11 +19,11 @@ import {
   ArrowLeft,
   Package,
   TrendingUp,
-  TrendingDown,
-  Minus,
   BarChart2,
   Layers,
   ShoppingCart,
+  DollarSign,
+  Wallet,
   LineChart as LineChartIcon,
 } from "lucide-react";
 import {
@@ -41,6 +41,7 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
+import { SummaryStats } from "@/components/shared/summary-stats";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ type MovementRow = {
   reference_id: number | null;
   sale_number: string | null;
   purchase_public_id: string | null;
+  purchase_item_id: number | null;
   variant_id: number | null;
   variant_name: string | null;
   created_at: string;
@@ -187,10 +189,11 @@ function referenceLabel(
   purchasePublicId: string | null
 ): string {
   if (!type || type === "ADJUSTMENT" || type === "INITIAL") return "Ajuste";
-  if (type === "SALE") return `Venta ${saleNumber ?? `#${id ?? ""}`}`;
-  if (type === "PURCHASE") {
+  if (type === "SALE" || type === "SALE_EDITED" || type === "SALE_CANCELLED")
+    return `${type === "SALE_EDITED" ? "Corrección de " : type === "SALE_CANCELLED" ? "Cancelación de " : ""}venta ${saleNumber ?? `#${id ?? ""}`}`;
+  if (type === "PURCHASE" || type === "PURCHASE_EDITED") {
     const shortId = purchasePublicId ? purchasePublicId.slice(0, 8) : (id ?? "");
-    return `Compra #${shortId}`;
+    return `${type === "PURCHASE_EDITED" ? "Corrección de ingreso" : "Compra"} #${shortId}`;
   }
   return type;
 }
@@ -207,11 +210,16 @@ function ProductDetailSkeleton() {
           <Skeleton className="h-4 w-32" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
-        ))}
-      </div>
+      <SummaryStats
+        ariaLabel="Cargando resumen del producto"
+        isLoading
+        items={[
+          { label: "Stock actual", icon: Package, value: "" },
+          { label: "Precio de venta", icon: DollarSign, value: "" },
+          { label: "Costo promedio", icon: Wallet, value: "" },
+          { label: "Margen", icon: TrendingUp, value: "" },
+        ]}
+      />
       <Skeleton className="h-48 rounded-xl" />
       <Skeleton className="h-40 rounded-xl" />
       <Skeleton className="h-40 rounded-xl" />
@@ -298,6 +306,8 @@ export default function ProductDetailPage({ params }: Props) {
   const tz                 = useTimezone();
   const { push, back }     = useRouter();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
+  const { can_edit: canEditIncoming } = useModulePermissions("INVENTORY", "INCOMING");
+  const { can_edit: canEditSales } = useModulePermissions("SALES");
 
   if (isLoading) return <ProductDetailSkeleton />;
 
@@ -321,6 +331,18 @@ export default function ProductDetailPage({ params }: Props) {
   const profitMarginP = product.sales_stats.total_revenue > 0
     ? (Number(product.sales_stats.total_profit ?? 0) / product.sales_stats.total_revenue) * 100
     : 0;
+
+  const movementEditHref = (movement: MovementRow): string | null => {
+    if (
+      canEditSales && movement.reference_id &&
+      (movement.reference_type === "SALE" || movement.reference_type === "SALE_EDITED")
+    ) return `/sales/${movement.reference_id}/edit`;
+    if (
+      canEditIncoming && movement.reference_id && movement.purchase_item_id &&
+      (movement.reference_type === "PURCHASE" || movement.reference_type === "PURCHASE_EDITED")
+    ) return `/purchases/${movement.reference_id}/edit?item=${movement.purchase_item_id}`;
+    return null;
+  };
 
   const dateOpts: Intl.DateTimeFormatOptions = {
     day: "numeric", month: "short", year: "numeric",
@@ -366,122 +388,94 @@ export default function ProductDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {/* Stock */}
-        <Card>
-          <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1">Stock actual</p>
-            <p className={`text-xl font-bold ${
-              product.is_service
-                ? "text-blue-600"
-                : product.total_stock === 0
+      {/* Resumen */}
+      <SummaryStats
+        ariaLabel={`Resumen de ${product.name}`}
+        items={[
+          {
+            label: "Stock actual",
+            icon: Package,
+            value: product.is_service ? "—" : product.total_stock,
+            valueClassName: product.is_service
+              ? "text-blue-600 dark:text-blue-400"
+              : product.total_stock === 0
                 ? "text-destructive"
                 : product.total_stock < 5
-                ? "text-amber-600"
-                : "text-green-600"
-            }`}>
-              {product.is_service ? "—" : product.total_stock}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {product.is_service ? "servicio" : "unidades"}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Precio */}
-        <Card>
-          <CardContent className="pl-3">
-            <p className="text-xs text-muted-foreground mb-1">Precio de venta</p>
-            <p className="text-xl font-bold">{format(product.price)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">precio base</p>
-          </CardContent>
-        </Card>
-
-        {/* Costo promedio */}
-        {showCosts && (
-          <Card>
-            <CardContent className="pl-3">
-              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                {product.is_service ? "Costo del servicio" : "Costo promedio"}
-                <InfoTooltip
-                  content={
-                    product.is_service ? (
-                      <div className="space-y-1">
-                        <p className="font-semibold">Costo del servicio</p>
-                        <p>Lo que te cuesta prestar este servicio (mano de obra, materiales, etc.).</p>
-                        <p className="opacity-80">
-                          No genera ningún movimiento financiero — solo se usa para calcular
-                          la ganancia real de cada venta.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <p className="font-semibold">Costo promedio del stock actual</p>
-                        <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
-                        <p className="opacity-80">
-                          Cada compra entra como un lote con su propio costo; el promedio pondera
-                          cada lote por las unidades que le quedan. Por eso cambia cuando compras
-                          a un precio distinto, y puede diferir del último costo.
-                        </p>
-                      </div>
-                    )
-                  }
-                />
-              </p>
-              <p className="text-xl font-bold">
-                {format(Number(product.avg_cost ?? 0))}
-              </p>
-              {!product.is_service && Number(product.last_cost ?? 0) > 0 && product.last_cost !== product.avg_cost && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  último: {format(Number(product.last_cost ?? 0))}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Margen */}
-        {showProfit && (
-          <Card>
-            <CardContent className="pl-3">
-              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                Margen
-                <InfoTooltip
-                  content={
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-green-600 dark:text-green-400",
+            inlineNote: product.is_service ? "servicio" : "uds.",
+          },
+          {
+            label: "Precio de venta",
+            icon: DollarSign,
+            value: format(product.price),
+            detail: "Precio base",
+          },
+          ...(showCosts ? [{
+            label: product.is_service ? "Costo del servicio" : "Costo promedio",
+            icon: Wallet,
+            value: format(Number(product.avg_cost ?? 0)),
+            labelAdornment: (
+              <InfoTooltip
+                content={
+                  product.is_service ? (
                     <div className="space-y-1">
-                      <p className="font-semibold">Margen sobre el precio de venta</p>
-                      <p>(Precio de venta − Costo{product.is_service ? " del servicio" : " promedio"}) ÷ Precio de venta × 100</p>
-                      {product.price > 0 && showCosts && (
-                        <p className="opacity-80">
-                          ({format(product.price)} − {format(Number(product.avg_cost ?? 0))}) ÷ {format(product.price)} = {margin.toFixed(1)}%
-                        </p>
-                      )}
+                      <p className="font-semibold">Costo del servicio</p>
+                      <p>Lo que te cuesta prestar este servicio (mano de obra, materiales, etc.).</p>
                       <p className="opacity-80">
-                        De cada venta a este precio, ese porcentaje queda como ganancia (antes de otros gastos).
+                        No genera ningún movimiento financiero — solo se usa para calcular
+                        la ganancia real de cada venta.
                       </p>
                     </div>
-                  }
-                />
-              </p>
-              <div className="flex items-center gap-1.5 mt-1">
-                {margin > 20
-                  ? <TrendingUp className="size-4 text-green-600 shrink-0" />
-                  : margin > 0
-                  ? <Minus className="size-4 text-amber-600 shrink-0" />
-                  : <TrendingDown className="size-4 text-destructive shrink-0" />
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="font-semibold">Costo promedio del stock actual</p>
+                      <p>Promedio ponderado de lo que costaron las unidades que tienes en bodega.</p>
+                      <p className="opacity-80">
+                        Cada compra entra como un lote con su propio costo; el promedio pondera
+                        cada lote por las unidades que le quedan. Por eso cambia cuando compras
+                        a un precio distinto, y puede diferir del último costo.
+                      </p>
+                    </div>
+                  )
                 }
-                <span className={`text-xl font-bold ${
-                  margin > 20 ? "text-green-600" : margin > 0 ? "text-amber-600" : "text-destructive"
-                }`}>
-                  {`${margin.toFixed(1)}%`}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">sobre precio</p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+              />
+            ),
+            detail: !product.is_service && Number(product.last_cost ?? 0) > 0 && product.last_cost !== product.avg_cost
+              ? `Último: ${format(Number(product.last_cost ?? 0))}`
+              : undefined,
+          }] : []),
+          ...(showProfit ? [{
+            label: "Margen",
+            icon: TrendingUp,
+            value: `${margin.toFixed(1)}%`,
+            valueClassName: margin > 20
+              ? "text-green-600 dark:text-green-400"
+              : margin > 0
+                ? "text-amber-600 dark:text-amber-400"
+                : "text-destructive",
+            labelAdornment: (
+              <InfoTooltip
+                content={
+                  <div className="space-y-1">
+                    <p className="font-semibold">Margen sobre el precio de venta</p>
+                    <p>(Precio de venta − Costo{product.is_service ? " del servicio" : " promedio"}) ÷ Precio de venta × 100</p>
+                    {product.price > 0 && showCosts && (
+                      <p className="opacity-80">
+                        ({format(product.price)} − {format(Number(product.avg_cost ?? 0))}) ÷ {format(product.price)} = {margin.toFixed(1)}%
+                      </p>
+                    )}
+                    <p className="opacity-80">
+                      De cada venta a este precio, ese porcentaje queda como ganancia (antes de otros gastos).
+                    </p>
+                  </div>
+                }
+              />
+            ),
+            detail: "Sobre el precio",
+          }] : []),
+        ]}
+      />
 
       {/* Variantes */}
       {hasVariants && (
@@ -560,80 +554,60 @@ export default function ProductDetailPage({ params }: Props) {
             Análisis de rentabilidad
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="px-0 pt-0">
           {hasSales ? (
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Total vendido</p>
-                <p className="text-lg font-bold mt-0.5">{product.sales_stats.total_units_sold} uds</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Ingresos totales</p>
-                <p className="text-lg font-bold mt-0.5">{format(product.sales_stats.total_revenue)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  Ganancia total
-                  <InfoTooltip
-                    content={
-                      <div className="space-y-1">
-                        <p className="font-semibold">Ganancia acumulada de este producto</p>
-                        <p>Ingresos totales − costo de las unidades vendidas</p>
-                        <p className="opacity-80">
-                          {format(product.sales_stats.total_revenue)} de ingresos menos lo que
-                          te costaron esas unidades = {format(Number(product.sales_stats.total_profit ?? 0))}
-                        </p>
-                        <p className="opacity-80">
-                          Cada venta usa el costo real del lote del que salió la unidad (FIFO)
-                          y el precio realmente cobrado, con descuentos incluidos.
-                        </p>
-                      </div>
-                    }
-                  />
-                </p>
-                <p className={`text-lg font-bold mt-0.5 ${Number(product.sales_stats.total_profit ?? 0) >= 0 ? "text-green-600" : "text-destructive"}`}>
-                  {format(Number(product.sales_stats.total_profit ?? 0))}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  Margen promedio
-                  <InfoTooltip
-                    content={
-                      <div className="space-y-1">
-                        <p className="font-semibold">Margen real según tus ventas</p>
-                        <p>Ganancia total ÷ Ingresos totales × 100</p>
-                        <p className="opacity-80">
-                          {format(Number(product.sales_stats.total_profit ?? 0))} ÷ {format(product.sales_stats.total_revenue)} = {profitMarginP.toFixed(1)}%
-                        </p>
-                        <p className="opacity-80">
-                          A diferencia del margen sobre precio, este usa lo realmente cobrado
-                          en cada venta (con descuentos incluidos), por eso puede diferir.
-                        </p>
-                      </div>
-                    }
-                  />
-                </p>
-                <p className="text-lg font-bold mt-0.5">
-                  <span className={profitMarginP > 20 ? "text-green-600" : profitMarginP > 0 ? "text-amber-600" : "text-destructive"}>
-                    {profitMarginP.toFixed(1)}%
-                  </span>
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Número de ventas</p>
-                <p className="text-lg font-bold mt-0.5">{product.sales_stats.sales_count}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Última venta</p>
-                <p className="text-sm font-medium mt-0.5">
-                  {product.sales_stats.last_sold_at
-                    ? formatInTZ(product.sales_stats.last_sold_at, tz, dateOpts)
-                    : "—"
-                  }
-                </p>
-              </div>
-            </div>
+            <SummaryStats
+              ariaLabel={`Rentabilidad de ${product.name}`}
+              items={[
+                {
+                  label: "Ventas",
+                  icon: ShoppingCart,
+                  value: product.sales_stats.sales_count,
+                  inlineNote: `${product.sales_stats.total_units_sold} uds.`,
+                  detail: product.sales_stats.last_sold_at
+                    ? `Última: ${formatInTZ(product.sales_stats.last_sold_at, tz, dateOpts)}`
+                    : undefined,
+                },
+                {
+                  label: "Ingresos",
+                  icon: Wallet,
+                  value: format(product.sales_stats.total_revenue),
+                },
+                {
+                  label: "Ganancia",
+                  icon: TrendingUp,
+                  value: format(Number(product.sales_stats.total_profit ?? 0)),
+                  valueClassName: Number(product.sales_stats.total_profit ?? 0) >= 0
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-destructive",
+                  inlineNote: `${profitMarginP.toFixed(1)}% margen`,
+                  inlineNoteClassName: profitMarginP > 20
+                    ? "text-green-600 dark:text-green-400"
+                    : profitMarginP > 0
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-destructive",
+                  labelAdornment: (
+                    <InfoTooltip
+                      content={
+                        <div className="space-y-1">
+                          <p className="font-semibold">Ganancia y margen reales</p>
+                          <p>Ganancia: ingresos totales − costo de las unidades vendidas.</p>
+                          <p>Margen: ganancia total ÷ ingresos totales × 100.</p>
+                          <p className="opacity-80">
+                            {format(product.sales_stats.total_revenue)} de ingresos menos lo que
+                            costaron las unidades = {format(Number(product.sales_stats.total_profit ?? 0))}.
+                          </p>
+                          <p className="opacity-80">
+                            Cada venta usa el costo real del lote del que salió la unidad (FIFO)
+                            y el precio realmente cobrado, con descuentos incluidos.
+                          </p>
+                        </div>
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
           ) : (
             <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
               <ShoppingCart className="size-8 text-muted-foreground/40" />
@@ -815,8 +789,11 @@ export default function ProductDetailPage({ params }: Props) {
                   {product.movements.map((m) => (
                     <TableRow
                       key={m.id}
-                      onClick={() => m.reference_type === "SALE" && m.reference_id && push(`/sales/${m.reference_id}`)}
-                      className={m.reference_type === "SALE" ? "cursor-pointer" : undefined}
+                      onClick={() => {
+                        const href = movementEditHref(m);
+                        if (href) push(href);
+                      }}
+                      className={movementEditHref(m) ? "cursor-pointer" : undefined}
                     >
                       <TableCell className="text-sm">
                         {formatInTZ(m.created_at, tz, dateOpts)}

@@ -1,7 +1,7 @@
 // app/api/inventory/movements/periods/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getOrgTimezone } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -13,11 +13,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const { orgId } = auth.data;
+    const timezone = await getOrgTimezone(orgId);
 
     const periods = await sql`
       SELECT DISTINCT
-        EXTRACT(YEAR  FROM created_at)::int AS year,
-        EXTRACT(MONTH FROM created_at)::int AS month
+        EXTRACT(YEAR  FROM created_at AT TIME ZONE ${timezone})::int AS year,
+        EXTRACT(MONTH FROM created_at AT TIME ZONE ${timezone})::int AS month
       FROM inventory_movements
       WHERE org_id = ${orgId}
       ORDER BY year DESC, month DESC

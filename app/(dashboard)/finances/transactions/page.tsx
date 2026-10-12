@@ -33,6 +33,7 @@ import {
 import { useSWRConfig } from "swr";
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { SummaryStats } from "@/components/shared/summary-stats";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useCreditCards, useAllCreditCardTransactions, AllCardTransaction } from "@/hooks/swr/use-credit-cards";
@@ -642,25 +643,32 @@ export default function TransactionsPage() {
       <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 w-full items-stretch">
         <div className="flex flex-col gap-3">
           {/* Stats */}
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: isCardFilter ? "Pagos a tarjeta" : "Ingresos", value: displayTotals.income, color: "text-green-600", icon: TrendingUp },
-              { label: isCardFilter ? "Cargos a tarjeta" : "Egresos", value: displayTotals.expense, color: "text-destructive", icon: TrendingDown },
-              { label: "Neto", value: neto, color: neto >= 0 ? "text-green-600" : "text-destructive", icon: ArrowLeftRight },
-            ].map((s, index) => (
-              <Card key={s.label} className={index === 2 ? "col-span-2" : ""}>
-                <CardContent className="pl-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-medium text-muted-foreground">{s.label}</span>
-                    <s.icon className="size-3 text-muted-foreground shrink-0" />
-                  </div>
-                  <div className={`text-sm font-bold ${s.color}`}>
-                    {isLoading ? <Skeleton className="h-4 w-16" /> : format(s.value)}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <SummaryStats
+            ariaLabel="Resumen de transacciones"
+            isLoading={isLoading}
+            items={[
+              {
+                label: isCardFilter ? "Pagos a tarjeta" : "Ingresos",
+                value: format(displayTotals.income),
+                valueClassName: "text-green-600 dark:text-green-400",
+                icon: TrendingUp,
+              },
+              {
+                label: isCardFilter ? "Cargos a tarjeta" : "Egresos",
+                value: format(displayTotals.expense),
+                valueClassName: "text-destructive",
+                icon: TrendingDown,
+              },
+              {
+                label: "Neto",
+                value: format(neto),
+                valueClassName: neto >= 0
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-destructive",
+                icon: ArrowLeftRight,
+              },
+            ]}
+          />
           {/* Filtros */}
           <div className="flex-1 space-y-2.5">
             <div>

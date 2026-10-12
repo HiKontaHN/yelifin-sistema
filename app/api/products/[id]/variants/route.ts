@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { nextVariantSkus, isVariantSkuAvailable, variantSkuBase } from "@/lib/sku";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -99,11 +100,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
 
-    await sql`BEGIN`;
-    try {
+    return await withTransaction(async (tx) => {
       let baseVariant: any = null;
       if (baseName) {
-        [baseVariant] = await sql`
+        [baseVariant] = await tx`
           INSERT INTO product_variants (
             org_id, created_by, product_id, variant_name, sku,
             attributes, price_override, image_url
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
         // Migrar TODOS los lotes del base (incluidos los agotados, para
         // conservar el historial de costos) a la nueva variante
-        await sql`
+        await tx`
           UPDATE inventory_batches
           SET variant_id = ${baseVariant.id}, updated_by = ${userId}
           WHERE product_id = ${productId}
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         `;
       }
 
-      const [variant] = await sql`
+      const [variant] = await tx`
         INSERT INTO product_variants (
           org_id,
           created_by,
@@ -151,15 +151,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         RETURNING *
       `;
 
-      await sql`COMMIT`;
       return Response.json(
         { data: variant, base_variant: baseVariant },
         { status: 201 }
       );
-    } catch (innerError) {
-      await sql`ROLLBACK`;
-      throw innerError;
-    }
+    });
   } catch (error) {
     console.error("POST /api/products/[id]/variants:", error);
     return createErrorResponse("Error al crear variante", 500);

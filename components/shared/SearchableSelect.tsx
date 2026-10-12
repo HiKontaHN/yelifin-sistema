@@ -35,6 +35,13 @@ export function SearchableSelect({
   const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState("");
   const inputRef            = useRef<HTMLInputElement>(null);
+  const triggerRef          = useRef<HTMLButtonElement>(null);
+
+  // Dentro de una modal, montar el popover en el DialogContent evita que el
+  // scroll-lock de Radix bloquee la rueda del mouse sobre la lista.
+  const portalContainer = open
+    ? triggerRef.current?.closest<HTMLElement>('[data-slot="dialog-content"]')
+    : undefined;
 
   const allItems = defaultOption ? [defaultOption, ...items] : items;
   const filtered = search
@@ -56,6 +63,7 @@ export function SearchableSelect({
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           role="combobox"
           aria-expanded={open}
@@ -79,6 +87,7 @@ export function SearchableSelect({
       </PopoverTrigger>
 
       <PopoverContent
+        portalContainer={portalContainer}
         align="start"
         sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -108,7 +117,7 @@ export function SearchableSelect({
         </div>
 
         {/* Lista */}
-        <div className="max-h-60 overflow-y-auto py-1">
+        <div className="max-h-60 overscroll-contain overflow-y-auto py-1">
           {defaultOption && !search && (
             <button
               type="button"

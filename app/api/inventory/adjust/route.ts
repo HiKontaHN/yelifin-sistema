@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 import { resolveWarehouseId } from "@/lib/warehouses";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -94,12 +95,12 @@ export async function POST(request: NextRequest) {
 
     const movementType = type === "in" ? "IN" : "OUT";
 
-    await sql`BEGIN`;
     try {
+      return await withTransaction(async (tx) => {
 
       if (type === "in") {
         // ── Ajuste positivo: nuevo batch ────────────────────────────
-        const [batch] = await sql`
+        const [batch] = await tx`
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id,
             purchase_batch_item_id,
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
           RETURNING id
         `;
 
-        await sql`
+        await tx`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
             quantity, reference_type, reference_id, notes, warehouse_id
@@ -126,13 +127,13 @@ export async function POST(request: NextRequest) {
         // ── Ajuste negativo: FIFO atómico por variante (ver lib/fifo.ts):
         // bajo concurrencia nunca sobregira el stock.
         const consumed = await consumeFifo(
-          sql, orgId, Number(product_id), variantId, Number(quantity), userId, warehouseId
+          tx, orgId, Number(product_id), variantId, Number(quantity), userId, warehouseId
         );
         if (!consumed) {
           throw new InsufficientStockError("el producto");
         }
 
-        await sql`
+        await tx`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
             quantity, reference_type, reference_id, notes, warehouse_id
@@ -143,8 +144,6 @@ export async function POST(request: NextRequest) {
         `;
       }
 
-      await sql`COMMIT`;
-
       return Response.json(
         {
           message: type === "in"
@@ -154,9 +153,8 @@ export async function POST(request: NextRequest) {
         },
         { status: 201 }
       );
-
+      });
     } catch (innerError) {
-      await sql`ROLLBACK`;
       if (innerError instanceof InsufficientStockError) {
         return createErrorResponse(
           "Stock insuficiente: otro proceso consumió el inventario al mismo tiempo",

@@ -52,6 +52,7 @@ export type InventoryFilters = {
   stock?:  string;
   page?:   number;
   limit?:  number;
+  warehouse?: "assigned" | number;
 };
 
 type InventoryResponse = {
@@ -83,6 +84,7 @@ export function useInventory(filters?: InventoryFilters) {
   if (filters?.stock && filters.stock !== 'all') params.set('stock', filters.stock);
   if (filters?.page)  params.set('page',  String(filters.page));
   if (filters?.limit) params.set('limit', String(filters.limit));
+  if (filters?.warehouse) params.set('warehouse_id', String(filters.warehouse));
 
   const url = `${KEY}?${params.toString()}`;
 

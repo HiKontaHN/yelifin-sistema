@@ -20,8 +20,9 @@ export type Movement = {
   variant_name:   string | null;
   variant_sku:    string | null;
   quantity:       number;
-  reference_type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'INITIAL' | 'SALE_CANCELLED' | 'SALE_EDITED' | null;
+  reference_type: 'PURCHASE' | 'PURCHASE_EDITED' | 'SALE' | 'ADJUSTMENT' | 'INITIAL' | 'SALE_CANCELLED' | 'SALE_EDITED' | null;
   reference_id:   number | null;
+  purchase_item_id: number | null;
   notes:          string | null;
   created_at:     string;
 

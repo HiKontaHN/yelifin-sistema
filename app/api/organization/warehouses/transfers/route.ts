@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -79,9 +80,9 @@ export async function POST(request: NextRequest) {
         return createErrorResponse("Datos de producto inválidos", 400);
     }
 
-    await sql`BEGIN`;
     try {
-      const [transfer] = await sql`
+      return await withTransaction(async (tx) => {
+      const [transfer] = await tx`
         INSERT INTO warehouse_transfers (org_id, from_warehouse_id, to_warehouse_id, notes, created_by)
         VALUES (${orgId}, ${fromId}, ${toId}, ${notes?.trim() || null}, ${userId})
         RETURNING id
@@ -93,12 +94,12 @@ export async function POST(request: NextRequest) {
         const variantId = item.variant_id ? Number(item.variant_id) : null;
         const quantity  = Number(item.quantity);
 
-        const consumed = await consumeFifo(sql, orgId, productId, variantId, quantity, userId, fromId);
+        const consumed = await consumeFifo(tx, orgId, productId, variantId, quantity, userId, fromId);
         if (!consumed) throw new InsufficientStockError(`Producto #${productId}`);
 
         const unitCost = consumed.totalCost / quantity;
 
-        const [newBatch] = await sql`
+        const [newBatch] = await tx`
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id, purchase_batch_item_id,
             qty_in, qty_available, unit_cost, received_at, warehouse_id
@@ -109,12 +110,12 @@ export async function POST(request: NextRequest) {
           RETURNING id
         `;
 
-        await sql`
+        await tx`
           INSERT INTO warehouse_transfer_items (org_id, transfer_id, product_id, variant_id, quantity, unit_cost)
           VALUES (${orgId}, ${transferId}, ${productId}, ${variantId}, ${quantity}, ${unitCost})
         `;
 
-        await sql`
+        await tx`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
             quantity, reference_type, reference_id, warehouse_id, notes
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
             ${quantity}, 'TRANSFER_OUT', ${transferId}, ${fromId}, ${notes?.trim() || null}
           )
         `;
-        await sql`
+        await tx`
           INSERT INTO inventory_movements (
             org_id, created_by, movement_type, product_id, variant_id,
             quantity, reference_type, reference_id, warehouse_id, notes
@@ -134,10 +135,9 @@ export async function POST(request: NextRequest) {
         `;
       }
 
-      await sql`COMMIT`;
       return Response.json({ message: "Transferencia registrada", data: { id: transferId } }, { status: 201 });
+      });
     } catch (innerError) {
-      await sql`ROLLBACK`;
       if (innerError instanceof InsufficientStockError) {
         return createErrorResponse(`Stock insuficiente en la bodega de origen para ${innerError.label}`, 409);
       }

@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { getDefaultWarehouseForUser, resolveWarehouseId } from "@/lib/warehouses";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -12,16 +13,33 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { orgId }        = auth.data;
+    const { orgId, userId } = auth.data;
     const { searchParams } = new URL(request.url);
     const search      = searchParams.get("search")?.trim() || null;
     const stockFilter = searchParams.get("stock") || null;
     const page        = Math.max(1, Number(searchParams.get("page"))  || 1);
     const limit       = Math.min(500, Math.max(1, Number(searchParams.get("limit")) || 25));
     const offset      = (page - 1) * limit;
+    const warehouseParam = searchParams.get("warehouse_id");
+
+    let warehouseId: number | null = null;
+    if (warehouseParam === "assigned") {
+      warehouseId = await getDefaultWarehouseForUser(sql, orgId, userId);
+    } else if (warehouseParam) {
+      const warehouse = await resolveWarehouseId(sql, orgId, warehouseParam);
+      if (warehouse.warehouseId === null) {
+        return createErrorResponse(warehouse.error, 400);
+      }
+      warehouseId = warehouse.warehouseId;
+    }
 
     // ── Stats globales (sin filtros) ──────────────────────────────────
     const [statsRow] = await sql`
+      WITH scoped_batches AS (
+        SELECT * FROM inventory_batches
+        WHERE org_id = ${orgId}
+          AND (${warehouseId}::bigint IS NULL OR warehouse_id = ${warehouseId})
+      )
       SELECT
         COUNT(DISTINCT p.id) FILTER (WHERE p.is_active = TRUE AND p.org_id = ${orgId})::int AS total_products,
         COUNT(DISTINCT p.id) FILTER (WHERE NOT p.is_service)::int AS total_physical,
@@ -30,18 +48,18 @@ export async function GET(request: NextRequest) {
         COUNT(DISTINCT p.id) FILTER (
           WHERE NOT p.is_service
             AND EXISTS (
-              SELECT 1 FROM inventory_batches ib2
+              SELECT 1 FROM scoped_batches ib2
               WHERE ib2.product_id = p.id AND ib2.org_id = p.org_id
                 AND ib2.qty_available > 0
             )
-            AND (SELECT COALESCE(SUM(qty_available), 0) FROM inventory_batches WHERE product_id = p.id AND org_id = p.org_id) < 10
+            AND (SELECT COALESCE(SUM(qty_available), 0) FROM scoped_batches WHERE product_id = p.id AND org_id = p.org_id) < 10
         )::int AS low_stock,
         COUNT(DISTINCT p.id) FILTER (
           WHERE NOT p.is_service
-            AND (SELECT COALESCE(SUM(qty_available), 0) FROM inventory_batches WHERE product_id = p.id AND org_id = p.org_id) = 0
+            AND (SELECT COALESCE(SUM(qty_available), 0) FROM scoped_batches WHERE product_id = p.id AND org_id = p.org_id) = 0
         )::int AS out_of_stock
       FROM products p
-      LEFT JOIN inventory_batches ib ON ib.product_id = p.id AND ib.org_id = p.org_id
+      LEFT JOIN scoped_batches ib ON ib.product_id = p.id AND ib.org_id = p.org_id
       WHERE p.org_id = ${orgId} AND p.is_active = TRUE;
     `;
 
@@ -51,15 +69,20 @@ export async function GET(request: NextRequest) {
       : sql``;
 
     const stockCondition =
-      stockFilter === "in_stock" ? sql`AND (p.is_service = TRUE OR (SELECT COALESCE(SUM(qty_available),0) FROM inventory_batches WHERE product_id=p.id AND org_id=p.org_id) >= 1)` :
+      stockFilter === "in_stock" ? sql`AND (p.is_service = TRUE OR (SELECT COALESCE(SUM(qty_available),0) FROM scoped_batches WHERE product_id=p.id AND org_id=p.org_id) >= 1)` :
       stockFilter === "services" ? sql`AND p.is_service = TRUE` :
-      stockFilter === "ok"       ? sql`AND (p.is_service = TRUE OR (SELECT COALESCE(SUM(qty_available),0) FROM inventory_batches WHERE product_id=p.id AND org_id=p.org_id) >= 10)` :
-      stockFilter === "low"      ? sql`AND p.is_service = FALSE AND (SELECT COALESCE(SUM(qty_available),0) FROM inventory_batches WHERE product_id=p.id AND org_id=p.org_id) > 0 AND (SELECT COALESCE(SUM(qty_available),0) FROM inventory_batches WHERE product_id=p.id AND org_id=p.org_id) < 10` :
-      stockFilter === "out"      ? sql`AND p.is_service = FALSE AND (SELECT COALESCE(SUM(qty_available),0) FROM inventory_batches WHERE product_id=p.id AND org_id=p.org_id) = 0` :
+      stockFilter === "ok"       ? sql`AND (p.is_service = TRUE OR (SELECT COALESCE(SUM(qty_available),0) FROM scoped_batches WHERE product_id=p.id AND org_id=p.org_id) >= 10)` :
+      stockFilter === "low"      ? sql`AND p.is_service = FALSE AND (SELECT COALESCE(SUM(qty_available),0) FROM scoped_batches WHERE product_id=p.id AND org_id=p.org_id) > 0 AND (SELECT COALESCE(SUM(qty_available),0) FROM scoped_batches WHERE product_id=p.id AND org_id=p.org_id) < 10` :
+      stockFilter === "out"      ? sql`AND p.is_service = FALSE AND (SELECT COALESCE(SUM(qty_available),0) FROM scoped_batches WHERE product_id=p.id AND org_id=p.org_id) = 0` :
                                    sql``;
 
     // ── Count para paginación ─────────────────────────────────────────
     const [{ count }] = await sql`
+      WITH scoped_batches AS (
+        SELECT * FROM inventory_batches
+        WHERE org_id = ${orgId}
+          AND (${warehouseId}::bigint IS NULL OR warehouse_id = ${warehouseId})
+      )
       SELECT COUNT(DISTINCT p.id)::int AS count
       FROM products p
       WHERE p.org_id = ${orgId} AND p.is_active = TRUE
@@ -71,6 +94,11 @@ export async function GET(request: NextRequest) {
 
     // ── Data paginada ─────────────────────────────────────────────────
     const inventory = await sql`
+      WITH scoped_batches AS (
+        SELECT * FROM inventory_batches
+        WHERE org_id = ${orgId}
+          AND (${warehouseId}::bigint IS NULL OR warehouse_id = ${warehouseId})
+      )
       SELECT
         p.id             AS product_id,
         p.name           AS product_name,
@@ -138,7 +166,7 @@ export async function GET(request: NextRequest) {
                 ELSE 0
               END AS avg_cost,
               ROUND(COALESCE(SUM(qty_available * unit_cost), 0), 2) AS total_val
-            FROM inventory_batches
+            FROM scoped_batches
             WHERE org_id     = p.org_id
               AND product_id = p.id
               AND variant_id = pv.id
@@ -149,7 +177,7 @@ export async function GET(request: NextRequest) {
         ) AS variants_stock
 
       FROM products p
-      LEFT JOIN inventory_batches ib
+      LEFT JOIN scoped_batches ib
         ON ib.product_id = p.id
        AND ib.org_id     = p.org_id
       WHERE p.org_id    = ${orgId}

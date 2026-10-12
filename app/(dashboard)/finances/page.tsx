@@ -35,6 +35,7 @@ import { DeleteAccountDialog } from "@/components/accounts/delete-account-dialog
 import { CreateCreditCardDialog } from "@/components/credit-cards/create-credit-card-dialog";
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { SummaryStats } from "@/components/shared/summary-stats";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -198,28 +199,27 @@ export default function FinancesPage() {
             </div>
 
             {/* Ingresos / Egresos */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border bg-card p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">Ingresos</span>
-                  <TrendingUp className="size-3 text-green-600" />
-                </div>
-                <div className="text-base font-bold text-green-600">
-                  {isLoading ? <Skeleton className="h-5 w-20" /> : format(summary?.period.income ?? 0)}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{periodLabel}</p>
-              </div>
-              <div className="rounded-xl border bg-card p-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">Egresos</span>
-                  <TrendingDown className="size-3 text-destructive" />
-                </div>
-                <div className="text-base font-bold text-destructive">
-                  {isLoading ? <Skeleton className="h-5 w-20" /> : format(summary?.period.expense ?? 0)}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{periodLabel}</p>
-              </div>
-            </div>
+            <SummaryStats
+              ariaLabel="Resumen de ingresos y egresos"
+              isLoading={isLoading}
+              columns="two"
+              items={[
+                {
+                  label: "Ingresos",
+                  icon: TrendingUp,
+                  value: format(summary?.period.income ?? 0),
+                  valueClassName: "text-green-600 dark:text-green-400",
+                  detail: periodLabel,
+                },
+                {
+                  label: "Egresos",
+                  icon: TrendingDown,
+                  value: format(summary?.period.expense ?? 0),
+                  valueClassName: "text-destructive",
+                  detail: periodLabel,
+                },
+              ]}
+            />
           </CardContent>
         </Card>
 

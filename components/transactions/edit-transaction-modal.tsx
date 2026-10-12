@@ -3,6 +3,7 @@
 
 import { useReducer, useEffect } from "react";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -231,19 +232,18 @@ export function EditTransactionModal({
               Categoría{" "}
               <span className="text-xs text-muted-foreground font-normal">opcional</span>
             </Label>
-            <Select value={category} onValueChange={(v) => dispatch({ category: v })}>
-              <SelectTrigger className="h-11 w-full">
-                <SelectValue placeholder="Sin categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=" ">Sin categoría</SelectItem>
-                {activeCategories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={category}
+              onValueChange={(value) => dispatch({ category: value })}
+              items={activeCategories.map((cat) => ({
+                value: cat.name,
+                label: cat.name,
+              }))}
+              placeholder="Sin categoría"
+              searchPlaceholder="Buscar categoría..."
+              defaultOption={{ value: "", label: "Sin categoría" }}
+              className="h-11 w-full"
+            />
           </div>
 
           {/* Descripción */}

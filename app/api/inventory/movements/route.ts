@@ -1,9 +1,20 @@
 // app/api/inventory/movements/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getOrgTimezone } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
+
+function nextCalendarDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1))
+    .toISOString()
+    .slice(0, 10);
+}
+
+function monthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
@@ -28,37 +39,40 @@ export async function GET(request: NextRequest) {
     const limit     = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 25));
     const offset    = (page - 1) * limit;
 
+    const timezone = await getOrgTimezone(orgId);
     const now = new Date();
-    let startISO: string;
-    let endISO:   string;
+    let startDate: string;
+    let endDate: string;
 
     if (from || to) {
       const rangeStart = from ?? to!;
       const rangeEnd   = to ?? from!;
-      startISO = `${rangeStart}T00:00:00.000Z`;
-      const [year, month, day] = rangeEnd.split("-").map(Number);
-      endISO = new Date(Date.UTC(year, month - 1, day + 1)).toISOString();
+      startDate = rangeStart;
+      endDate = nextCalendarDate(rangeEnd);
     } else if (date) {
-      startISO = `${date}T00:00:00.000Z`;
-      endISO   = `${date}T23:59:59.999Z`;
+      startDate = date;
+      endDate = nextCalendarDate(date);
     } else if (year && month) {
       const y = Number(year), m = Number(month);
-      startISO = new Date(y, m - 1, 1).toISOString();
-      endISO   = new Date(y, m,     1).toISOString();
+      startDate = monthKey(y, m);
+      endDate = m === 12 ? monthKey(y + 1, 1) : monthKey(y, m + 1);
     } else if (year && !month) {
       const y = Number(year);
-      startISO = new Date(y,     0, 1).toISOString();
-      endISO   = new Date(y + 1, 0, 1).toISOString();
+      startDate = monthKey(y, 1);
+      endDate = monthKey(y + 1, 1);
     } else {
-      startISO = new Date(now.getFullYear(), now.getMonth(),     1).toISOString();
-      endISO   = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+      const localToday = now.toLocaleDateString("sv", { timeZone: timezone });
+      const [localYear, localMonth] = localToday.split("-").map(Number);
+      startDate = monthKey(localYear, localMonth);
+      endDate = localMonth === 12
+        ? monthKey(localYear + 1, 1)
+        : monthKey(localYear, localMonth + 1);
     }
 
     // Mapeo type param → condición SQL
     const typeMovement  = typeParam === "IN"  ? "IN"  : typeParam === "OUT" ? "OUT" : null;
+    const typeEdited    = typeParam === "EDITED";
     const typeReference =
-      typeParam === "IN"         ? "PURCHASE"       :
-      typeParam === "OUT"        ? "SALE"            :
       typeParam === "ADJUSTMENT" ? "ADJUSTMENT"      :
       typeParam === "INITIAL"    ? "INITIAL"         :
       typeParam === "CANCELLED"  ? "SALE_CANCELLED"  : null;
@@ -69,17 +83,18 @@ export async function GET(request: NextRequest) {
       JOIN products p ON p.id = im.product_id
       LEFT JOIN product_variants pv ON pv.id = im.variant_id AND pv.org_id = im.org_id
       LEFT JOIN sales s2
-        ON  im.reference_type = 'SALE'
+        ON  im.reference_type IN ('SALE', 'SALE_EDITED', 'SALE_CANCELLED')
         AND s2.id             = im.reference_id
         AND s2.org_id         = im.org_id
       LEFT JOIN customers c2 ON c2.id = s2.customer_id
       WHERE im.org_id     = ${orgId}
-        AND im.created_at >= ${startISO}::timestamptz
-        AND im.created_at <  ${endISO}::timestamptz
+        AND im.created_at >= (${startDate}::date AT TIME ZONE ${timezone})
+        AND im.created_at <  (${endDate}::date AT TIME ZONE ${timezone})
         ${productId ? sql`AND im.product_id = ${Number(productId)}` : sql``}
         ${variantId ? sql`AND im.variant_id = ${Number(variantId)}` : sql``}
         ${typeMovement  ? sql`AND im.movement_type  = ${typeMovement}`  : sql``}
         ${typeReference ? sql`AND im.reference_type = ${typeReference}` : sql``}
+        ${typeEdited ? sql`AND im.reference_type IN ('SALE_EDITED', 'PURCHASE_EDITED')` : sql``}
         ${search ? sql`AND (
           p.name          ILIKE ${"%" + search + "%"} OR
           p.sku           ILIKE ${"%" + search + "%"} OR
@@ -111,29 +126,29 @@ export async function GET(request: NextRequest) {
         -- ── PURCHASE (IN) ──────────────────────────────────────────
 
         -- Moneda de la compra — clave para saber si unit_cost_usd aplica
-        CASE WHEN im.reference_type = 'PURCHASE' THEN pb.currency      END AS purchase_currency,
-        CASE WHEN im.reference_type = 'PURCHASE' THEN pb.exchange_rate END AS exchange_rate,
+        CASE WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') THEN pb.currency      END AS purchase_currency,
+        CASE WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') THEN pb.exchange_rate END AS exchange_rate,
 
         -- unit_cost_usd solo tiene sentido cuando la compra fue en USD
         CASE
-          WHEN im.reference_type = 'PURCHASE' AND pb.currency = 'USD'
+          WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') AND pb.currency = 'USD'
           THEN pbi.unit_cost_usd
         END AS unit_cost_usd,
 
         -- Costo en moneda local siempre disponible
-        CASE WHEN im.reference_type = 'PURCHASE' THEN ib.unit_cost END AS unit_cost_hnl,
+        CASE WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') THEN ib.unit_cost END AS unit_cost_hnl,
 
         -- Costo en la moneda de la compra (sea USD u otra)
         -- Si fue en USD → unit_cost_usd; si fue en otra moneda → unit_cost_hnl
         CASE
-          WHEN im.reference_type = 'PURCHASE' AND pb.currency = 'USD'
+          WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') AND pb.currency = 'USD'
           THEN pbi.unit_cost_usd
-          WHEN im.reference_type = 'PURCHASE'
+          WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED')
           THEN ib.unit_cost
         END AS unit_cost_purchase,
 
         CASE
-          WHEN im.reference_type = 'PURCHASE' AND COALESCE(pbi.quantity, 0) > 0
+          WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') AND COALESCE(pbi.quantity, 0) > 0
           THEN ROUND(
             pb.shipping::numeric / NULLIF(
               (SELECT SUM(i2.quantity) FROM purchase_batch_items i2
@@ -141,7 +156,8 @@ export async function GET(request: NextRequest) {
             ), 4)
           ELSE 0
         END AS shipping_per_unit,
-        CASE WHEN im.reference_type = 'PURCHASE' THEN pbi.total_cost END AS total_cost,
+        CASE WHEN im.reference_type IN ('PURCHASE', 'PURCHASE_EDITED') THEN pbi.total_cost END AS total_cost,
+        pbi.id AS purchase_item_id,
 
         -- ── SALE (OUT) ─────────────────────────────────────────────
         CASE WHEN im.reference_type = 'SALE' THEN si.unit_price     END AS unit_price,
@@ -151,11 +167,8 @@ export async function GET(request: NextRequest) {
           WHEN im.reference_type = 'SALE'
           THEN ROUND((si.line_total - (si.unit_cost * im.quantity))::numeric, 2)
         END AS profit,
-        COALESCE(
-          CASE WHEN im.reference_type = 'SALE'        THEN s.sale_number END,
-          CASE WHEN im.reference_type = 'SALE_EDITED' THEN se.sale_number END
-        ) AS sale_number,
-        CASE WHEN im.reference_type = 'SALE' THEN c.name            END AS customer_name
+        sr.sale_number,
+        cr.name AS customer_name
 
       FROM inventory_movements im
       JOIN products p ON p.id = im.product_id
@@ -167,7 +180,7 @@ export async function GET(request: NextRequest) {
 
       -- PURCHASE joins — filtrar por variant_id para evitar duplicados
       LEFT JOIN purchase_batch_items pbi
-        ON  im.reference_type     = 'PURCHASE'
+        ON  im.reference_type     IN ('PURCHASE', 'PURCHASE_EDITED')
         AND pbi.purchase_batch_id = im.reference_id
         AND pbi.product_id        = im.product_id
         AND pbi.org_id            = im.org_id
@@ -192,29 +205,27 @@ export async function GET(request: NextRequest) {
           (im.variant_id IS NULL AND si.variant_id IS NULL)
           OR si.variant_id = im.variant_id
         )
-      LEFT JOIN sales     s ON s.id  = si.sale_id
-      LEFT JOIN customers c ON c.id  = s.customer_id
-
-      -- SALE_EDITED: direct join to get sale_number (sale still exists when edited)
-      LEFT JOIN sales se
-        ON  im.reference_type = 'SALE_EDITED'
-        AND se.id             = im.reference_id
-        AND se.org_id         = im.org_id
+      LEFT JOIN sales sr
+        ON  im.reference_type IN ('SALE', 'SALE_EDITED', 'SALE_CANCELLED')
+        AND sr.id             = im.reference_id
+        AND sr.org_id         = im.org_id
+      LEFT JOIN customers cr ON cr.id = sr.customer_id
 
       WHERE im.org_id     = ${orgId}
-        AND im.created_at >= ${startISO}::timestamptz
-        AND im.created_at <  ${endISO}::timestamptz
+        AND im.created_at >= (${startDate}::date AT TIME ZONE ${timezone})
+        AND im.created_at <  (${endDate}::date AT TIME ZONE ${timezone})
         ${productId ? sql`AND im.product_id = ${Number(productId)}` : sql``}
         ${variantId ? sql`AND im.variant_id = ${Number(variantId)}` : sql``}
         ${typeMovement  ? sql`AND im.movement_type  = ${typeMovement}`  : sql``}
         ${typeReference ? sql`AND im.reference_type = ${typeReference}` : sql``}
+        ${typeEdited ? sql`AND im.reference_type IN ('SALE_EDITED', 'PURCHASE_EDITED')` : sql``}
         ${search ? sql`AND (
           p.name          ILIKE ${"%" + search + "%"} OR
           p.sku           ILIKE ${"%" + search + "%"} OR
           pv.variant_name ILIKE ${"%" + search + "%"} OR
           pv.sku          ILIKE ${"%" + search + "%"} OR
-          c.name          ILIKE ${"%" + search + "%"} OR
-          s.sale_number   ILIKE ${"%" + search + "%"} OR
+          cr.name         ILIKE ${"%" + search + "%"} OR
+          sr.sale_number  ILIKE ${"%" + search + "%"} OR
           im.notes        ILIKE ${"%" + search + "%"}
         )` : sql``}
 

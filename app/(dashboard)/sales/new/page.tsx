@@ -48,7 +48,10 @@ function NewSaleContent() {
   const eventId = eventIdParam ? Number(eventIdParam) : null;
   const backHref = eventId ? "/events" : "/sales";
 
-  const { inventory, mutate: mutateInventory } = useInventory({ limit: 500 });
+  const { inventory, mutate: mutateInventory } = useInventory({
+    limit: 500,
+    warehouse: "assigned",
+  });
   const { products } = useProducts();
   const { createSale, isCreating } = useCreateSale();
   const { accounts } = useAccounts();
@@ -100,7 +103,19 @@ function NewSaleContent() {
   const cancelExit = () => { setExitDialog(false); setPendingHref(null); };
 
  const availableProducts = useMemo(
-    () => products.filter((p) => {
+    () => products
+      .map((product) => {
+        const scopedInventory = inventory.find(
+          (item) => item.product_id === product.id,
+        );
+        return {
+          ...product,
+          stock: product.is_service
+            ? product.stock
+            : Number(scopedInventory?.stock ?? 0),
+        };
+      })
+      .filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.sku?.toLowerCase().includes(search.toLowerCase()) ?? false);
@@ -110,7 +125,7 @@ function NewSaleContent() {
  
       return matchesSearch && hasStock;
     }),
-    [products, search]
+    [products, inventory, search]
   );
 
   // Helper de clave — identifica un item único en el carrito

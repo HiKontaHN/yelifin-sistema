@@ -23,7 +23,7 @@
  * 3.  POST /api/products  – product creation
  * 4.  POST /api/products/[id]/variants  – variant creation
  * 5.  POST /api/sales (COMPLETED)  – stock reduction via FIFO
- * 6.  POST /api/sales (PENDING)    – NO stock reduction
+ * 6.  POST /api/sales (PENDING)    – stock reservation, no finance entry
  * 7.  PATCH /api/sales/[id] confirm – stock reduced on confirm
  * 8.  PATCH /api/sales/[id] cancel  – stock returned on cancel
  */
@@ -57,6 +57,23 @@ jest.mock("@/lib/firebase-admin", () => ({
 const mockSqlImpl = jest.fn();
 jest.mock("@neondatabase/serverless", () => ({
   neon: jest.fn(() => mockSqlImpl),
+}));
+
+// Las rutas de escritura usan una sesión transaccional real. En estas pruebas
+// mantenemos el mismo mock secuencial para las consultas del callback y para
+// los límites BEGIN/COMMIT/ROLLBACK.
+jest.mock("@/lib/db-transaction", () => ({
+  withTransaction: async <T>(callback: (sql: typeof mockSqlImpl) => Promise<T>) => {
+    await mockSqlImpl(["BEGIN"]);
+    try {
+      const result = await callback(mockSqlImpl);
+      await mockSqlImpl(["COMMIT"]);
+      return result;
+    } catch (error) {
+      await mockSqlImpl(["ROLLBACK"]);
+      throw error;
+    }
+  },
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +245,45 @@ describe("Tax-inclusive calculation (pure logic)", () => {
     const shipping = 50;
     const grandTotal = taxableBase + shipping;
     expect(grandTotal).toBe(1050);
+  });
+});
+
+describe("PATCH /api/purchases/[id] – validación de correcciones", () => {
+  let verifyAuthSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    resetSql();
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+      error: null,
+      status: 200,
+      data: makeAuthUser(),
+    });
+  });
+
+  afterEach(() => verifyAuthSpy.mockRestore());
+
+  it("rechaza cantidades no positivas antes de tocar la base", async () => {
+    const { PATCH } = await import("@/app/api/purchases/[id]/route");
+    const request = makeRequest("http://localhost/api/purchases/1", {
+      method: "PATCH",
+      body: { action: "edit", item_id: 2, quantity: 0, unit_cost: 10 },
+    });
+    const response = await PATCH(request as never, { params: Promise.resolve({ id: "1" }) });
+
+    expect(response.status).toBe(400);
+    expect(mockSqlImpl).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un costo nulo explícito", async () => {
+    const { PATCH } = await import("@/app/api/purchases/[id]/route");
+    const request = makeRequest("http://localhost/api/purchases/1", {
+      method: "PATCH",
+      body: { action: "edit", item_id: 2, quantity: 1, unit_cost: null },
+    });
+    const response = await PATCH(request as never, { params: Promise.resolve({ id: "1" }) });
+
+    expect(response.status).toBe(400);
+    expect(mockSqlImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -637,6 +693,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 0 }]);
     // 7. INSERT sales RETURNING
     mockSqlImpl.mockResolvedValueOnce([{ id: 100 }]);
+    // 7b. v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // 8. consumeFifo: SELECT id FROM inventory_batches
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // 9. consumeFifo: atomic UPDATE ... RETURNING take, unit_cost (take is
@@ -859,10 +917,10 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. POST /api/sales – PENDING sale does NOT reduce stock
+// 7. POST /api/sales – PENDING sale reserves stock without posting income
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("POST /api/sales – PENDING (no stock reduction)", () => {
+describe("POST /api/sales – PENDING (stock reserved, no income)", () => {
   let verifyAuthSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -878,7 +936,7 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     verifyAuthSpy.mockRestore();
   });
 
-  it("registers a PENDING sale and returns 201 without updating inventory_batches", async () => {
+  it("registers a PENDING sale and returns 201 while reserving inventory", async () => {
     // verifyResourceLimit
     mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
     // Account
@@ -897,6 +955,8 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 3 }]);
     // INSERT sales RETURNING
     mockSqlImpl.mockResolvedValueOnce([{ id: 300 }]);
+    // v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // consumeFifo: SELECT id FROM inventory_batches
     mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
     // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost (FIFO
@@ -948,6 +1008,8 @@ describe("POST /api/sales – PENDING (no stock reduction)", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 10 }]);
     // INSERT sales
     mockSqlImpl.mockResolvedValueOnce([{ id: 400 }]);
+    // v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // consumeFifo: SELECT id FROM inventory_batches
     mockSqlImpl.mockResolvedValueOnce([{ id: 2 }]);
     // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost
@@ -1035,6 +1097,12 @@ describe("PATCH /api/sales/[id] – confirm", () => {
     }]);
     // BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
+    // SELECT sale FOR UPDATE (revalidación dentro de la transacción)
+    mockSqlImpl.mockResolvedValueOnce([{
+      id: 200, status: "PENDING", account_id: 1, total: "600.00",
+      sale_number: "VTA-00004", tax_rate: 0, shipping_cost: "0.00",
+      customer_id: null,
+    }]);
     // UPDATE sales SET status=COMPLETED
     mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT transactions
@@ -1066,6 +1134,12 @@ describe("PATCH /api/sales/[id] – confirm", () => {
     }]);
     // BEGIN
     mockSqlImpl.mockResolvedValueOnce([]);
+    // SELECT sale FOR UPDATE (revalidación dentro de la transacción)
+    mockSqlImpl.mockResolvedValueOnce([{
+      id: 300, status: "PENDING", account_id: 1, total: "800.00",
+      sale_number: "VTA-00010", tax_rate: 0, shipping_cost: "0.00",
+      customer_id: 7,
+    }]);
     // UPDATE sales
     mockSqlImpl.mockResolvedValueOnce([]);
     // INSERT transactions
@@ -1085,8 +1159,8 @@ describe("PATCH /api/sales/[id] – confirm", () => {
     const params = Promise.resolve({ id: "300" });
     const res = (await PATCH(req as never, { params })) as Response;
     expect(res.status).toBe(200);
-    // Verify customers update was called (7th call, index 5 after reset)
-    expect(mockSqlImpl).toHaveBeenCalledTimes(7);
+    // Incluye la revalidación SELECT ... FOR UPDATE dentro de la transacción.
+    expect(mockSqlImpl).toHaveBeenCalledTimes(8);
   });
 });
 
@@ -1117,12 +1191,18 @@ describe("PATCH /api/sales/[id] – cancel (stock returned)", () => {
       account_id: 1, total: "300.00", sale_number: "VTA-00020",
       tax_rate: 0, shipping_cost: "0.00", event_id: null, customer_id: null, sold_at: new Date(),
     }]);
+    // BEGIN
+    mockSqlImpl.mockResolvedValueOnce([]);
+    // SELECT sale FOR UPDATE
+    mockSqlImpl.mockResolvedValueOnce([{
+      id: 500, status: "PENDING", warehouse_id: 1,
+    }]);
+    // v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // SELECT sale_items (1 physical item, no variant)
     mockSqlImpl.mockResolvedValueOnce([{
       product_id: 1, variant_id: null, quantity: 3, is_service: false,
     }]);
-    // BEGIN
-    mockSqlImpl.mockResolvedValueOnce([]);
     // SELECT last batch (variant IS NULL)
     mockSqlImpl.mockResolvedValueOnce([{ id: 10 }]);
     // UPDATE inventory_batches SET qty_available + 3
@@ -1160,12 +1240,18 @@ describe("PATCH /api/sales/[id] – cancel (stock returned)", () => {
       account_id: 1, total: "1000.00", sale_number: "VTA-00030",
       tax_rate: 0, shipping_cost: "0.00", event_id: null, customer_id: null, sold_at: new Date(),
     }]);
+    // BEGIN
+    mockSqlImpl.mockResolvedValueOnce([]);
+    // SELECT sale FOR UPDATE
+    mockSqlImpl.mockResolvedValueOnce([{
+      id: 600, status: "PENDING", warehouse_id: 1,
+    }]);
+    // v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // SELECT sale_items — item is a service
     mockSqlImpl.mockResolvedValueOnce([{
       product_id: 5, variant_id: null, quantity: 1, is_service: true,
     }]);
-    // BEGIN
-    mockSqlImpl.mockResolvedValueOnce([]);
     // SELECT sale_supplies (none)
     mockSqlImpl.mockResolvedValueOnce([]);
     // DELETE sale_supplies
@@ -1193,8 +1279,8 @@ describe("PATCH /api/sales/[id] – cancel (stock returned)", () => {
     // physical item is cancelled (which needs 2 extra calls).
     const callsForThisCancel = mockSqlImpl.mock.calls.length - callCountBefore;
     // Physical item cancel: sale + items + BEGIN + lastBatch + UPDATE + INSERT move + supplies + del3 + COMMIT = 11
-    // Service item cancel: sale + items + BEGIN + supplies + del3 + COMMIT = 8
-    expect(callsForThisCancel).toBeLessThanOrEqual(8);
+    // Servicio: suma la revalidación FOR UPDATE, pero no consulta ni actualiza lotes.
+    expect(callsForThisCancel).toBeLessThanOrEqual(10);
   });
 
   it("returns 400 when trying to cancel a non-PENDING sale", async () => {
@@ -1284,6 +1370,8 @@ describe("POST /api/sales – FIFO with variant_id", () => {
     mockSqlImpl.mockResolvedValueOnce([{ last_num: 0 }]);
     // INSERT sales
     mockSqlImpl.mockResolvedValueOnce([{ id: 900 }]);
+    // v4.26 aún no aplicada en este escenario
+    mockSqlImpl.mockResolvedValueOnce([{ supported: false }]);
     // consumeFifo: SELECT id FROM inventory_batches (variant)
     mockSqlImpl.mockResolvedValueOnce([{ id: 5 }]);
     // consumeFifo: atomic UPDATE ... RETURNING take, unit_cost

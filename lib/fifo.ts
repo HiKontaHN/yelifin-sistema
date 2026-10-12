@@ -22,6 +22,86 @@ export type FifoTake = { batch_id: number; take: number; unit_cost: number };
 
 export type FifoResult = { takes: FifoTake[]; totalCost: number };
 
+export async function supportsSaleItemBatchAllocations(sql: any): Promise<boolean> {
+  const [row] = await sql`
+    SELECT to_regclass('public.sale_item_batch_allocations') IS NOT NULL AS supported
+  `;
+  return Boolean(row?.supported);
+}
+
+export async function recordSaleItemBatchAllocations(
+  sql: any,
+  orgId: number,
+  saleId: number,
+  saleItemId: number,
+  takes: FifoTake[],
+  userId?: number | null,
+): Promise<void> {
+  for (const take of takes) {
+    await sql`
+      INSERT INTO sale_item_batch_allocations (
+        org_id, sale_id, sale_item_id, inventory_batch_id,
+        quantity, unit_cost, created_by
+      ) VALUES (
+        ${orgId}, ${saleId}, ${saleItemId}, ${take.batch_id},
+        ${take.take}, ${take.unit_cost}, ${userId ?? null}
+      )
+      ON CONFLICT (sale_item_id, inventory_batch_id)
+      DO UPDATE SET
+        quantity    = EXCLUDED.quantity,
+        unit_cost   = EXCLUDED.unit_cost,
+        restored_at = NULL,
+        restored_by = NULL
+    `;
+  }
+}
+
+/**
+ * Devuelve a sus lotes originales todo lo consumido por una línea de venta.
+ * Retorna la cantidad restaurada; cero identifica ventas históricas que no
+ * tienen asignaciones y requieren el fallback de compatibilidad.
+ */
+export async function restoreSaleItemBatchAllocations(
+  sql: any,
+  orgId: number,
+  saleItemId: number,
+  userId?: number | null,
+): Promise<number> {
+  const allocations = await sql`
+    SELECT id, inventory_batch_id, quantity
+    FROM sale_item_batch_allocations
+    WHERE org_id = ${orgId}
+      AND sale_item_id = ${saleItemId}
+      AND restored_at IS NULL
+    ORDER BY id
+    FOR UPDATE
+  `;
+
+  let restored = 0;
+  for (const allocation of allocations) {
+    const quantity = Number(allocation.quantity);
+    await sql`
+      UPDATE inventory_batches
+      SET qty_available = qty_available + ${quantity},
+          updated_by = ${userId ?? null}
+      WHERE id = ${allocation.inventory_batch_id} AND org_id = ${orgId}
+    `;
+    restored += quantity;
+  }
+
+  if (allocations.length > 0) {
+    await sql`
+      UPDATE sale_item_batch_allocations
+      SET restored_at = NOW(), restored_by = ${userId ?? null}
+      WHERE org_id = ${orgId}
+        AND sale_item_id = ${saleItemId}
+        AND restored_at IS NULL
+    `;
+  }
+
+  return restored;
+}
+
 /**
  * Descuenta `quantity` unidades del producto/variante en orden FIFO.
  * Devuelve los lotes afectados y el costo real consumido, o `null` si no

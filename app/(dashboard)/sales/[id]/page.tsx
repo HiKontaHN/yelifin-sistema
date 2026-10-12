@@ -53,7 +53,7 @@ export default function SaleDetailPage({ params }: Props) {
   const { refresh, push, back } = useRouter();
   const { format }          = useCurrency();
   const tz                  = useTimezone();
-  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("SALES");
+  const { show_costs: showCosts, show_profit: showProfit, can_edit: canEdit } = useModulePermissions("SALES");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen,  setCancelOpen]  = useState(false);
@@ -161,6 +161,14 @@ export default function SaleDetailPage({ params }: Props) {
 
           {/* Botones factura/ticket — solo visibles en sm+ */}
           <div className="hidden sm:flex gap-2 shrink-0">
+            {canEdit && !isCancelled && (
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                <Link href={`/sales/${sale.id}/edit`}>
+                  <NotebookPen className="size-3.5" />
+                  Editar
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
               <Link href={`/sales/${sale.id}/invoice`}>
                 <FileText className="size-3.5" />
@@ -177,7 +185,15 @@ export default function SaleDetailPage({ params }: Props) {
         </div>
 
         {/* Botones factura/ticket en móvil — segunda fila */}
-        <div className="grid grid-cols-2 gap-2 sm:hidden">
+        <div className={`grid gap-2 sm:hidden ${canEdit && !isCancelled ? "grid-cols-3" : "grid-cols-2"}`}>
+          {canEdit && !isCancelled && (
+            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
+              <Link href={`/sales/${sale.id}/edit`}>
+                <NotebookPen className="size-3.5" />
+                Editar
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
             <Link href={`/sales/${sale.id}/invoice`}>
               <FileText className="size-3.5" />
@@ -205,14 +221,14 @@ export default function SaleDetailPage({ params }: Props) {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-end w-full sm:w-auto">
-              <Button
+              {canEdit && <Button
                 variant="outline"
                 size="sm"
                 className="w-full sm:w-auto"
                 onClick={() => push(`/sales/${sale.id}/edit`)}
               >
                 Editar venta
-              </Button>
+              </Button>}
               <Button
                 size="sm"
                 className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white"

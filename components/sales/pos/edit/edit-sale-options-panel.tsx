@@ -250,24 +250,28 @@ export function EditSaleOptionsPanel({
                         {isPending ? "Guardar cambios (pendiente)" : "Guardar cambios"}
                     </Button>
 
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        size="sm"
-                        disabled={isCreating}
-                        onClick={onCompleteRequest}
-                    >
-                        Completar venta
-                    </Button>
+                    {isPending && (
+                        <>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full"
+                                size="sm"
+                                disabled={isCreating}
+                                onClick={onCompleteRequest}
+                            >
+                                Completar venta
+                            </Button>
 
-                    <button
-                        type="button"
-                        className="w-full text-xs text-destructive hover:underline cursor-pointer text-center"
-                        onClick={onCancelRequest}
-                    >
-                        Cancelar venta
-                    </button>
+                            <button
+                                type="button"
+                                className="w-full text-xs text-destructive hover:underline cursor-pointer text-center"
+                                onClick={onCancelRequest}
+                            >
+                                Cancelar venta
+                            </button>
+                        </>
+                    )}
                 </div>
             </CardContent>
         </Card>
