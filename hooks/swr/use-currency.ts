@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import useSWR from "swr";
 import { useAuth } from "@/hooks/use-auth";
 import { usePrivacyMode } from "@/context/privacy-mode-context";
 
@@ -20,7 +19,7 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 };
 
 export function useCurrency() {
-  const { firebaseUser }    = useAuth();
+  const { user }            = useAuth();
   const { isPrivate }       = usePrivacyMode();
   const [cached, setCached] = useState<string>(() => {
     // Leer de localStorage inmediatamente (sin esperar al API)
@@ -30,22 +29,9 @@ export function useCurrency() {
     return DEFAULT;
   });
 
-  // SWR dedupa la petición entre todos los componentes que usan el hook
-  const { data } = useSWR(
-    firebaseUser ? "/api/onboarding" : null,
-    async (url: string) => {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Error al obtener configuración");
-      return res.json();
-    },
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      dedupingInterval: 5 * 60_000, // 5 minutos sin re-fetch
-    }
-  );
-
-  const serverCurrency: string | undefined = data?.data?.currency;
+  // La moneda ya forma parte de /api/auth/me, compartido por useAuth.
+  // No hace falta consultar /api/onboarding desde cada consumidor.
+  const serverCurrency = user?.profile?.currency;
 
   useEffect(() => {
     if (serverCurrency && serverCurrency !== cached) {

@@ -7,7 +7,6 @@ import { useOnboardingGuard } from "@/hooks/use-onboarding-guard";
 import { usePlanGuard } from "@/hooks/use-plan-guard";
 import { LoadingScreen } from "@/hooks/ui/loading-screen";
 import { HiKontaTitle } from "@/components/shared/hikonta-title";
-import { SWRProvider } from "@/components/providers/swr-provider";
 import { PrivacyModeProvider } from "@/context/privacy-mode-context";
 import {
   SidebarProvider,
@@ -85,9 +84,8 @@ export function DashboardLayoutClient({
   if (!firebaseUser) return null;
 
   return (
-    <SWRProvider>
-      <PrivacyModeProvider>
-        <SidebarProvider defaultOpen={initialSidebarOpen} className="h-svh overflow-hidden rounded-none">
+    <PrivacyModeProvider>
+      <SidebarProvider defaultOpen={initialSidebarOpen} className="h-svh overflow-hidden rounded-none">
           <AppSidebar />
 
           <SidebarInset className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-none">
@@ -118,8 +116,7 @@ export function DashboardLayoutClient({
               {children}
             </main>
           </SidebarInset>
-        </SidebarProvider>
-      </PrivacyModeProvider>
-    </SWRProvider>
+      </SidebarProvider>
+    </PrivacyModeProvider>
   );
 }

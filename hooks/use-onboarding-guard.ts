@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 
 export function useOnboardingGuard() {
-  const { firebaseUser, loading, sessionEmailVerified, logout } = useAuth();
+  const { firebaseUser, user, loading, sessionEmailVerified, logout } = useAuth();
   const router = useRouter();
   const [checking, setChecking] = useState(true);
 
@@ -29,13 +29,9 @@ export function useOnboardingGuard() {
           return;
         }
 
-        const res = await fetch("/api/onboarding");
-
-        if (!res.ok) return;
-
-        const data = await res.json();
-
-        if (!data?.data?.onboarding_completed) {
+        // /api/auth/me ya incluye este dato. Reutilizarlo evita otra
+        // autenticación y otra consulta a Postgres en cada navegación.
+        if (user && !user.profile?.onboarding_completed) {
           router.replace("/onboarding");
           return;
         }
@@ -47,7 +43,7 @@ export function useOnboardingGuard() {
     };
 
     check();
-  }, [firebaseUser, loading, sessionEmailVerified, logout, router]);
+  }, [firebaseUser, user, loading, sessionEmailVerified, logout, router]);
 
   return { checking };
 }
