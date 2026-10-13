@@ -47,7 +47,6 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   accounts: { id: number; name: string; balance: number | null }[];
   creditCards?: CreditCardType[];
-  onSuccess?: () => void;
   defaultType?: TxType;
 };
 
@@ -56,7 +55,6 @@ export function CreateTransactionModal({
   onOpenChange,
   accounts,
   creditCards = [],
-  onSuccess,
   defaultType = "EXPENSE",
 }: Props) {
   const { createTransaction, isCreating } = useCreateTransaction();
@@ -112,16 +110,25 @@ export function CreateTransactionModal({
     onOpenChange(false);
   };
 
-  const mutateAll = () =>
-    mutate(
+  const revalidateAffectedData = (includesCreditCard: boolean) => {
+    const prefixes = [
+      "/api/transactions",
+      "/api/accounts",
+      "/api/finances",
+      "/api/dashboard",
+      ...(includesCreditCard
+        ? ["/api/credit-cards", "/api/credit-card-transactions"]
+        : []),
+    ];
+
+    return mutate(
       (key) =>
         typeof key === "string" &&
-        (key.startsWith("/api/transactions") ||
-          key.startsWith("/api/accounts") ||
-          key.startsWith("/api/finances")),
+        prefixes.some((prefix) => key.startsWith(prefix)),
       undefined,
       { revalidate: true },
     );
+  };
 
   const onSubmit = async () => {
     if (!amount || Number(amount) <= 0)
@@ -154,9 +161,8 @@ export function CreateTransactionModal({
       } as any);
 
       toast.success("Transacción registrada exitosamente");
-      mutateAll();
+      await revalidateAffectedData(isCreditCardMode);
       handleClose();
-      onSuccess?.();
     } catch (error: any) {
       toast.error(error.message || "Error al registrar");
     }

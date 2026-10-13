@@ -27,16 +27,15 @@ import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  useTransactions, useTransactionPeriods, useDeleteTransaction,
+  useTransactionsView, useDeleteTransaction,
   Transaction,
 } from "@/hooks/swr/use-transactions";
 import { useSWRConfig } from "swr";
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SummaryStats } from "@/components/shared/summary-stats";
-import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useCreditCards, useAllCreditCardTransactions, AllCardTransaction } from "@/hooks/swr/use-credit-cards";
+import { AllCardTransaction } from "@/hooks/swr/use-credit-cards";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { EditTransactionModal } from "@/components/transactions/edit-transaction-modal";
 import { PurchaseDetailDialog } from "@/components/products/purchase-detail-dialog";
@@ -245,29 +244,25 @@ export default function TransactionsPage() {
       ? typeFilter
       : undefined;
 
-  const { transactions, totals, isLoading: loadingAcc, mutate } = useTransactions({
+  const {
+    transactions,
+    creditCardTransactions: ccTxs,
+    totals,
+    periods,
+    accounts,
+    creditCards,
+    isLoading,
+    mutate,
+  } = useTransactionsView({
+    source: isCardFilter ? "credit_card" : isAccountFilter ? "account" : "all",
     account_id: isAccountFilter ? Number(sourceFilter) : undefined,
+    card_id: selectedCardId,
     type: accountTypeFilter,
     search: isSearching ? debouncedSearch.trim() : undefined,
-    // Si el filtro es una tarjeta, las transacciones de cuenta no se muestran:
-    // no tiene sentido pedirlas (y sus totales serían de otra fuente).
-    enabled: !isCardFilter,
     ...(isSearching ? {} : periodParams),
   });
-
-  const { transactions: ccTxs, isLoading: loadingCC } = useAllCreditCardTransactions({
-    card_id: selectedCardId,
-    search: isSearching ? debouncedSearch.trim() : undefined,
-    ...(isSearching ? {} : periodParams),
-  });
-
-  const { periods } = useTransactionPeriods();
-  const { accounts } = useAccounts();
-  const { creditCards } = useCreditCards();
   const { format } = useCurrency();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("FINANCES");
-
-  const isLoading = loadingAcc || loadingCC;
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort((a, b) => b - a);
   const monthsForYear = (y: number) =>
@@ -959,13 +954,14 @@ export default function TransactionsPage() {
       )}
 
       {/* Modal crear */}
-      <CreateTransactionModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-        onSuccess={() => { invalidateAll(); setModalOpen(false); }}
-      />
+      {modalOpen && (
+        <CreateTransactionModal
+          open
+          onOpenChange={setModalOpen}
+          accounts={accounts}
+          creditCards={creditCards}
+        />
+      )}
 
       {/* Modal editar */}
       {editingTx && (

@@ -19,7 +19,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 
-import { useDashboard, useDashboardPeriods } from "@/hooks/swr/use-dashboard";
+import { useDashboard } from "@/hooks/swr/use-dashboard";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
@@ -59,12 +59,12 @@ export default function DashboardPage() {
   const [isToday, setIsToday] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
 
-  const { data, isLoading, mutate } = useDashboard({
+  const { data, isLoading } = useDashboard({
     month: selectedMonth,
     year: selectedYear,
     period: isToday ? "today" : undefined,
   });
-  const { periods } = useDashboardPeriods();
+  const periods = data?.periods ?? [];
   const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("DASHBOARD");
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort(
@@ -281,10 +281,6 @@ export default function DashboardPage() {
       {transactionOpen && (
         <DashboardTransactionModal
           onOpenChange={setTransactionOpen}
-          onSuccess={() => {
-            mutate();
-            setTransactionOpen(false);
-          }}
         />
       )}
     </div>
@@ -293,10 +289,8 @@ export default function DashboardPage() {
 
 function DashboardTransactionModal({
   onOpenChange,
-  onSuccess,
 }: {
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
 }) {
   // Estas colecciones solo se necesitan para crear una transacción. Al
   // montar este componente únicamente con la modal abierta, la recarga del
@@ -310,7 +304,6 @@ function DashboardTransactionModal({
       onOpenChange={onOpenChange}
       accounts={accounts}
       creditCards={creditCards}
-      onSuccess={onSuccess}
     />
   );
 }

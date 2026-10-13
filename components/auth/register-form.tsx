@@ -84,7 +84,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
       });
       if (!sessionResponse.ok) throw new Error("No se pudo iniciar la sesión");
       await signOut(auth);
-      await mutate("/api/auth/session");
+      await mutate("/api/auth/me");
 
       // El servidor usa la cookie de sesión; el SDK ya no conserva al usuario.
       try {

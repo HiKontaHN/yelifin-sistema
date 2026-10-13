@@ -24,10 +24,9 @@ import {
   ArrowUpCircle, ArrowDownCircle, ArrowLeftRight, ExternalLink,
   Pencil, Trash2, Building2, MoreVertical, ChevronRight,
 } from "lucide-react";
-import { useFinances, useFinancePeriods } from "@/hooks/swr/use-finances";
-import { useAccounts, Account } from "@/hooks/swr/use-accounts";
+import { useFinancesView } from "@/hooks/swr/use-finances";
+import { type Account } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { CreateAccountDialog } from "@/components/accounts/create-account-dialog";
 import { EditAccountDialog } from "@/components/accounts/edit-account-dialog";
@@ -97,11 +96,19 @@ export default function FinancesPage() {
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [selectedMonth, selectedYear, pathname, replace]);
 
-  const { summary, isLoading, mutate: mutateSummary } = useFinances({ month: selectedMonth, year: selectedYear });
-  const { periods } = useFinancePeriods();
-  const { accounts, mutate: mutateAccounts } = useAccounts();
+  const {
+    summary,
+    periods,
+    accounts,
+    creditCards,
+    isLoading,
+    mutate,
+  } = useFinancesView({
+    month: selectedMonth,
+    year: selectedYear,
+    tz_offset: new Date().getTimezoneOffset(),
+  });
   const { format } = useCurrency();
-  const { creditCards, mutate: mutateCreditCards } = useCreditCards();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("FINANCES");
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort((a, b) => b - a);
@@ -132,7 +139,7 @@ export default function FinancesPage() {
   }));
 
   // Solo para operaciones de cuentas (crear/editar/eliminar)
-  const onAccountSuccess = () => { mutateAccounts(); mutateSummary(); };
+  const onAccountSuccess = () => { mutate(); };
 
   return (
     <div className="space-y-4 pb-24">
@@ -454,35 +461,44 @@ export default function FinancesPage() {
         ]}
       />
 
-      {/* CreateTransactionModal mutea internamente: transactions + accounts + finances */}
-      <CreateTransactionModal
-        open={transactionOpen}
-        onOpenChange={setTransactionOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-      />
-      <CreateAccountDialog
-        open={createAccountOpen}
-        onOpenChange={setCreateAccountOpen}
-        onSuccess={onAccountSuccess}
-      />
-      <CreateCreditCardDialog
-        open={createCardOpen}
-        onOpenChange={setCreateCardOpen}
-        onSuccess={() => mutateCreditCards()}
-      />
-      <EditAccountDialog
-        account={editAccount}
-        open={!!editAccount}
-        onOpenChange={(open) => !open && setEditAccount(null)}
-        onSuccess={onAccountSuccess}
-      />
-      <DeleteAccountDialog
-        account={deleteAccount}
-        open={!!deleteAccount}
-        onOpenChange={(open) => !open && setDeleteAccount(null)}
-        onSuccess={onAccountSuccess}
-      />
+      {transactionOpen && (
+        <CreateTransactionModal
+          open
+          onOpenChange={setTransactionOpen}
+          accounts={accounts}
+          creditCards={creditCards}
+        />
+      )}
+      {createAccountOpen && (
+        <CreateAccountDialog
+          open
+          onOpenChange={setCreateAccountOpen}
+          onSuccess={onAccountSuccess}
+        />
+      )}
+      {createCardOpen && (
+        <CreateCreditCardDialog
+          open
+          onOpenChange={setCreateCardOpen}
+          onSuccess={() => mutate()}
+        />
+      )}
+      {editAccount && (
+        <EditAccountDialog
+          account={editAccount}
+          open
+          onOpenChange={(open) => !open && setEditAccount(null)}
+          onSuccess={onAccountSuccess}
+        />
+      )}
+      {deleteAccount && (
+        <DeleteAccountDialog
+          account={deleteAccount}
+          open
+          onOpenChange={(open) => !open && setDeleteAccount(null)}
+          onSuccess={onAccountSuccess}
+        />
+      )}
     </div>
   );
 }

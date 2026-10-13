@@ -23,11 +23,9 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import {
-  useCreditCards, useDeleteCreditCard, useAllCreditCardTransactions,
-  useCCTransactionPeriods,
+  useCreditCardsOverview, useDeleteCreditCard,
   CreditCard as CreditCardType,
 } from "@/hooks/swr/use-credit-cards";
-import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { usePrivacyMode } from "@/context/privacy-mode-context";
 import { CreateCreditCardDialog } from "@/components/credit-cards/create-credit-card-dialog";
@@ -54,8 +52,6 @@ export default function CreditCardsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const { creditCards, isLoading, mutate } = useCreditCards();
-  const { accounts } = useAccounts();
   const { format, currency } = useCurrency();
   const { deleteCreditCard } = useDeleteCreditCard();
   const { isPrivate } = usePrivacyMode();
@@ -81,6 +77,21 @@ export default function CreditCardsPage() {
     return v ? Number(v) : undefined;
   });
 
+  const {
+    creditCards,
+    accounts,
+    periods,
+    transactions: ccTxs,
+    isLoading,
+    mutate,
+  } = useCreditCardsOverview({
+    month: selectedMonth,
+    year: selectedYear,
+    card_id: selectedCardId,
+    tz_offset: new Date().getTimezoneOffset(),
+  });
+  const loadingTxs = isLoading;
+
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
@@ -89,14 +100,6 @@ export default function CreditCardsPage() {
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [selectedMonth, selectedYear, selectedCardId, pathname, replace]);
-
-  const { periods } = useCCTransactionPeriods();
-
-  const { transactions: ccTxs, isLoading: loadingTxs, mutate: mutateTxs } = useAllCreditCardTransactions({
-    month: selectedMonth,
-    year: selectedYear,
-    card_id: selectedCardId,
-  });
 
   const currentMonth = now.getMonth() + 1;
   const currentYear  = now.getFullYear();
@@ -545,28 +548,33 @@ export default function CreditCardsPage() {
         ]}
       />
 
-      <CreateCreditCardDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onSuccess={() => mutate()}
-      />
+      {createOpen && (
+        <CreateCreditCardDialog
+          open
+          onOpenChange={setCreateOpen}
+          onSuccess={() => mutate()}
+        />
+      )}
 
-      <CreateTransactionModal
-        open={transactionOpen}
-        onOpenChange={setTransactionOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-        onSuccess={() => { mutate(); mutateTxs(); }}
-      />
+      {transactionOpen && (
+        <CreateTransactionModal
+          open
+          onOpenChange={setTransactionOpen}
+          accounts={accounts}
+          creditCards={creditCards}
+        />
+      )}
 
-      <PayCreditCardDialog
-        open={!!payCard || payPickerOpen}
-        onOpenChange={(v) => { if (!v) { setPayCard(null); setPayPickerOpen(false); } }}
-        card={payCard}
-        cards={cardsWithDebt}
-        accounts={accounts}
-        onSuccess={() => { mutate(); setPayCard(null); setPayPickerOpen(false); }}
-      />
+      {(payCard || payPickerOpen) && (
+        <PayCreditCardDialog
+          open
+          onOpenChange={(v) => { if (!v) { setPayCard(null); setPayPickerOpen(false); } }}
+          card={payCard}
+          cards={cardsWithDebt}
+          accounts={accounts}
+          onSuccess={() => { mutate(); setPayCard(null); setPayPickerOpen(false); }}
+        />
+      )}
     </div>
   );
 }

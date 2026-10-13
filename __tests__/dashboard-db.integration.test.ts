@@ -6,8 +6,14 @@ jest.mock("firebase-admin/app", () => ({
 jest.mock("firebase-admin/auth", () => ({
   getAuth: jest.fn(() => ({ verifyIdToken: jest.fn() })),
 }));
+const mockVerifySessionCookie = jest.fn();
+const mockGetUser = jest.fn();
 jest.mock("@/lib/firebase-admin", () => ({
-  adminAuth: { verifyIdToken: jest.fn() },
+  adminAuth: {
+    verifyIdToken: jest.fn(),
+    verifySessionCookie: mockVerifySessionCookie,
+    getUser: mockGetUser,
+  },
 }));
 
 import { NextRequest } from "next/server";
@@ -26,11 +32,30 @@ describeDatabase("dashboard — integración con la base de desarrollo", () => {
     const [scope] = await withTransaction(async (tx) => tx<{
       org_id: number;
       user_id: number;
+      role_id: number;
+      role_name: string;
+      is_owner: boolean;
+      firebase_uid: string;
+      email: string;
+      display_name: string;
     }>`
-      SELECT id AS org_id, owner_user_id AS user_id
-      FROM organizations
-      WHERE is_active = TRUE
-      ORDER BY id
+      SELECT
+        o.id AS org_id,
+        u.id AS user_id,
+        r.id AS role_id,
+        r.name AS role_name,
+        (r.is_owner = TRUE OR o.owner_user_id = u.id) AS is_owner,
+        u.firebase_uid,
+        u.email,
+        u.display_name
+      FROM users u
+      JOIN organization_members om ON om.user_id = u.id AND om.is_active = TRUE
+      JOIN organizations o ON o.id = om.org_id AND o.is_active = TRUE
+      JOIN org_roles r ON r.id = om.role_id
+      JOIN org_subscriptions os ON os.org_id = o.id
+      JOIN subscription_plans sp ON sp.id = os.plan_id
+      WHERE u.is_active = TRUE
+      ORDER BY om.joined_at, u.id
       LIMIT 1
     `);
 
@@ -39,12 +64,12 @@ describeDatabase("dashboard — integración con la base de desarrollo", () => {
     const authUser: AuthUser = {
       userId: Number(scope.user_id),
       orgId: Number(scope.org_id),
-      roleId: 0,
-      roleName: "Dueño",
-      isOwner: true,
-      firebaseUid: "dashboard-integration",
-      email: "dashboard-integration@example.com",
-      displayName: "Dashboard integration",
+      roleId: Number(scope.role_id),
+      roleName: scope.role_name,
+      isOwner: scope.is_owner,
+      firebaseUid: scope.firebase_uid,
+      email: scope.email,
+      displayName: scope.display_name,
       emailVerified: true,
       isActive: true,
       subscription: { status: "ACTIVE", planSlug: "pro" },
@@ -66,7 +91,35 @@ describeDatabase("dashboard — integración con la base de desarrollo", () => {
     const timezoneSpy = jest.spyOn(authModule, "getOrgTimezone")
       .mockResolvedValue("America/Tegucigalpa");
 
+    mockVerifySessionCookie.mockResolvedValue({
+      uid: scope.firebase_uid,
+      email_verified: true,
+    });
+    mockGetUser.mockResolvedValue({
+      uid: scope.firebase_uid,
+      email: scope.email,
+      displayName: scope.display_name,
+      emailVerified: true,
+      disabled: false,
+    });
+
     try {
+      const { GET: getMe } = await import("@/app/api/auth/me/route");
+      const meResponse = await getMe(new NextRequest("http://localhost/api/auth/me", {
+        headers: { cookie: "hikonta_auth=integration-session" },
+      }));
+      const meBody = await meResponse.json();
+
+      expect(meResponse.status).toBe(200);
+      expect(meBody).toMatchObject({
+        user: expect.any(Object),
+        org: expect.any(Object),
+        permissions: expect.any(Object),
+        features: expect.any(Object),
+      });
+      expect(Number(meBody.user.id)).toBe(Number(scope.user_id));
+      expect(Number(meBody.org.id)).toBe(Number(scope.org_id));
+
       const { GET } = await import("@/app/api/dashboard/route");
       for (const testCase of [
         { query: "month=10&year=2026", period: { month: 10, year: 2026 } },
@@ -80,6 +133,7 @@ describeDatabase("dashboard — integración con la base de desarrollo", () => {
         expect(response.status).toBe(200);
         expect(body.data).toMatchObject({
           period: testCase.period,
+          periods: expect.any(Array),
           metrics: {
             inventory: expect.any(Object),
             credit_card_debt: expect.any(Object),

@@ -26,12 +26,9 @@ import {
   MoreVertical, Pencil, Trash2, ArrowLeftRight,
 } from "lucide-react";
 import {
-  useCreditCard,
-  useCreditCardTransactions,
-  useCreditCardPeriods,
+  useCreditCardDetailView,
   useCreditCardTxnSearch,
   useDeleteCCTransaction,
-  useCreditCards,
   CreditCardTransaction,
 } from "@/hooks/swr/use-credit-cards";
 import { SearchBar } from "@/components/shared/search-bar";
@@ -40,7 +37,6 @@ import {
   DEFAULT_DATA_TABLE_PAGE_SIZE,
   type DataTableTimeSectionColumn,
 } from "@/components/shared/data-table-time-section";
-import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
 import { toast } from "sonner";
@@ -74,18 +70,24 @@ export default function CreditCardDetailPage({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
-  const { creditCard, isLoading: loadingCard, mutate: mutateCard } = useCreditCard(cardId);
-  const { transactions, totals, isLoading: loadingTxns, mutate: mutateTxns } = useCreditCardTransactions(cardId, {
-    month:     selectedMonth,
-    year:      selectedYear,
+  const {
+    creditCard,
+    transactions,
+    totals,
+    periods,
+    accounts,
+    creditCards,
+    isLoading,
+    mutate,
+  } = useCreditCardDetailView(cardId, {
+    month: selectedMonth,
+    year: selectedYear,
     tz_offset: new Date().getTimezoneOffset(),
   });
-  const { periods } = useCreditCardPeriods(cardId);
-  const { accounts } = useAccounts();
-  const { creditCards } = useCreditCards();
+  const loadingCard = isLoading;
+  const loadingTxns = isLoading;
   const { format, currency } = useCurrency();
   const { deleteTransaction, isDeleting } = useDeleteCCTransaction();
-  const { categories: expenseCategories } = useTransactionCategories("EXPENSE");
 
   // Busca primero en el período visible; si no hay coincidencias,
   // consulta todos los períodos de la tarjeta (debounced + cacheado).
@@ -107,8 +109,7 @@ export default function CreditCardDetailPage({
   }, [totalPages]);
 
   const handlePaySuccess = () => {
-    mutateCard();
-    mutateTxns();
+    mutate();
     setPayOpen(false);
   };
 
@@ -118,8 +119,7 @@ export default function CreditCardDetailPage({
       await deleteTransaction(deletingTxn.id);
       toast.success("Cargo eliminado");
       setDeletingTxn(null);
-      mutateCard();
-      mutateTxns();
+      mutate();
     } catch (e: any) {
       toast.error(e.message || "Error al eliminar");
     }
@@ -465,30 +465,33 @@ export default function CreditCardDetailPage({
         ]}
       />
 
-      <PayCreditCardDialog
-        open={payOpen}
-        onOpenChange={setPayOpen}
-        card={creditCard ?? null}
-        accounts={accounts}
-        onSuccess={handlePaySuccess}
-      />
+      {payOpen && (
+        <PayCreditCardDialog
+          open
+          onOpenChange={setPayOpen}
+          card={creditCard ?? null}
+          accounts={accounts}
+          onSuccess={handlePaySuccess}
+        />
+      )}
 
-      <CreateTransactionModal
-        open={transactionOpen}
-        onOpenChange={setTransactionOpen}
-        accounts={accounts}
-        creditCards={creditCards}
-        onSuccess={() => { mutateCard(); mutateTxns(); }}
-      />
+      {transactionOpen && (
+        <CreateTransactionModal
+          open
+          onOpenChange={setTransactionOpen}
+          accounts={accounts}
+          creditCards={creditCards}
+        />
+      )}
 
-      <EditCCTransactionDialog
-        txn={editingTxn}
-        open={!!editingTxn}
-        onOpenChange={(v) => { if (!v) setEditingTxn(null); }}
-        onSuccess={() => { setEditingTxn(null); mutateCard(); mutateTxns(); }}
-        nativeCurrency={currency}
-        expenseCategories={expenseCategories}
-      />
+      {editingTxn && (
+        <LazyEditCCTransactionDialog
+          txn={editingTxn}
+          onOpenChange={(v) => { if (!v) setEditingTxn(null); }}
+          onSuccess={() => { setEditingTxn(null); mutate(); }}
+          nativeCurrency={currency}
+        />
+      )}
 
       <AlertDialog open={!!deletingTxn} onOpenChange={(v) => { if (!v) setDeletingTxn(null); }}>
         <AlertDialogContent>
@@ -511,6 +514,31 @@ export default function CreditCardDetailPage({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function LazyEditCCTransactionDialog({
+  txn,
+  onOpenChange,
+  onSuccess,
+  nativeCurrency,
+}: {
+  txn: CreditCardTransaction;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+  nativeCurrency: string;
+}) {
+  const { categories } = useTransactionCategories("EXPENSE");
+
+  return (
+    <EditCCTransactionDialog
+      txn={txn}
+      open
+      onOpenChange={onOpenChange}
+      onSuccess={onSuccess}
+      nativeCurrency={nativeCurrency}
+      expenseCategories={categories}
+    />
   );
 }
 

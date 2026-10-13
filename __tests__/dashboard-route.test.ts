@@ -69,6 +69,7 @@ describe("GET /api/dashboard", () => {
       accounts_balance: "5000",
       credit_card_debt_local: "250",
       credit_card_debt_usd: "15",
+      available_periods: [{ year: 2026, month: 10 }],
     }]);
     analytics.resolve([{
       sales_chart: [{ date: "2026-10-01", revenue: 1000, profit: 300 }],
@@ -111,6 +112,7 @@ describe("GET /api/dashboard", () => {
     expect(body.data.sales_chart).toEqual([
       { date: "2026-10-01", revenue: 1000, profit: 300 },
     ]);
+    expect(body.data.periods).toEqual([{ year: 2026, month: 10 }]);
     expect(body.data.low_stock).toEqual([
       { id: 4, name: "Bajo", sku: "B-1", image_url: null, stock: 1 },
     ]);
