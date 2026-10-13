@@ -63,7 +63,7 @@ export function LoginForm() {
       }
 
       await signOut(auth);
-      await mutate("/api/auth/session");
+      await mutate("/api/auth/me");
       toast.success("¡Bienvenido de vuelta!");
       push("/dashboard");
     } catch (error: any) {

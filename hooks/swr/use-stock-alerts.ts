@@ -22,11 +22,11 @@ export type StockAlertsData = {
   }[];
 };
 
-export function useStockAlerts() {
+export function useStockAlerts(enabled = true) {
   const { firebaseUser } = useAuth();
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser ? KEY : null,
+    firebaseUser && enabled ? KEY : null,
     async (url: string) => {
       const res = await fetch(url);
       if (!res.ok) throw new Error("Error en la solicitud");

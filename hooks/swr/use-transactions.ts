@@ -4,6 +4,8 @@
 import useSWR from "swr";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import type { Account } from "@/hooks/swr/use-accounts";
+import type { AllCardTransaction, CreditCard } from "@/hooks/swr/use-credit-cards";
 
 const KEY = "/api/transactions";
 
@@ -51,6 +53,18 @@ export type UpdateTransactionInput = {
 };
 
 export type TransactionPeriod = { year: number; month: number };
+
+type TransactionsViewFilters = {
+  source?: "all" | "account" | "credit_card";
+  account_id?: number;
+  card_id?: number;
+  month?: number;
+  year?: number;
+  date?: string;
+  type?: string;
+  search?: string;
+  tz_offset?: number;
+};
 
 function useAuthFetch() {
   return async (url: string, options: RequestInit = {}) => {
@@ -105,6 +119,46 @@ export function useTransactions(filters?: {
     totals:       (data?.totals ?? { income: 0, expense: 0, transfer: 0, count: 0 }) as TransactionTotals,
     isLoading,
     error:        error?.message ?? null,
+    mutate,
+  };
+}
+
+/**
+ * Carga en una sola solicitud todos los datos necesarios por la pantalla de
+ * transacciones. El endpoint ejecuta sus consultas independientes en paralelo.
+ */
+export function useTransactionsView(filters?: TransactionsViewFilters) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const params = new URLSearchParams();
+  if (filters?.source) params.set("source", filters.source);
+  if (filters?.account_id) params.set("account_id", String(filters.account_id));
+  if (filters?.card_id) params.set("card_id", String(filters.card_id));
+  if (filters?.month) params.set("month", String(filters.month));
+  if (filters?.year) params.set("year", String(filters.year));
+  if (filters?.date) params.set("date", filters.date);
+  if (filters?.type && filters.type !== "all") params.set("type", filters.type);
+  if (filters?.search) params.set("search", filters.search);
+  if (filters?.tz_offset !== undefined) params.set("tz_offset", String(filters.tz_offset));
+
+  const query = params.toString();
+  const url = `/api/finances/transactions-view${query ? `?${query}` : ""}`;
+  const { data, isLoading, error, mutate } = useSWR(
+    firebaseUser ? url : null,
+    (requestUrl: string) => authFetch(requestUrl),
+    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 },
+  );
+
+  return {
+    transactions: (data?.data?.transactions ?? []) as Transaction[],
+    creditCardTransactions: (data?.data?.credit_card_transactions ?? []) as AllCardTransaction[],
+    periods: (data?.data?.periods ?? []) as TransactionPeriod[],
+    accounts: (data?.data?.accounts ?? []) as Account[],
+    creditCards: (data?.data?.credit_cards ?? []) as CreditCard[],
+    totals: (data?.totals ?? { income: 0, expense: 0, transfer: 0, count: 0 }) as TransactionTotals,
+    isLoading,
+    error: error?.message ?? null,
     mutate,
   };
 }

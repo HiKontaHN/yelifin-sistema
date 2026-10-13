@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useHybridSearch, HybridSearchResult } from '@/hooks/use-hybrid-search';
+import type { Account } from '@/hooks/swr/use-accounts';
 
 const KEY = '/api/credit-cards';
 
@@ -107,6 +108,41 @@ export function useCreditCards() {
   };
 }
 
+/** Carga consolidada de la lista, análisis y selectores de tarjetas. */
+export function useCreditCardsOverview(params?: {
+  month?: number;
+  year?: number;
+  card_id?: number;
+  tz_offset?: number;
+}) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const query = new URLSearchParams();
+  if (params?.month) query.set('month', String(params.month));
+  if (params?.year) query.set('year', String(params.year));
+  if (params?.card_id) query.set('card_id', String(params.card_id));
+  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
+  const queryString = query.toString();
+  const url = `/api/credit-cards/view${queryString ? `?${queryString}` : ''}`;
+
+  const { data, isLoading, error, mutate } = useSWR(
+    firebaseUser ? url : null,
+    (requestUrl: string) => authFetch(requestUrl),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+
+  return {
+    creditCards: (data?.data?.credit_cards ?? []) as CreditCard[],
+    accounts: (data?.data?.accounts ?? []) as Account[],
+    periods: (data?.data?.periods ?? []) as { year: number; month: number }[],
+    transactions: (data?.data?.transactions ?? []) as AllCardTransaction[],
+    isLoading,
+    error: error?.message ?? null,
+    mutate,
+  };
+}
+
 export function useCreditCard(id: number | null) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -147,6 +183,48 @@ export function useCreditCardTransactions(
   return {
     transactions: (data?.data ?? []) as CreditCardTransaction[],
     totals: data?.totals ?? { charges_local: 0, charges_usd: 0, payments_local: 0, payments_usd: 0, count: 0 },
+    isLoading,
+    error: error?.message ?? null,
+    mutate,
+  };
+}
+
+/** Carga consolidada del detalle de tarjeta con una sola autenticación. */
+export function useCreditCardDetailView(
+  id: number | null,
+  params?: { month?: number; year?: number; tz_offset?: number },
+) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const query = new URLSearchParams();
+  if (params?.month) query.set('month', String(params.month));
+  if (params?.year) query.set('year', String(params.year));
+  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
+  const queryString = query.toString();
+  const url = id
+    ? `${KEY}/${id}/view${queryString ? `?${queryString}` : ''}`
+    : null;
+
+  const { data, isLoading, error, mutate } = useSWR(
+    firebaseUser ? url : null,
+    (requestUrl: string) => authFetch(requestUrl),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+
+  return {
+    creditCard: data?.data?.credit_card as CreditCard | undefined,
+    transactions: (data?.data?.transactions ?? []) as CreditCardTransaction[],
+    totals: data?.totals ?? {
+      charges_local: 0,
+      charges_usd: 0,
+      payments_local: 0,
+      payments_usd: 0,
+      count: 0,
+    },
+    periods: (data?.data?.periods ?? []) as { year: number; month: number }[],
+    accounts: (data?.data?.accounts ?? []) as Account[],
+    creditCards: (data?.data?.credit_cards ?? []) as CreditCard[],
     isLoading,
     error: error?.message ?? null,
     mutate,

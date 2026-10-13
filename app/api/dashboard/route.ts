@@ -164,7 +164,20 @@ export async function GET(request: NextRequest) {
             SELECT COALESCE(SUM(balance_usd), 0)
             FROM credit_cards
             WHERE org_id = ${orgId} AND is_active = TRUE
-          ) AS credit_card_debt_usd
+          ) AS credit_card_debt_usd,
+          (
+            SELECT COALESCE(jsonb_agg(
+              jsonb_build_object('year', periods.year, 'month', periods.month)
+              ORDER BY periods.year DESC, periods.month DESC
+            ), '[]'::jsonb)
+            FROM (
+              SELECT DISTINCT
+                EXTRACT(YEAR FROM sold_at)::int AS year,
+                EXTRACT(MONTH FROM sold_at)::int AS month
+              FROM sales
+              WHERE org_id = ${orgId}
+            ) periods
+          ) AS available_periods
         FROM sales_metrics sm
         CROSS JOIN profit_metrics pm
         CROSS JOIN customer_metrics cm
@@ -365,6 +378,7 @@ export async function GET(request: NextRequest) {
         period: isToday
           ? "today" as const
           : filterAll ? null : { year: filterYear, month: paramMonth ? filterMonth : null },
+        periods: Array.isArray(summary?.available_periods) ? summary.available_periods : [],
         metrics: {
           revenue: revenueThisNum,
           revenue_change: revenueLastNum > 0 ? ((revenueThisNum - revenueLastNum) / revenueLastNum) * 100 : null,

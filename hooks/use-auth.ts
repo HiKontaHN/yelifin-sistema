@@ -2,23 +2,15 @@
 
 import { useCallback } from 'react';
 import useSWR from 'swr';
-import { UserProfileResponse } from '@/types';
+import type { AuthContextResponse, SessionUser } from '@/types';
 import { authReady } from '@/lib/firebase';
 
 const SESSION_KEY = '/api/auth/session';
 const PROFILE_KEY = '/api/auth/me';
 
-type SessionUser = {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  emailVerified: boolean;
-  sessionEmailVerified: boolean;
-};
-
-async function fetchSession(url: string): Promise<SessionUser | null> {
+async function fetchAuthContext(url: string): Promise<AuthContextResponse | null> {
   const response = await fetch(url, { cache: 'no-store' });
-  if (response.status === 401) return null;
+  if ([401, 403, 404].includes(response.status)) return null;
   if (!response.ok) throw new Error('No se pudo validar la sesión');
   return response.json();
 }
@@ -28,23 +20,13 @@ export function useAuth() {
   void authReady.catch(() => undefined);
 
   const {
-    data: sessionUser,
-    error: sessionError,
-    isLoading: sessionLoading,
-    mutate: mutateSession,
-  } = useSWR<SessionUser | null>(SESSION_KEY, fetchSession);
-
-  const {
-    data: user,
-    isLoading: profileLoading,
-    mutate: mutateProfile,
-  } = useSWR<UserProfileResponse>(
-    sessionUser ? PROFILE_KEY : null,
-    async (url: string) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Error al obtener perfil');
-      return response.json();
-    },
+    data: authContext,
+    error: authError,
+    isLoading,
+    mutate: mutateAuthContext,
+  } = useSWR<AuthContextResponse | null>(
+    PROFILE_KEY,
+    fetchAuthContext,
     {
       revalidateOnFocus: false,
       dedupingInterval: 60_000,
@@ -52,14 +34,19 @@ export function useAuth() {
     },
   );
 
+  const sessionUser = authContext?.session ?? null;
+  const user = authContext ?? undefined;
+
   const logout = useCallback(async () => {
     const response = await fetch(SESSION_KEY, { method: 'DELETE' });
     if (!response.ok) throw new Error('No se pudo cerrar la sesión');
-    await mutateSession(null, { revalidate: false });
-    await mutateProfile(undefined, { revalidate: false });
-  }, [mutateSession, mutateProfile]);
+    await mutateAuthContext(null, { revalidate: false });
+  }, [mutateAuthContext]);
 
-  const refreshSession = useCallback(() => mutateSession(), [mutateSession]);
+  const refreshSession = useCallback(async (): Promise<SessionUser | null> => {
+    const refreshed = await mutateAuthContext();
+    return refreshed?.session ?? null;
+  }, [mutateAuthContext]);
 
   // firebaseUser queda como alias compatible para consumidores que solo
   // necesitan uid/email; ahora es una identidad del servidor, no del SDK.
@@ -68,10 +55,10 @@ export function useAuth() {
     sessionUser: sessionUser ?? null,
     serverSession: !!sessionUser,
     user,
-    loading: sessionLoading || !!sessionError || (!!sessionUser && profileLoading),
+    loading: isLoading || !!authError,
     emailVerified: sessionUser?.emailVerified ?? false,
     sessionEmailVerified: sessionUser?.sessionEmailVerified ?? false,
-    refreshProfile: () => mutateProfile(),
+    refreshProfile: () => mutateAuthContext(),
     refreshSession,
     logout,
   };

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NavUserMenu } from "@/components/nav-user-menu";
+import { useDashboardWarmup } from "@/hooks/swr/use-dashboard";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -79,6 +80,7 @@ export function DashboardLayoutClient({
   const { firebaseUser, loading } = useRequireAuth();
   const { checking } = useOnboardingGuard();
   usePlanGuard();
+  useDashboardWarmup(pathname === "/dashboard" && loading);
 
   if (loading || checking) return <LoadingScreen />;
   if (!firebaseUser) return null;

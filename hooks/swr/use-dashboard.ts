@@ -10,6 +10,7 @@ export type DashboardPeriod = { year: number; month: number };
 
 export type DashboardData = {
   period: { year: number; month: number } | "today" | null;
+  periods: DashboardPeriod[];
   metrics: {
     revenue: number;
     revenue_change: number | null;
@@ -48,18 +49,15 @@ export type DashboardData = {
   }[];
 };
 
-function useAuthFetch() {
-  return async (url: string) => {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Error en la solicitud");
-    return res.json();
-  };
+async function fetchDashboard(url: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Error en la solicitud");
+  return res.json();
 }
 
 // Hook principal con filtros opcionales
 export function useDashboard(filters?: { month?: number; year?: number; period?: "today" }) {
   const { firebaseUser } = useAuth();
-  const authFetch = useAuthFetch();
 
   const params = new URLSearchParams();
   if (filters?.period === "today") {
@@ -74,7 +72,7 @@ export function useDashboard(filters?: { month?: number; year?: number; period?:
 
   const { data, isLoading, error, mutate } = useSWR(
     firebaseUser ? url : null,
-    (u: string) => authFetch(u),
+    fetchDashboard,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   );
 
@@ -86,14 +84,26 @@ export function useDashboard(filters?: { month?: number; year?: number; period?:
   };
 }
 
-// Hook para obtener períodos disponibles
+// Precarga únicamente el período por defecto mientras se resuelve /auth/me.
+// El proxy ya validó la cookie para permitir entrar al layout privado y el
+// propio endpoint vuelve a autorizar la solicitud. Al montar DashboardPage,
+// SWR reutiliza esta misma clave en vez de iniciar una segunda petición.
+export function useDashboardWarmup(enabled: boolean) {
+  useSWR(
+    enabled ? KEY : null,
+    fetchDashboard,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+}
+
+// Compatibilidad para consumidores fuera del dashboard principal. La pantalla
+// principal recibe los períodos dentro de /api/dashboard y no usa este hook.
 export function useDashboardPeriods() {
   const { firebaseUser } = useAuth();
-  const authFetch = useAuthFetch();
 
   const { data, isLoading } = useSWR(
     firebaseUser ? "/api/dashboard/periods" : null,
-    (u: string) => authFetch(u),
+    fetchDashboard,
     { revalidateOnFocus: false, dedupingInterval: 300_000 }
   );
 

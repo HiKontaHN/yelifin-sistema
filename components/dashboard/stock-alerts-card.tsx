@@ -95,10 +95,36 @@ function coverageBadgeVariant(days: number): "destructive" | "secondary" {
 }
 
 export function StockAlertsCard() {
-  const { data, isLoading } = useStockAlerts();
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const [shouldLoad, setShouldLoad] = React.useState(false);
+  const { data, isLoading: queryLoading } = useStockAlerts(shouldLoad);
+  const isLoading = !shouldLoad || queryLoading;
+
+  React.useEffect(() => {
+    const element = cardRef.current;
+    if (!element) return;
+
+    if (!("IntersectionObserver" in window)) {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <Card>
+    <Card ref={cardRef}>
       <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-base flex items-center gap-2">
           <AlertTriangle className="size-4 text-yellow-500" />

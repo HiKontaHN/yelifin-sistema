@@ -3,6 +3,8 @@
 
 import useSWR from "swr";
 import { useAuth } from "@/hooks/use-auth";
+import type { Account } from "@/hooks/swr/use-accounts";
+import type { CreditCard } from "@/hooks/swr/use-credit-cards";
 
 export type FinanceAccount = {
   id: number;
@@ -70,6 +72,39 @@ export function useFinances(filters?: { month?: number; year?: number }) {
     summary:   data as FinanceSummary | undefined,
     isLoading,
     error:     error?.message ?? null,
+    mutate,
+  };
+}
+
+/** Carga consolidada del resumen, períodos y selectores financieros. */
+export function useFinancesView(filters?: {
+  month?: number;
+  year?: number;
+  tz_offset?: number;
+}) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const params = new URLSearchParams();
+  if (filters?.month) params.set("month", String(filters.month));
+  if (filters?.year) params.set("year", String(filters.year));
+  if (filters?.tz_offset !== undefined) params.set("tz_offset", String(filters.tz_offset));
+  const query = params.toString();
+  const url = `/api/finances/view${query ? `?${query}` : ""}`;
+
+  const { data, isLoading, error, mutate } = useSWR(
+    firebaseUser ? url : null,
+    (requestUrl: string) => authFetch(requestUrl),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+
+  return {
+    summary: data?.data?.summary as FinanceSummary | undefined,
+    periods: (data?.data?.periods ?? []) as FinancePeriod[],
+    accounts: (data?.data?.accounts ?? []) as Account[],
+    creditCards: (data?.data?.credit_cards ?? []) as CreditCard[],
+    isLoading,
+    error: error?.message ?? null,
     mutate,
   };
 }

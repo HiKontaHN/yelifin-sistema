@@ -1,6 +1,7 @@
 // app/api/auth/me/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { adminAuth } from "@/lib/firebase-admin";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
 import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
 
@@ -8,11 +9,24 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
-    if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+    const sessionCookie = request.cookies.get("hikonta_auth")?.value;
+    if (!sessionCookie) {
+      return createErrorResponse("No autorizado", 401);
+    }
 
-    // Usuario + org + rol + suscripción en un solo query
-    const [row] = await sql`
+    let decoded;
+    try {
+      decoded = await adminAuth.verifySessionCookie(sessionCookie);
+    } catch {
+      return createErrorResponse("Token inválido o expirado", 401);
+    }
+
+    // La cuenta de Firebase y el perfil consolidado se consultan en paralelo.
+    // Esto conserva la detección de usuarios deshabilitados y evita el viaje
+    // adicional a Neon que antes realizaba verifyAuth antes de esta consulta.
+    const [firebaseUser, rows] = await Promise.all([
+      adminAuth.getUser(decoded.uid).catch(() => null),
+      sql`
       SELECT
         u.id,
         u.firebase_uid,
@@ -53,7 +67,41 @@ export async function GET(request: NextRequest) {
         sp.billing_interval,
         sp.max_products,
         sp.max_sales_per_month,
-        sp.max_storage_mb
+        sp.max_storage_mb,
+
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'key', sf.feature_key,
+              'name', sf.feature_name,
+              'category', sf.category
+            )
+            ORDER BY sf.category, sf.feature_key
+          )
+          FROM plan_features pf
+          JOIN system_features sf ON sf.id = pf.feature_id
+          WHERE pf.plan_id = os.plan_id
+            AND os.status IN ('TRIAL', 'ACTIVE')
+            AND pf.is_enabled = TRUE
+            AND sf.is_active = TRUE
+        ), '[]'::jsonb) AS plan_features,
+
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'module', orp.module,
+              'subitem', orp.subitem,
+              'can_view', orp.can_view,
+              'can_edit', orp.can_edit,
+              'can_delete', orp.can_delete,
+              'show_costs', orp.show_costs,
+              'show_profit', orp.show_profit
+            )
+            ORDER BY orp.module, orp.subitem
+          )
+          FROM org_role_permissions orp
+          WHERE orp.role_id = r.id
+        ), '[]'::jsonb) AS role_permissions
 
       FROM users u
       LEFT JOIN user_profile      up ON up.user_id  = u.id
@@ -62,31 +110,30 @@ export async function GET(request: NextRequest) {
       JOIN  org_roles             r  ON r.id        = om.role_id
       JOIN  org_subscriptions     os ON os.org_id   = o.id
       JOIN  subscription_plans    sp ON sp.id       = os.plan_id
-      WHERE u.firebase_uid = ${auth.data.firebaseUid}
-        AND u.is_active    = TRUE
+      WHERE u.firebase_uid = ${decoded.uid}
       ORDER BY om.joined_at ASC
       LIMIT 1
-    `;
+      `,
+    ]);
+
+    if (!firebaseUser || firebaseUser.disabled) {
+      return createErrorResponse("Cuenta deshabilitada o inexistente", 401);
+    }
+
+    const [row] = rows;
 
     if (!row) {
       return Response.json({ error: "Usuario no encontrado" }, { status: 404 });
     }
 
-    // Features del plan
-    const features = await sql`
-      SELECT sf.feature_key, sf.feature_name, sf.category
-      FROM org_subscriptions os
-      JOIN plan_features  pf ON pf.plan_id = os.plan_id
-      JOIN system_features sf ON sf.id = pf.feature_id
-      WHERE os.org_id = ${row.org_id}
-        AND os.status IN ('TRIAL', 'ACTIVE')
-        AND pf.is_enabled = TRUE
-        AND sf.is_active  = TRUE
-    `;
+    if (!row.is_active) {
+      return createErrorResponse("Esta cuenta ha sido deshabilitada", 403);
+    }
 
-    const featuresByCategory = features.reduce((acc: Record<string, any[]>, f) => {
-      if (!acc[f.category]) acc[f.category] = [];
-      acc[f.category].push({ key: f.feature_key, name: f.feature_name, category: f.category });
+    const featureRows = Array.isArray(row.plan_features) ? row.plan_features : [];
+    const featuresByCategory = featureRows.reduce((acc: Record<string, any[]>, feature: any) => {
+      if (!acc[feature.category]) acc[feature.category] = [];
+      acc[feature.category].push(feature);
       return acc;
     }, {});
 
@@ -107,13 +154,9 @@ export async function GET(request: NextRequest) {
         )])
       );
     } else {
-      const perms = await sql`
-        SELECT module, subitem, can_view, can_edit, can_delete, show_costs, show_profit
-        FROM org_role_permissions
-        WHERE role_id = ${row.role_id}
-      `;
       permissionsMap = {};
-      for (const p of perms) {
+      const permissionRows = Array.isArray(row.role_permissions) ? row.role_permissions : [];
+      for (const p of permissionRows) {
         (permissionsMap[p.module] ??= {})[p.subitem] = {
           can_view: p.can_view, can_edit: p.can_edit, can_delete: p.can_delete,
           show_costs: p.show_costs, show_profit: p.show_profit,
@@ -122,6 +165,13 @@ export async function GET(request: NextRequest) {
     }
 
     return Response.json({
+      session: {
+        uid:                  firebaseUser.uid,
+        email:                firebaseUser.email ?? null,
+        displayName:          firebaseUser.displayName ?? null,
+        emailVerified:        firebaseUser.emailVerified,
+        sessionEmailVerified: decoded.email_verified === true,
+      },
       user: {
         id:           row.id,
         firebase_uid: row.firebase_uid,
