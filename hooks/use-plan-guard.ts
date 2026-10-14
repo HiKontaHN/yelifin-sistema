@@ -4,9 +4,6 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 
-// Keep in sync with proxy.ts and app-sidebar.tsx
-const ADMIN_ROUTES = ["/admin"];
-
 const RESTRICTED_PLAN_ROUTES: Record<string, string[]> = {
   finanzas: ["/finances", "/settings"],
 };
@@ -28,14 +25,6 @@ export function usePlanGuard() {
     if (loading || !user) return;
 
     const planSlug = user.subscription?.plan?.slug ?? null;
-
-    // Admin-only routes
-    if (ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
-      if (planSlug !== "admin") {
-        router.replace(getHome(planSlug));
-      }
-      return;
-    }
 
     // Restricted-plan routes
     if (planSlug && planSlug in RESTRICTED_PLAN_ROUTES) {

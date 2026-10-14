@@ -27,10 +27,8 @@ const INTERVAL_LABEL: Record<string, string> = {
 
 export function SubscriptionCard({ title }: { title: string }) {
   const { push } = useRouter();
-  const { subscription, features, isOwner } = useMe();
+  const { subscription, isOwner } = useMe();
 
-  const planSlug = subscription?.plan?.slug ?? null;
-  const isAdmin = planSlug === "admin" || (features?.ADMIN ?? []).length > 0;
   const status = subscription?.status ?? "";
   const interval = INTERVAL_LABEL[subscription?.plan?.billing_interval ?? ""];
 
@@ -46,7 +44,7 @@ export function SubscriptionCard({ title }: { title: string }) {
           <div className="flex flex-wrap gap-x-10 gap-y-3">
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">Plan actual</span>
-              <p className="font-medium">{isAdmin ? "Admin" : subscription.plan?.name ?? "Sin plan"}</p>
+              <p className="font-medium">{subscription.plan?.name ?? "Sin plan"}</p>
             </div>
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">Estado</span>

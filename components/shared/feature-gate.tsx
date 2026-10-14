@@ -10,12 +10,9 @@ import { useRouter } from "next/navigation";
 type AuthUser = NonNullable<ReturnType<typeof useAuth>["user"]>;
 
 export function hasPlanFeature(user: AuthUser, feature: FeatureKey) {
-  return (
-    user.subscription?.plan?.slug === "admin" ||
-    Object.values(user.features ?? {})
-      .flat()
-      .some((f) => f.key === feature)
-  );
+  return Object.values(user.features ?? {})
+    .flat()
+    .some((f) => f.key === feature);
 }
 
 // Bloquea el contenido si el plan de la org no incluye la feature.

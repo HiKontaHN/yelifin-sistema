@@ -47,9 +47,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/reports/inventory": "Reporte de inventario",
   "/reports/profit": "Reporte de ganancias",
   "/reports/events": "Reporte de eventos",
-  "/admin": "Panel de administración",
-  "/admin/users": "Usuarios",
-  "/admin/plans": "Planes",
 };
 
 function getPageTitle(pathname: string) {
@@ -60,9 +57,6 @@ function getPageTitle(pathname: string) {
   if (/^\/customers\/[^/]+$/.test(pathname)) return "Detalle de cliente";
   if (/^\/events\/[^/]+$/.test(pathname)) return "Detalle de evento";
   if (/^\/finances\/credit-cards\/[^/]+$/.test(pathname)) return "Detalle de tarjeta";
-  if (/^\/admin\/users\/[^/]+$/.test(pathname)) return "Usuario";
-  if (/^\/admin\/plans\/[^/]+$/.test(pathname)) return "Plan";
-
   const lastSegment = pathname.split("/").filter(Boolean).at(-1);
   return lastSegment
     ? lastSegment.replaceAll("-", " ").replace(/^./, (letter) => letter.toLocaleUpperCase("es-HN"))

@@ -4,7 +4,7 @@
 import {
   BarChart3, ShoppingBag, Calendar, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard,
   Home, ShoppingCart, Users, Package, PackageOpen, Settings,
-  Shield, Wallet, ArrowLeftRight,
+  Wallet, ArrowLeftRight,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -82,17 +82,6 @@ const secondaryNav: NavItemDef[] = [
       { title: "Inventario",    url: "/reports/inventory", subitem: "INVENTORY", feature: "reports.inventory" },
       { title: "Rentabilidad",  url: "/reports/profit",    subitem: "PROFIT",    feature: "reports.profit" },
       { title: "Eventos",       url: "/reports/events",    subitem: "EVENTS",    feature: "reports.events" },
-    ],
-  },
-]
-
-const adminNav = [
-  {
-    title: "Administración", url: "/admin", icon: Shield,
-    submenu: [
-      { title: "Resumen",   url: "/admin" },
-      { title: "Usuarios",  url: "/admin/users" },
-      { title: "Planes",    url: "/admin/plans" },
     ],
   },
 ]
@@ -222,7 +211,6 @@ export function AppSidebar() {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar()
 
   const { getModulePermissions, isLoading: meIsLoading } = useMe()
-  const isAdmin      = user?.subscription?.plan?.slug === "admin"
   const planSlug     = user?.subscription?.plan?.slug ?? null
   const isFinanzas   = planSlug === "finanzas"
 
@@ -245,10 +233,9 @@ export function AppSidebar() {
   }
 
   // Feature del plan: mientras el perfil carga se muestra todo (el API
-  // bloquea igual); el plan admin siempre ve todo.
+  // bloquea igual).
   const planHasFeature = (feature?: string) => {
     if (!feature || !user) return true
-    if (planSlug === "admin") return true
     return Object.values(user.features ?? {}).flat().some((f: any) => f.key === feature)
   }
 
@@ -327,14 +314,6 @@ export function AppSidebar() {
                 </SidebarGroup>
               )}
 
-              {isAdmin && (
-                <SidebarGroup>
-                  {!isCollapsed && <SidebarGroupLabel>Admin</SidebarGroupLabel>}
-                  <SidebarGroupContent>
-                    <SidebarMenu>{renderNav(adminNav)}</SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              )}
             </>
           )}
 

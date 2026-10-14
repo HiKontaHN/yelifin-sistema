@@ -12,15 +12,13 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Settings, LogOut, Shield, Crown, Eye, EyeOff } from "lucide-react";
+import { Settings, LogOut, Crown, Eye, EyeOff } from "lucide-react";
 
 export function NavUserMenu() {
   const { push } = useRouter();
   const { user, firebaseUser, logout } = useAuth();
   const { org, isOwner } = useMe();
   const { isPrivate, toggle: togglePrivacy } = usePrivacyMode();
-
-  const isAdmin = user?.subscription?.plan?.slug === "admin";
 
   const displayName =
     user?.profile?.business_name       ||
@@ -67,24 +65,18 @@ export function NavUserMenu() {
         <div className="px-2 py-2 border-b mb-1">
           <p className="text-sm font-medium truncate">{displayName}</p>
           <p className="text-xs text-muted-foreground truncate">{firebaseUser?.email}</p>
-          {isAdmin ? (
-            <span className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-emerald-600">
-              <Shield className="size-3" /> Admin
-            </span>
-          ) : (
-            user?.subscription?.plan?.name && (
-              isOwner ? (
-                <Link
-                  href="/settings/billing"
-                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-primary font-medium hover:underline"
-                >
-                  <Crown className="size-3" /> Plan {user.subscription.plan.name}
-                </Link>
-              ) : (
-                <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-muted-foreground font-medium">
-                  <Crown className="size-3" /> Plan {user.subscription.plan.name}
-                </span>
-              )
+          {user?.subscription?.plan?.name && (
+            isOwner ? (
+              <Link
+                href="/settings/billing"
+                className="inline-flex items-center gap-1 mt-1.5 text-xs text-primary font-medium hover:underline"
+              >
+                <Crown className="size-3" /> Plan {user.subscription.plan.name}
+              </Link>
+            ) : (
+              <span className="inline-flex items-center gap-1 mt-1.5 text-xs text-muted-foreground font-medium">
+                <Crown className="size-3" /> Plan {user.subscription.plan.name}
+              </span>
             )
           )}
         </div>

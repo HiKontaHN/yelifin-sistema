@@ -17,7 +17,7 @@ const REASON_MESSAGE: Record<string, string> = {
   EXPIRED: "Este código ya venció — pedile uno nuevo a tu incubadora.",
   REVOKED: "Este código fue cancelado — pedile uno nuevo a tu incubadora.",
   USED: "Este código ya fue utilizado.",
-  ALREADY_LINKED: "Tu negocio ya está vinculado a esta incubadora.",
+  ALREADY_LINKED: "Tu negocio ya está vinculado a un partner.",
 };
 
 export async function POST(request: NextRequest) {

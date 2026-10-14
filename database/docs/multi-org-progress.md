@@ -75,12 +75,6 @@ Todos ejecutados en Neon ✅.
 | `/api/events/*` | `EVENTS` |
 | `/api/reports/*` | `REPORTS` |
 
-**Rutas admin** migradas a `org_subscriptions`:
-- `GET /api/admin/users` — JOIN via `organizations → org_subscriptions`
-- `GET/PATCH /api/admin/users/[id]` — suscripción via org; toggle `is_active` sincroniza con Firebase `disabled`
-- `GET /api/admin/stats` — cuenta orgs por estado de suscripción
-- `GET /api/admin/storage` — topUsers usando `org_id`
-
 **Rutas nuevas de organización:**
 - `GET/PATCH /api/organization` — perfil de la org
 - `GET /api/organization/members` — listar miembros
@@ -88,7 +82,6 @@ Todos ejecutados en Neon ✅.
 - `PATCH/DELETE /api/organization/members/[id]` — cambiar rol / revocar acceso
 - `GET/POST /api/organization/roles` — listar / crear roles con permisos
 - `PATCH/DELETE /api/organization/roles/[id]` — editar / eliminar roles
-- `POST /api/admin/users` — crear usuario completo desde panel admin
 
 ---
 

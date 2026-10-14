@@ -1,7 +1,7 @@
 // hooks/swr/use-organization.ts
 "use client";
 
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { OrgInfo, OrgMember, OrgModule, ModulePermissions } from "@/types";
@@ -83,6 +83,7 @@ export function useUpdateOrganization() {
 
 export function useLinkPartner() {
   const authFetch = useAuthFetch();
+  const { mutate } = useSWRConfig();
   const [isLinking, setIsLinking] = useState(false);
 
   const linkPartner = async (code: string): Promise<{ partnerName: string }> => {
@@ -92,6 +93,7 @@ export function useLinkPartner() {
         method: "POST",
         body: JSON.stringify({ code }),
       });
+      await mutate(PARTNER_KEY);
       return res.data;
     } finally {
       setIsLinking(false);
@@ -99,6 +101,58 @@ export function useLinkPartner() {
   };
 
   return { linkPartner, isLinking };
+}
+
+export type OrganizationPartner = {
+  partner_id: number;
+  name: string;
+  contact_name: string | null;
+  email: string;
+  phone: string | null;
+  share_financials: boolean;
+  linked_at: string;
+};
+
+const PARTNER_KEY = "/api/organization/partner";
+
+export function useOrganizationPartner(enabled = true) {
+  const { firebaseUser } = useAuth();
+  const authFetch = useAuthFetch();
+
+  const { data, isLoading, error, mutate } = useSWR<{ data: OrganizationPartner | null }>(
+    firebaseUser && enabled ? PARTNER_KEY : null,
+    (u: string) => authFetch(u),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
+
+  return {
+    partner: data?.data ?? null,
+    isLoading,
+    error: (error as any)?.message ?? null,
+    mutate,
+  };
+}
+
+export function useUpdatePartnerFinancialSharing() {
+  const authFetch = useAuthFetch();
+  const { mutate } = useSWRConfig();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const updateFinancialSharing = async (shareFinancials: boolean) => {
+    setIsUpdating(true);
+    try {
+      const response = await authFetch(PARTNER_KEY, {
+        method: "PATCH",
+        body: JSON.stringify({ share_financials: shareFinancials }),
+      });
+      await mutate(PARTNER_KEY, response, { revalidate: false });
+      return response.data as OrganizationPartner;
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return { updateFinancialSharing, isUpdating };
 }
 
 // ── Industries ──────────────────────────────────────────────────────────────

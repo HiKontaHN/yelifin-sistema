@@ -26,8 +26,6 @@ export default function ProfilePage() {
     data,
     user,
     profile,
-    subscription,
-    features,
     onboardingCompleted,
     isTrial,
     hasActiveSubscription,
@@ -42,9 +40,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) setDisplayName(user.display_name ?? "");
   }, [user]);
-
-  const isAdmin =
-    subscription?.plan?.slug === "admin" || (features?.ADMIN ?? []).length > 0;
 
   const handleSave = async () => {
     try {
@@ -142,11 +137,7 @@ export default function ProfilePage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">Rol</span>
-            {isAdmin ? (
-              <Badge variant="default" className="text-xs">Administrador</Badge>
-            ) : (
-              <Badge variant="secondary" className="text-xs">Usuario estándar</Badge>
-            )}
+            <Badge variant="secondary" className="text-xs">Usuario estándar</Badge>
             {hasActiveSubscription ? (
               <Badge variant={isTrial ? "outline" : "secondary"} className="text-xs">
                 {isTrial ? "Prueba activa" : "Suscripción activa"}

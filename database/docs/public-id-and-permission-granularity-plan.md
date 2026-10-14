@@ -25,7 +25,7 @@ Toda tabla de HiKonta usa llaves primarias `BIGINT`/`SERIAL` secuenciales. Reemp
 | `accounts` | **No, se pospone** | Su única exposición es `lib/import-labels.ts` (`buildAccountLabels()`, genera `"(Cuenta #7)"` en la plantilla de importación de Excel) — pero `parseAccountLabel()`, en el mismo archivo, **vuelve a leer ese mismo sufijo** al importar, para resolver qué cuenta se eligió. Cambiar esto no es un cambio aditivo de una sola línea; requiere tocar `buildAccountLabels()`, `parseAccountLabel()`, `lib/export-template.ts` y la ruta de importación, todo a la vez. Tratar como una tarea futura separada — y meter ahí también la misma fuga de `credit_cards` (no en esta pasada). |
 | `products` | Se pospone | Ya tiene una alternativa parcial (`sku`); menor urgencia. |
 | `customers` | Se pospone | No tiene ruta de página propia, ni fuga evidenciada hoy. |
-| `users` / `subscription_plans` (panel admin) | Se pospone | `database/docs/admin-panel-architecture.md` dice que toda la superficie `app/(dashboard)/admin/*` se está migrando FUERA de este repo hacia un proyecto `hikonta-admin` separado — no vale la pena invertir aquí. |
+| `users` / `subscription_plans` | Se pospone | Su administración pertenece al servicio central separado y no forma parte de esta aplicación. |
 
 ## La migración
 

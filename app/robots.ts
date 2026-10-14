@@ -20,7 +20,6 @@ export default function robots(): MetadataRoute.Robots {
           "/purchases",
           "/supplies",
           "/settings",
-          "/admin",
           "/onboarding",
         ],
       },

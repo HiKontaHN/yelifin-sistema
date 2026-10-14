@@ -14,7 +14,7 @@
 --
 -- Límite por plan (max_warehouses, mismo patrón que max_users v4.19):
 --   trial=1, basico=1, pro=3 (una por cada uno de sus 3 usuarios
---   posibles), original/admin=NULL (sin límite).
+--   posibles), original=NULL (sin límite).
 -- ============================================================
 
 -- ── 1. Tabla de bodegas ──────────────────────────────────────────────
@@ -111,7 +111,6 @@ UPDATE subscription_plans SET max_warehouses = 1    WHERE slug = 'trial';
 UPDATE subscription_plans SET max_warehouses = 1    WHERE slug = 'basico';
 UPDATE subscription_plans SET max_warehouses = 3    WHERE slug = 'pro';
 UPDATE subscription_plans SET max_warehouses = NULL WHERE slug = 'original';
-UPDATE subscription_plans SET max_warehouses = NULL WHERE slug = 'admin';
 
 -- ── 9. Transferencias entre bodegas ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS warehouse_transfers (

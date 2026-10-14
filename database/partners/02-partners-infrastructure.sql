@@ -9,13 +9,10 @@
 --   1. Crea `partners` — tabla de plataforma (como subscription_plans),
 --      NO una fila de organization_members. Un coordinador de partner
 --      inicia sesión con Firebase como cualquier usuario; su fila en
---      `users` se vincula 1:1 vía partners.user_id — el mismo patrón
---      que ya usa el admin de plataforma (verifyAdmin() en lib/auth.ts,
---      que no depende de ninguna columna de rol en `users`).
---   2. Crea `partner_organizations` — relación N:N entre partners y
---      organizations (un partner ve N orgs; una org, en teoría, puede
---      ser vista por más de un partner, ej. graduó de una incubadora y
---      entró a otra). Incluye `share_financials`: por defecto el
+--      `users` se vincula 1:1 vía partners.user_id.
+--   2. Crea `partner_organizations` — un partner ve N organizaciones y
+--      cada organización puede estar vinculada con un solo partner.
+--      Incluye `share_financials`: por defecto el
 --      partner NO ve montos/ingresos de la org — requiere opt-in
 --      explícito (decisión de privacidad del emprendedor, no un flag
 --      técnico nada más).
@@ -59,7 +56,8 @@ CREATE TABLE IF NOT EXISTS partner_organizations (
   org_id           BIGINT    NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   share_financials BOOLEAN   NOT NULL DEFAULT FALSE, -- opt-in: ¿la org autorizó que el partner vea montos/ingresos?
   linked_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (partner_id, org_id)
+  UNIQUE (partner_id, org_id),
+  UNIQUE (org_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_partner_orgs_partner ON partner_organizations(partner_id);

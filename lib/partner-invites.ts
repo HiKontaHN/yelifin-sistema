@@ -54,8 +54,12 @@ export async function redeemPartnerInviteCode(sql: Sql, rawCode: string, orgId: 
   const lookup = await lookupInviteCode(sql, rawCode);
   if (!lookup.valid) return { ok: false, reason: lookup.reason };
 
+  // Una organización solo puede pertenecer al portafolio de un partner.
+  // Esta comprobación es global por org (no solo por el partner del código),
+  // para que el endpoint tampoco permita un segundo vínculo si se invoca
+  // directamente fuera de la interfaz.
   const [alreadyLinked] = await sql`
-    SELECT 1 FROM partner_organizations WHERE partner_id = ${lookup.partnerId} AND org_id = ${orgId}
+    SELECT 1 FROM partner_organizations WHERE org_id = ${orgId} LIMIT 1
   `;
   if (alreadyLinked) return { ok: false, reason: "ALREADY_LINKED" };
 
@@ -68,11 +72,24 @@ export async function redeemPartnerInviteCode(sql: Sql, rawCode: string, orgId: 
   `;
   if (!claimed) return { ok: false, reason: "USED" };
 
-  await sql`
+  const [linked] = await sql`
     INSERT INTO partner_organizations (partner_id, org_id)
     VALUES (${lookup.partnerId}, ${orgId})
-    ON CONFLICT (partner_id, org_id) DO NOTHING
+    ON CONFLICT DO NOTHING
+    RETURNING id
   `;
+
+  // El índice único por org resuelve dos invitaciones canjeadas al mismo
+  // tiempo. Si este intento perdió la carrera, libera su código para que no
+  // quede consumido por un vínculo que no llegó a crearse.
+  if (!linked) {
+    await sql`
+      UPDATE partner_invite_codes
+      SET used_at = NULL, used_by_org_id = NULL
+      WHERE id = ${claimed.id} AND used_by_org_id = ${orgId}
+    `;
+    return { ok: false, reason: "ALREADY_LINKED" };
+  }
 
   return { ok: true, partnerName: lookup.partnerName };
 }

@@ -104,14 +104,13 @@ CREATE INDEX idx_partner_orgs_org     ON partner_organizations(org_id);
 
 **Por qué no `ALTER TABLE Users ADD partnerID`:** el spec original asume 1 usuario = 1 emprendedor.
 En HiKonta el emprendedor es la *organización* (puede tener varios usuarios). `partner_organizations`
-además permite N:N sin forzar cambios en `organizations`, y no rompe el aislamiento multi-tenant
-existente (`org_id` sigue siendo la única tenant key en las 24 tablas de negocio).
+permite que un partner agrupe muchas organizaciones, con un solo partner por organización, sin
+forzar cambios en `organizations` ni romper el aislamiento multi-tenant existente (`org_id` sigue
+siendo la única tenant key en las 24 tablas de negocio).
 
-**Partner como "login":** igual que el admin de plataforma hoy se identifica con
-`subscription.planSlug === 'admin'` (ver `verifyAdmin()` en `lib/auth.ts`), un coordinador de partner
-inicia sesión con Firebase como cualquier usuario; su fila en `users` se vincula 1:1 vía
-`partners.user_id`. No necesita pertenecer a ninguna `organization_members` — es un rol de
-plataforma, no un rol de org.
+**Partner como "login":** un coordinador de partner inicia sesión con Firebase y su fila en `users`
+se vincula 1:1 vía `partners.user_id`. No necesita pertenecer a ninguna `organization_members`;
+la aplicación de partners valida esta identidad de forma independiente.
 
 ### Actividad — dos caminos, elegir uno
 
@@ -153,7 +152,7 @@ y `02-partners-infrastructure.sql`, ambos ejecutados en Neon):
 
 - `org_id`, `org_subscription_id` — repuntan la tabla a `organizations`/`org_subscriptions` (paso 01).
 - `months_purchased INT` — cuántos meses cubre el pago. Necesario porque no todo pago sigue el
-  `billing_interval` del plan: un pago manual (admin extendiendo trial, o patrocinio de partner)
+  `billing_interval` del plan: un pago manual o patrocinio de partner
   puede ser cualquier cantidad de meses.
 - `covers_period_start` / `covers_period_end` — qué período cubrió *ese* pago puntual. Sin esto se
   pierde el historial cuando `org_subscriptions.current_period_end` se sobrescribe en cada renovación.
@@ -168,8 +167,8 @@ prefiere separarlo): si el período actual no ha vencido, acumula los meses sobr
 con `covers_period_start/end` calculados y deja `status = 'ACTIVE'` en `org_subscriptions`.
 
 Uso:
-- `POST /api/admin/organizations/[id]/payments` — registro manual desde el panel admin de HiKonta.
-- `POST /api/partner/organizations/[id]/sponsor` — mismo helper, pasando `paidByPartnerId`.
+- El servicio central de facturación registra pagos manuales.
+- `POST /api/partner/organizations/[id]/sponsor` usa el mismo helper, pasando `paidByPartnerId`.
 
 **Reporte de meses patrocinados por partner:**
 
@@ -182,9 +181,9 @@ GROUP BY org_id;
 
 ---
 
-## Backend — rutas API (Next.js, patrón `app/api/admin/*`)
+## Backend — rutas API de partners
 
-Nuevo helper en `lib/auth.ts`, análogo a `verifyAdmin()`:
+La aplicación de partners valida la sesión y resuelve el partner por `user_id`:
 
 ```typescript
 export async function verifyPartner(request: NextRequest) {

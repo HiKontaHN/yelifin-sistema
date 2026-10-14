@@ -17,9 +17,6 @@ function clearLegacyTokenCookie(response: NextResponse) {
   });
 }
 
-// ── Plan routing rules ────────────────────────────────────────────────
-const ADMIN_ROUTES = ["/admin"];
-
 // Restricted plans: slug → allowed path prefixes (no /dashboard for finanzas)
 const RESTRICTED_PLANS: Record<string, string[]> = {
   finanzas: ["/finances", "/settings"],
@@ -39,14 +36,7 @@ function enforcePlanRules(
   planSlug: string | null,
   requestUrl: string
 ): NextResponse | null {
-  // 1. Admin-only routes
-  if (ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
-    if (planSlug !== "admin") {
-      return NextResponse.redirect(new URL(getHome(planSlug), requestUrl));
-    }
-  }
-
-  // 2. Restricted-plan routes
+  // Restricted-plan routes
   if (planSlug && planSlug in RESTRICTED_PLANS) {
     const allowed = RESTRICTED_PLANS[planSlug];
     const canAccess = allowed.some((prefix) => pathname.startsWith(prefix));

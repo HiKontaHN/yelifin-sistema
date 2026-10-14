@@ -27,4 +27,3 @@ UPDATE subscription_plans SET max_users = 1 WHERE slug = 'trial';
 UPDATE subscription_plans SET max_users = 1 WHERE slug = 'basico';
 UPDATE subscription_plans SET max_users = 3 WHERE slug = 'pro';
 UPDATE subscription_plans SET max_users = NULL WHERE slug = 'original';
-UPDATE subscription_plans SET max_users = NULL WHERE slug = 'admin';

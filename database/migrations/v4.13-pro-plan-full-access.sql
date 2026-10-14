@@ -13,7 +13,7 @@
 --
 -- Esta migración vincula TODAS las features activas al plan 'pro' y
 -- las deja en TRUE, sin importar si ya tenían una fila (is_enabled en
--- FALSE por un toggle previo en /admin/plans, o si faltaba por
+-- FALSE por una configuración previa del plan, o si faltaba por
 -- completo). Vuelve a correr sin problema si se agregan features
 -- nuevas en el futuro — basta con re-ejecutar este archivo.
 --

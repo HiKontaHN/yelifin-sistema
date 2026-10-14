@@ -5,7 +5,7 @@
 -- Resuelve la primera mitad de "Invitaciones de suscripción patrocinada"
 -- (documentation/feature-sponsorship-invites.md en hikonta-admin): un
 -- partner compra N suscripciones de M meses SIN saber todavía a qué
--- organización van — hoy `POST /api/admin/partners/[id]/sponsor` (ver
+-- organización van — el patrocinio directo existente (ver
 -- database/partners/02) exige org_ids ya existentes, no sirve para esto.
 --
 -- Diferencia clave con el patrocinio por lote que ya existe: ahí cada

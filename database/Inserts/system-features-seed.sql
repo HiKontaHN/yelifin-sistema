@@ -1,6 +1,6 @@
 -- Seed idempotente de system_features (se puede correr varias veces).
 -- Solo crea el catálogo de features; el estado por plan (plan_features)
--- se administra desde /admin/plans/[id] en la UI.
+-- se administra desde el servicio central de administración.
 
 INSERT INTO system_features (feature_key, feature_name, category) VALUES
 -- PRODUCTS
