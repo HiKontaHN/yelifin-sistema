@@ -194,11 +194,16 @@ export function LandingPricing() {
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
+              {plan.price !== "$0" && (
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  30 días gratis, sin tarjeta. Si luego te suscribes, se renueva cada mes al precio mostrado hasta que canceles. Puedes cancelar en Configuración → Suscripción antes de la próxima renovación; conservarás acceso hasta terminar el período pagado.
+                </p>
+              )}
             </div>
           ))}
         </div>
         <p className="mt-4 text-center text-xs text-slate-500">
-          Los planes pagos incluyen 30 días de prueba gratis. Sin tarjeta de crédito para comenzar.
+          Los precios se muestran en USD. Los planes pagos incluyen 30 días de prueba gratis y no generan cobros sin que agregues un método de pago y confirmes la suscripción.
         </p>
 
         <div className="mt-14 overflow-x-auto rounded-xl border border-slate-200 bg-white">

@@ -16,6 +16,7 @@ export function LandingFooter() {
           <Link href="/register" className="hover:text-white">Registrarse</Link>
           <Link href="/terms" className="hover:text-white">Términos</Link>
           <Link href="/privacy" className="hover:text-white">Privacidad</Link>
+          <Link href="/dmca" className="hover:text-white">DMCA</Link>
         </div>
       </div>
     </footer>

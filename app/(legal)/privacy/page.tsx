@@ -28,7 +28,7 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">Política de Privacidad</h1>
           <p className="text-sm text-muted-foreground">
-            Última actualización: 17 de mayo de 2026
+            Última actualización: 15 de octubre de 2026
           </p>
         </section>
 
@@ -62,6 +62,7 @@ export default function PrivacyPage() {
             <li><strong>Firebase (Google LLC):</strong> autenticación de usuarios.</li>
             <li><strong>Neon:</strong> almacenamiento de base de datos (PostgreSQL).</li>
             <li><strong>Vercel:</strong> alojamiento y despliegue de la plataforma.</li>
+            <li><strong>Google Analytics y Vercel Web Analytics:</strong> métricas de uso cuando están habilitadas.</li>
           </ul>
           <p className="mt-2">
             Estos proveedores solo acceden a los datos necesarios para prestar sus servicios y están obligados a mantener la confidencialidad de tu información.
@@ -87,12 +88,12 @@ export default function PrivacyPage() {
 
           <h2 className="text-lg font-semibold mt-6">8. Cookies</h2>
           <p>
-            Usamos únicamente cookies de sesión estrictamente necesarias para el funcionamiento de la autenticación. No utilizamos cookies de seguimiento publicitario ni compartimos datos de navegación con redes publicitarias.
+            Usamos cookies estrictamente necesarias para autenticación y seguridad. Cuando Google Analytics está habilitado también puede usar identificadores o cookies de medición. No utilizamos cookies de publicidad ni compartimos datos con redes publicitarias. HiKonta no tiene grabación de sesiones activa; además, la página completa se marca para enmascarar campos y texto si se integra una herramienta de repetición en el futuro.
           </p>
 
           <h2 className="text-lg font-semibold mt-6">9. Menores de Edad</h2>
           <p>
-            El Servicio no está dirigido a personas menores de 18 años. No recopilamos intencionalmente información de menores. Si detectamos que un menor ha creado una cuenta, la eliminaremos de inmediato.
+            El Servicio es una herramienta empresarial de audiencia general y no está dirigido a menores de 18 años. El registro solicita la fecha de nacimiento de forma neutral, la usa únicamente para comprobar la edad y no la conserva. No permitimos el registro de menores. Si descubrimos que recopilamos información de un menor, desactivaremos la cuenta y eliminaremos los datos, salvo lo que debamos conservar por ley.
           </p>
 
           <h2 className="text-lg font-semibold mt-6">10. Cambios a Esta Política</h2>

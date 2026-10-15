@@ -22,6 +22,16 @@ const registerSchema = z
     business_name: z
       .string()
       .min(2, "El nombre del negocio debe tener al menos 2 caracteres"),
+    date_of_birth: z
+      .string()
+      .min(1, "Ingresa tu fecha de nacimiento")
+      .refine((value) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const parsed = new Date(`${value}T00:00:00Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      }, {
+        message: "Fecha de nacimiento inválida",
+      }),
     password: z
       .string()
       .min(6, "La contraseña debe tener al menos 6 caracteres"),
@@ -30,7 +40,24 @@ const registerSchema = z
   .refine((data) => data.password === data.confirmPassword, {
     message: "Las contraseñas no coinciden",
     path: ["confirmPassword"],
-  });
+  })
+  .refine(
+    (data) => {
+      const birthDate = new Date(`${data.date_of_birth}T00:00:00Z`);
+      const today = new Date();
+      let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+      const birthdayPending =
+        today.getUTCMonth() < birthDate.getUTCMonth() ||
+        (today.getUTCMonth() === birthDate.getUTCMonth() &&
+          today.getUTCDate() < birthDate.getUTCDate());
+      if (birthdayPending) age -= 1;
+      return age >= 18;
+    },
+    {
+      message: "Debes tener al menos 18 años para crear una cuenta",
+      path: ["date_of_birth"],
+    },
+  );
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
@@ -61,6 +88,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
           password: data.password,
           display_name: data.name,
           business_name: data.business_name,
+          date_of_birth: data.date_of_birth,
           ...(partnerCode && { partner_code: partnerCode }),
         }),
       });
@@ -179,6 +207,24 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
         )}
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="date_of_birth">Fecha de nacimiento</Label>
+        <Input
+          id="date_of_birth"
+          type="date"
+          autoComplete="bday"
+          {...register("date_of_birth")}
+          disabled={isLoading}
+          className="h-11 rounded-xl border-slate-200 bg-white text-base"
+        />
+        {errors.date_of_birth && (
+          <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Se usa únicamente para comprobar elegibilidad y no se conserva.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="password">Contraseña</Label>
@@ -259,6 +305,9 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
       <div className="text-center space-y-1">
         <p className="text-sm text-muted-foreground">
           30 días de prueba gratuita • Sin tarjeta de crédito
+        </p>
+        <p className="text-xs text-muted-foreground">
+          No se realizará ningún cobro al terminar la prueba. Solo habrá renovación mensual si después eliges un plan pago, agregas un método de pago y confirmas la suscripción.
         </p>
         <p className="text-xs text-muted-foreground">
           Al crear una cuenta, aceptas nuestros{" "}

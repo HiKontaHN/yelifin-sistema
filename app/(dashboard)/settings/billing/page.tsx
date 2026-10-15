@@ -107,6 +107,12 @@ function BillingSettingsContent() {
 
           <Separator />
 
+          <div className="rounded-lg border bg-muted/40 p-4 text-xs leading-5 text-muted-foreground">
+            Los planes pagos se renuevan mensualmente al precio aceptado hasta que los canceles. Para evitar el siguiente cobro, cancela antes de la fecha de renovación desde esta misma sección; mantendrás acceso hasta finalizar el período ya pagado. Mientras la gestión automática está en construcción, solicita la cancelación por el canal de soporte dentro de la plataforma.
+          </div>
+
+          <Separator />
+
           <p className="text-xs text-muted-foreground">
             Mientras tanto, puedes revisar un resumen de tu plan actual en{" "}
             <span className="font-medium">Mi perfil</span>.

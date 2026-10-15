@@ -1,14 +1,25 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { GoogleAnalytics } from '@next/third-parties/google'
-import { Geist, Geist_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/theme-provider"
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+// These files ship with the installed Next.js package and are emitted as
+// first-party static assets by next/font. No request is made to Google Fonts
+// by either the build or the visitor's browser.
+const geist = localFont({
+  src: "../node_modules/next/dist/next-devtools/server/font/geist-latin.woff2",
+  variable: "--font-geist",
+  display: "swap",
+});
+const geistMono = localFont({
+  src: "../node_modules/next/dist/next-devtools/server/font/geist-mono-latin.woff2",
+  variable: "--font-geist-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://hikonta.app"),
@@ -42,7 +53,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`font-sans antialiased`} cz-shortcut-listen='true'>
+      <body
+        className={`${geist.variable} ${geistMono.variable} font-sans antialiased`}
+        // Session replay is not installed or initialized. These whole-page
+        // privacy markers also make the safe default explicit for the most
+        // common replay providers if one is introduced later.
+        data-session-replay="disabled"
+        data-private
+        data-hj-suppress
+        data-clarity-mask="true"
+        data-dd-privacy="mask"
+        cz-shortcut-listen="true"
+      >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
           <Toaster richColors position="top-right" />

@@ -29,13 +29,60 @@ export async function POST(req: NextRequest) {
   let createdFirebaseUid: string | null = null;
 
   try {
-    const { email, password, display_name, business_name, partner_code } = await req.json();
+    const { email, password, display_name, business_name, date_of_birth, partner_code } = await req.json();
 
     // ── Validaciones básicas ──────────────────────────────────────
-    if (!email || !password || !display_name || !business_name) {
+    if (!email || !password || !display_name || !business_name || !date_of_birth) {
       return NextResponse.json(
         { error: "Todos los campos son requeridos" },
         { status: 400 }
+      );
+    }
+
+    // Age is checked again on the server and deliberately not persisted.
+    // HiKonta is a general-audience business service restricted to adults;
+    // this also prevents knowingly collecting data from children under COPPA.
+    const birthDate = new Date(`${date_of_birth}T00:00:00Z`);
+    const today = new Date();
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date_of_birth) ||
+      Number.isNaN(birthDate.getTime()) ||
+      birthDate.toISOString().slice(0, 10) !== date_of_birth ||
+      birthDate > today
+    ) {
+      return NextResponse.json(
+        { error: "Fecha de nacimiento inválida" },
+        { status: 400 },
+      );
+    }
+
+    let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+    const birthdayPending =
+      today.getUTCMonth() < birthDate.getUTCMonth() ||
+      (today.getUTCMonth() === birthDate.getUTCMonth() &&
+        today.getUTCDate() < birthDate.getUTCDate());
+    if (birthdayPending) age -= 1;
+
+    if (age < 18) {
+      const response = NextResponse.json(
+        { error: "Debes tener al menos 18 años para crear una cuenta" },
+        { status: 403 },
+      );
+      // Discourages changing the answer through ordinary back-navigation.
+      response.cookies.set("hikonta_age_ineligible", "1", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 24 * 60 * 60,
+        path: "/",
+      });
+      return response;
+    }
+
+    if (req.cookies.get("hikonta_age_ineligible")?.value === "1") {
+      return NextResponse.json(
+        { error: "No se puede completar el registro con esta sesión" },
+        { status: 403 },
       );
     }
 

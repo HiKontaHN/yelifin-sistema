@@ -28,7 +28,7 @@ export default function TermsPage() {
         <section className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">Términos de Uso</h1>
           <p className="text-sm text-muted-foreground">
-            Última actualización: 17 de mayo de 2026
+            Última actualización: 15 de octubre de 2026
           </p>
         </section>
 
@@ -55,10 +55,10 @@ export default function TermsPage() {
 
           <h2 className="text-lg font-semibold mt-6">4. Suscripción y Pagos</h2>
           <p>
-            El Plan Profesional tiene un costo de <strong>$12.99 USD al mes, ISV incluido</strong>. El periodo de prueba gratuita es de 30 días sin necesidad de tarjeta de crédito. Al suscribirte, autorizas el cobro recurrente mensual. Los precios pueden cambiar con un aviso previo de al menos 30 días.
+            El plan Básico cuesta <strong>$8.99 USD al mes</strong> y el plan Pro <strong>$12.99 USD al mes</strong>, salvo que la pantalla de compra muestre otra oferta o impuesto aplicable. El período de prueba gratuita es de 30 días sin tarjeta de crédito y no se convierte por sí solo en una suscripción pagada. Al agregar un método de pago y confirmar un plan, autorizas el cobro mensual recurrente del precio y los impuestos mostrados hasta que canceles. Los precios pueden cambiar con aviso previo de al menos 30 días.
           </p>
           <p className="mt-2">
-            <strong>No se realizan reembolsos</strong> por períodos parciales de servicio, meses no utilizados ni por cancelaciones anticipadas, salvo que la ley aplicable en Honduras lo exija expresamente. El acceso continuará hasta el final del período de facturación vigente.
+            Puedes cancelar antes de la próxima fecha de renovación desde <strong>Configuración → Suscripción</strong>. Si la cancelación automática aún no está disponible, puedes solicitarla por el canal de soporte dentro de la plataforma. La cancelación detiene cobros futuros y el acceso continúa hasta el final del período pagado. <strong>No se realizan reembolsos</strong> por períodos parciales, salvo cuando la ley aplicable lo exija.
           </p>
 
           <h2 className="text-lg font-semibold mt-6">5. Usos Prohibidos</h2>
