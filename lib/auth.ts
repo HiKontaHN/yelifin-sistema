@@ -4,6 +4,7 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -552,66 +553,70 @@ export async function ensureOrgExists(
   currency = "HNL",
   locale = "es-HN"
 ): Promise<{ orgId: number; roleId: number; roleName: string }> {
-  const [existing] = await sql`
-    SELECT om.org_id, r.id AS role_id, r.name AS role_name
-    FROM organization_members om
-    JOIN organizations o ON o.id = om.org_id AND o.is_active = TRUE
-    JOIN org_roles     r ON r.id = om.role_id
-    WHERE om.user_id = ${userId} AND om.is_active = TRUE
-    ORDER BY om.joined_at ASC
-    LIMIT 1
-  `;
+  return withTransaction(async (tx) => {
+    const [existing] = await tx`
+      SELECT om.org_id, r.id AS role_id, r.name AS role_name
+      FROM organization_members om
+      JOIN organizations o ON o.id = om.org_id AND o.is_active = TRUE
+      JOIN org_roles     r ON r.id = om.role_id
+      WHERE om.user_id = ${userId} AND om.is_active = TRUE
+      ORDER BY om.joined_at ASC
+      LIMIT 1
+    `;
 
-  if (existing) {
-    return { orgId: existing.org_id, roleId: existing.role_id, roleName: existing.role_name };
-  }
+    if (existing) {
+      return { orgId: existing.org_id, roleId: existing.role_id, roleName: existing.role_name };
+    }
 
-  const slug =
-    orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + userId;
+    const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + userId;
+    const [org] = await tx`
+      INSERT INTO organizations (name, slug, timezone, currency, locale, owner_user_id)
+      VALUES (${orgName}, ${slug}, ${timezone}, ${currency}, ${locale}, ${userId})
+      ON CONFLICT (slug) DO NOTHING
+      RETURNING id
+    `;
+    const [ownedOrg] = org
+      ? [org]
+      : await tx`SELECT id FROM organizations WHERE owner_user_id = ${userId} AND is_active = TRUE LIMIT 1`;
 
-  const [org] = await sql`
-    INSERT INTO organizations (name, slug, timezone, currency, locale, owner_user_id)
-    VALUES (${orgName}, ${slug}, ${timezone}, ${currency}, ${locale}, ${userId})
-    RETURNING id
-  `;
+    if (!ownedOrg) throw new Error("No se pudo crear la organización");
 
-  const [ownerRole] = await sql`
-    INSERT INTO org_roles (org_id, name, is_owner)
-    VALUES (${org.id}, 'Dueño', TRUE)
-    RETURNING id, name
-  `;
+    const [ownerRole] = await tx`
+      INSERT INTO org_roles (org_id, name, is_owner)
+      VALUES (${ownedOrg.id}, 'Dueño', TRUE)
+      ON CONFLICT (org_id, name) DO UPDATE SET is_owner = TRUE
+      RETURNING id, name
+    `;
 
-  // Permisos totales para el rol dueño, en todos los subitems de cada módulo
-  for (const module of MODULES) {
-    for (const { code: subitem } of MODULE_SUBITEMS[module]) {
-      await sql`
-        INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
-        VALUES (${ownerRole.id}, ${module}, ${subitem}, TRUE, TRUE, TRUE, TRUE, TRUE)
+    for (const module of MODULES) {
+      for (const { code: subitem } of MODULE_SUBITEMS[module]) {
+        await tx`
+          INSERT INTO org_role_permissions (role_id, module, subitem, can_view, can_edit, can_delete, show_costs, show_profit)
+          VALUES (${ownerRole.id}, ${module}, ${subitem}, TRUE, TRUE, TRUE, TRUE, TRUE)
+          ON CONFLICT (role_id, module, subitem) DO NOTHING
+        `;
+      }
+    }
+
+    await tx`
+      INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
+      VALUES (${ownedOrg.id}, ${userId}, ${ownerRole.id}, NOW())
+      ON CONFLICT (org_id, user_id) DO UPDATE SET is_active = TRUE, role_id = EXCLUDED.role_id
+    `;
+
+    const [plan] = await tx`
+      SELECT id FROM subscription_plans WHERE slug = 'trial' LIMIT 1
+    `;
+    if (plan) {
+      await tx`
+        INSERT INTO org_subscriptions (org_id, plan_id, status, trial_start_date, trial_end_date)
+        VALUES (${ownedOrg.id}, ${plan.id}, 'TRIAL', NOW(), NOW() + INTERVAL '30 days')
+        ON CONFLICT (org_id) DO NOTHING
       `;
     }
-  }
 
-  await sql`
-    INSERT INTO organization_members (org_id, user_id, role_id, joined_at)
-    VALUES (${org.id}, ${userId}, ${ownerRole.id}, NOW())
-  `;
-
-  const [plan] = await sql`
-    SELECT id FROM subscription_plans WHERE slug = 'trial' LIMIT 1
-  `;
-
-  if (plan) {
-    await sql`
-      INSERT INTO org_subscriptions (org_id, plan_id, status, trial_start_date, trial_end_date)
-      VALUES (
-        ${org.id}, ${plan.id}, 'TRIAL',
-        NOW(), NOW() + INTERVAL '30 days'
-      )
-      ON CONFLICT (org_id) DO NOTHING
-    `;
-  }
-
-  return { orgId: org.id, roleId: ownerRole.id, roleName: ownerRole.name };
+    return { orgId: ownedOrg.id, roleId: ownerRole.id, roleName: ownerRole.name };
+  });
 }
 
 // ── requireModule ──────────────────────────────────────────────────────

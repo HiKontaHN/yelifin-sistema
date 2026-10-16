@@ -195,8 +195,8 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Error en registro:", error);
 
-    // Rollback Firebase si se creó (los datos de PG quedan como huérfanos
-    // y se re-vinculan en el próximo intento — paso 1)
+    // Rollback Firebase si se creó. La creación de la organización usa una
+    // transacción y no deja datos parciales en PostgreSQL.
     if (createdFirebaseUid) {
       try {
         await adminAuth.deleteUser(createdFirebaseUid);
@@ -205,9 +205,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (error.code === "23505") {
+    if (error.code === "23505" && error.constraint === "users_email_key") {
       return NextResponse.json(
         { error: "Este correo ya está registrado" },
+        { status: 409 }
+      );
+    }
+
+    if (error.code === "23505" && error.constraint === "organizations_slug_key") {
+      return NextResponse.json(
+        { error: "Ya existe una organización con ese nombre. Intenta con otro nombre." },
         { status: 409 }
       );
     }
