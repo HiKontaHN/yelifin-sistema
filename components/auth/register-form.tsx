@@ -9,11 +9,46 @@ import { useSWRConfig } from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+
+const BIRTH_MONTHS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+].map((label, index) => ({ value: String(index + 1), label }));
+const BIRTH_DAYS = Array.from({ length: 31 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
+const MAX_BIRTH_YEAR = new Date().getUTCFullYear() - 18;
+const BIRTH_YEARS = Array.from({ length: 100 }, (_, index) => {
+  const year = String(MAX_BIRTH_YEAR - index);
+  return { value: year, label: year };
+});
+
+function dateOfBirthFromParts(month: string, day: string, year: string) {
+  if (!/^\d{1,2}$/.test(month) || !/^\d{1,2}$/.test(day) || !/^\d{4}$/.test(year)) {
+    return null;
+  }
+
+  const normalizedMonth = month.padStart(2, "0");
+  const normalizedDay = day.padStart(2, "0");
+  const dateOfBirth = `${year}-${normalizedMonth}-${normalizedDay}`;
+  const parsed = new Date(`${dateOfBirth}T00:00:00Z`);
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== dateOfBirth
+  ) {
+    return null;
+  }
+
+  return dateOfBirth;
+}
 
 const registerSchema = z
   .object({
@@ -22,16 +57,9 @@ const registerSchema = z
     business_name: z
       .string()
       .min(2, "El nombre del negocio debe tener al menos 2 caracteres"),
-    date_of_birth: z
-      .string()
-      .min(1, "Ingresa tu fecha de nacimiento")
-      .refine((value) => {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-        const parsed = new Date(`${value}T00:00:00Z`);
-        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-      }, {
-        message: "Fecha de nacimiento inválida",
-      }),
+    birth_month: z.string().regex(/^(0?[1-9]|1[0-2])$/, "Mes inválido"),
+    birth_day: z.string().regex(/^(0?[1-9]|[12]\d|3[01])$/, "Día inválido"),
+    birth_year: z.string().regex(/^\d{4}$/, "Año inválido"),
     password: z
       .string()
       .min(6, "La contraseña debe tener al menos 6 caracteres"),
@@ -42,8 +70,18 @@ const registerSchema = z
     path: ["confirmPassword"],
   })
   .refine(
+    (data) => dateOfBirthFromParts(data.birth_month, data.birth_day, data.birth_year) !== null,
+    {
+      message: "Fecha de nacimiento inválida",
+      path: ["birth_day"],
+    },
+  )
+  .refine(
     (data) => {
-      const birthDate = new Date(`${data.date_of_birth}T00:00:00Z`);
+      const dateOfBirth = dateOfBirthFromParts(data.birth_month, data.birth_day, data.birth_year);
+      if (!dateOfBirth) return false;
+
+      const birthDate = new Date(`${dateOfBirth}T00:00:00Z`);
       const today = new Date();
       let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
       const birthdayPending =
@@ -55,7 +93,7 @@ const registerSchema = z
     },
     {
       message: "Debes tener al menos 18 años para crear una cuenta",
-      path: ["date_of_birth"],
+      path: ["birth_year"],
     },
   );
 
@@ -70,6 +108,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<RegisterFormData>({
@@ -80,6 +119,9 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
     setIsLoading(true);
 
     try {
+      const dateOfBirth = dateOfBirthFromParts(data.birth_month, data.birth_day, data.birth_year);
+      if (!dateOfBirth) throw new Error("Fecha de nacimiento inválida");
+
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -88,7 +130,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
           password: data.password,
           display_name: data.name,
           business_name: data.business_name,
-          date_of_birth: data.date_of_birth,
+          date_of_birth: dateOfBirth,
           ...(partnerCode && { partner_code: partnerCode }),
         }),
       });
@@ -207,23 +249,84 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="date_of_birth">Fecha de nacimiento</Label>
-        <Input
-          id="date_of_birth"
-          type="date"
-          autoComplete="bday"
-          {...register("date_of_birth")}
-          disabled={isLoading}
-          className="h-11 rounded-xl border-slate-200 bg-white text-base"
-        />
-        {errors.date_of_birth && (
-          <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
-        )}
+      <fieldset className="space-y-1.5">
+        <legend className="text-sm font-medium leading-none">Fecha de nacimiento</legend>
+        <div className="grid grid-cols-[1fr_1fr_1.35fr] gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="birth_month" className="text-xs text-muted-foreground">Mes</Label>
+            <Controller
+              name="birth_month"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  id="birth_month"
+                  value={field.value ?? ""}
+                  onValueChange={field.onChange}
+                  items={BIRTH_MONTHS}
+                  placeholder="Mes"
+                  searchPlaceholder="Buscar mes..."
+                  disabled={isLoading}
+                  className="h-11 w-full border-slate-200 bg-white text-base"
+                  contentClassName="min-w-48"
+                />
+              )}
+            />
+            {errors.birth_month && (
+              <p className="text-xs text-destructive">{errors.birth_month.message}</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="birth_day" className="text-xs text-muted-foreground">Día</Label>
+            <Controller
+              name="birth_day"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  id="birth_day"
+                  value={field.value ?? ""}
+                  onValueChange={field.onChange}
+                  items={BIRTH_DAYS}
+                  placeholder="Día"
+                  searchPlaceholder="Buscar día..."
+                  disabled={isLoading}
+                  className="h-11 w-full border-slate-200 bg-white text-base"
+                  contentClassName="min-w-36"
+                />
+              )}
+            />
+            {errors.birth_day && (
+              <p className="text-xs text-destructive">{errors.birth_day.message}</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="birth_year" className="text-xs text-muted-foreground">Año</Label>
+            <Controller
+              name="birth_year"
+              control={control}
+              render={({ field }) => (
+                <SearchableSelect
+                  id="birth_year"
+                  value={field.value ?? ""}
+                  onValueChange={field.onChange}
+                  items={BIRTH_YEARS}
+                  placeholder="Año"
+                  searchPlaceholder="Buscar año..."
+                  disabled={isLoading}
+                  className="h-11 w-full border-slate-200 bg-white text-base"
+                  contentClassName="min-w-40"
+                  align="end"
+                />
+              )}
+            />
+            {errors.birth_year && (
+              <p className="text-xs text-destructive">{errors.birth_year.message}</p>
+            )}
+          </div>
+        </div>
         <p className="text-xs text-muted-foreground">
           Se usa únicamente para comprobar elegibilidad y no se conserva.
         </p>
-      </div>
+      </fieldset>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">

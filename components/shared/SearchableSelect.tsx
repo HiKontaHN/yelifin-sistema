@@ -12,23 +12,29 @@ export interface SearchableSelectItem {
 }
 
 interface SearchableSelectProps {
+  id?: string;
   value: string;
   onValueChange: (value: string) => void;
   items: SearchableSelectItem[];
   placeholder?: string;
   searchPlaceholder?: string;
   className?: string;
+  contentClassName?: string;
+  align?: "start" | "center" | "end";
   disabled?: boolean;
   defaultOption?: SearchableSelectItem;
 }
 
 export function SearchableSelect({
+  id,
   value,
   onValueChange,
   items,
   placeholder = "Seleccionar...",
   searchPlaceholder = "Buscar...",
   className,
+  contentClassName,
+  align = "start",
   disabled = false,
   defaultOption,
 }: SearchableSelectProps) {
@@ -63,6 +69,7 @@ export function SearchableSelect({
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <button
+          id={id}
           ref={triggerRef}
           type="button"
           role="combobox"
@@ -88,10 +95,10 @@ export function SearchableSelect({
 
       <PopoverContent
         portalContainer={portalContainer}
-        align="start"
+        align={align}
         sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
-        className="p-0 w-[var(--radix-popover-trigger-width)]"
+        className={cn("p-0 w-[var(--radix-popover-trigger-width)]", contentClassName)}
       >
         {/* Buscador — mismo estilo que SearchBar */}
         <div className="p-2 border-b">
