@@ -187,13 +187,17 @@ export async function getProfitSummary(
       GROUP BY sale_id
     )
     SELECT
-      COALESCE(SUM(s.total), 0)::float                                         AS revenue,
+      COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)), 0)::float          AS revenue,
       COALESCE(SUM(ic.cogs), 0)::float                                         AS cogs,
-      COALESCE(SUM(s.total) - SUM(ic.cogs), 0)::float                          AS gross_profit,
+      COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)) - SUM(ic.cogs), 0)::float AS gross_profit,
       COALESCE(SUM(s.discount), 0)::float                                      AS total_discount,
       CASE
-        WHEN SUM(s.total) > 0
-        THEN ROUND(100.0 * (SUM(s.total) - SUM(ic.cogs)) / SUM(s.total), 1)::float
+        WHEN SUM(s.total - COALESCE(s.shipping_cost, 0)) > 0
+        THEN ROUND(
+          100.0 * (SUM(s.total - COALESCE(s.shipping_cost, 0)) - SUM(ic.cogs))
+          / SUM(s.total - COALESCE(s.shipping_cost, 0)),
+          1
+        )::float
         ELSE 0
       END                                                                       AS margin_pct,
       COUNT(DISTINCT s.id)::int                                                AS total_sales
@@ -220,9 +224,9 @@ export async function getProfitByMonth(
     SELECT
       TO_CHAR(s.sold_at, 'YYYY-MM')                                           AS month,
       TO_CHAR(s.sold_at, 'Mon YYYY')                                          AS month_label,
-      COALESCE(SUM(s.total), 0)::float                                        AS revenue,
+      COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)), 0)::float         AS revenue,
       COALESCE(SUM(ic.cogs), 0)::float                                        AS cogs,
-      COALESCE(SUM(s.total) - SUM(ic.cogs), 0)::float                         AS profit,
+      COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)) - SUM(ic.cogs), 0)::float AS profit,
       COUNT(DISTINCT s.id)::int                                               AS sales_count
     FROM sales s
     LEFT JOIN item_costs ic ON ic.sale_id = s.id
