@@ -38,6 +38,7 @@ export type CancelSaleInput  = { action: 'cancel'; reason?: string };
 
 export type EditSaleInput = {
   action:          'edit';
+  expected_updated_at_version?: string | null;
   items:           { product_id: number; variant_id?: number | null; quantity: number; unit_price: number; discount: number }[];
   discount?:       number;
   shipping_cost?:  number;
@@ -79,6 +80,7 @@ export type Sale = {
   deleted_at:           string | null;
   deleted_by:           number | null;
   cancellation_reason:  string | null;
+  updated_at_version?:  string | null;
 };
 
 export type SaleDetail = Sale & {

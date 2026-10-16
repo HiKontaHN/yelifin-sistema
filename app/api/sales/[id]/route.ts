@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const [sale] = await sql`
       SELECT
         s.*,
+        EXTRACT(EPOCH FROM s.updated_at)::text AS updated_at_version,
         c.name  AS customer_name,
         c.phone AS customer_phone,
         a.name  AS account_name
@@ -167,9 +168,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return createErrorResponse("Acción inválida. Usar: confirm | cancel | edit", 400);
 
     const [sale] = await sql`
-      SELECT sales.*, updated_at::text AS updated_at_snapshot
-      FROM sales
-      WHERE id = ${saleId} AND org_id = ${orgId}
+      SELECT * FROM sales WHERE id = ${saleId} AND org_id = ${orgId}
     `;
     if (!sale) return createErrorResponse("Venta no encontrada", 404);
     if (action !== "edit" && sale.status !== "PENDING")
@@ -386,6 +385,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         customer_id,
         account_id,
         supplies_used,
+        expected_updated_at_version,
       } = body;
 
       if (!newItems || !Array.isArray(newItems) || newItems.length === 0)
@@ -639,12 +639,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         const [lockedSale] = await tx`
           SELECT
             status,
-            -- updated_at es TIMESTAMP WITHOUT TIME ZONE. Compararlo con un
-            -- timestamptz desplaza el valor según la zona de la sesión
-            -- (America/Tegucigalpa en producción) y producía falsos 409.
-            -- La instantánea textual sale de PostgreSQL y evita cualquier
-            -- conversión del driver o de zona horaria.
-            updated_at::text IS NOT DISTINCT FROM ${sale.updated_at_snapshot} AS unchanged
+            -- Epoch representa el instante de forma idéntica aunque la
+            -- conexión HTTP use UTC y la transacción use America/Tegucigalpa.
+            EXTRACT(EPOCH FROM updated_at)::text AS updated_at_version
           FROM sales
           WHERE id = ${saleId} AND org_id = ${orgId}
           FOR UPDATE
@@ -654,7 +651,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             "La venta fue cancelada y ya no se puede editar",
           );
         }
-        if (!lockedSale.unchanged) {
+        // La versión debe venir del GET que abrió el formulario, no de otra
+        // lectura al comienzo de este PATCH. Así detectamos únicamente una
+        // edición real posterior. Se omite para clientes antiguos que todavía
+        // no envían la versión, evitando bloquearlos con un falso conflicto.
+        if (
+          expected_updated_at_version !== undefined &&
+          lockedSale.updated_at_version !== expected_updated_at_version
+        ) {
+          console.warn("Conflicto de versión al editar venta", {
+            saleId,
+            expectedVersion: expected_updated_at_version,
+            currentVersion: lockedSale.updated_at_version,
+            expectedType: typeof expected_updated_at_version,
+            currentType: typeof lockedSale.updated_at_version,
+          });
           throw new SaleStateConflictError(
             "La venta cambió mientras se estaba editando. Recarga e inténtalo de nuevo",
           );

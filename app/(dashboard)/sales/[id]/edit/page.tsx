@@ -118,6 +118,7 @@ function EditSaleContent() {
 
   const [search, setSearch] = useState("");
   const [initialized, setInitialized] = useState(false);
+  const [editVersion, setEditVersion] = useState<string | null | undefined>(undefined);
   const [initialQuantities, setInitialQuantities] = useState<Map<string, number>>(new Map());
 
   const [suppliesUsed, setSuppliesUsed] = useState<SupplyUsed[]>(
@@ -218,6 +219,10 @@ function EditSaleContent() {
     setCustomerId(sale.customer_id ?? null);
     setAccountId((sale as any).account_id ?? null);
     setIsPending(sale.status === "PENDING");
+    // `undefined` significa que el dato vino de un caché SWR creado por una
+    // versión anterior de la app. JSON.stringify omitirá el campo y el backend
+    // mantendrá compatibilidad, en lugar de convertirlo en un conflicto falso.
+    setEditVersion(sale.updated_at_version);
 
     const saleSubtotal = Number(sale.subtotal ?? 0);
     const saleDiscount = Number(sale.discount ?? 0);
@@ -448,6 +453,7 @@ function EditSaleContent() {
 
     try {
       const payload: any = {
+        expected_updated_at_version: editVersion,
         items: cart.map((i) => ({
           product_id: i.product_id,
           variant_id: i.variant_id ?? undefined,
@@ -497,6 +503,7 @@ function EditSaleContent() {
     try {
       // 1. Primero guardar todos los cambios (SIN cambiar status)
       await editSale({
+        expected_updated_at_version: editVersion,
         items: cart.map((i) => ({
           product_id: i.product_id,
           variant_id: i.variant_id ?? undefined,
