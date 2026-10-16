@@ -167,7 +167,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return createErrorResponse("Acción inválida. Usar: confirm | cancel | edit", 400);
 
     const [sale] = await sql`
-      SELECT * FROM sales WHERE id = ${saleId} AND org_id = ${orgId}
+      SELECT sales.*, updated_at::text AS updated_at_snapshot
+      FROM sales
+      WHERE id = ${saleId} AND org_id = ${orgId}
     `;
     if (!sale) return createErrorResponse("Venta no encontrada", 404);
     if (action !== "edit" && sale.status !== "PENDING")
@@ -637,7 +639,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         const [lockedSale] = await tx`
           SELECT
             status,
-            updated_at IS NOT DISTINCT FROM ${sale.updated_at}::timestamptz AS unchanged
+            -- updated_at es TIMESTAMP WITHOUT TIME ZONE. Compararlo con un
+            -- timestamptz desplaza el valor según la zona de la sesión
+            -- (America/Tegucigalpa en producción) y producía falsos 409.
+            -- La instantánea textual sale de PostgreSQL y evita cualquier
+            -- conversión del driver o de zona horaria.
+            updated_at::text IS NOT DISTINCT FROM ${sale.updated_at_snapshot} AS unchanged
           FROM sales
           WHERE id = ${saleId} AND org_id = ${orgId}
           FOR UPDATE
