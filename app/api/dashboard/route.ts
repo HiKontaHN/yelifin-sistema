@@ -236,7 +236,7 @@ export async function GET(request: NextRequest) {
                 SELECT SUM(ss.line_total)
                 FROM sale_supplies ss
                 WHERE ss.sale_id = s.id
-                  AND ss.org_id = s.org_id
+                  AND ss.org_id = ${orgId}
                   AND ss.deleted_at IS NULL
               ), 0) AS profit
           FROM filtered_sales s
