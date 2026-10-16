@@ -10,7 +10,16 @@ const PROFILE_KEY = '/api/auth/me';
 
 async function fetchAuthContext(url: string): Promise<AuthContextResponse | null> {
   const response = await fetch(url, { cache: 'no-store' });
-  if ([401, 403, 404].includes(response.status)) return null;
+  if (response.status === 401) {
+    await fetch(SESSION_KEY, { method: 'DELETE' }).catch(() => undefined);
+
+    const publicAuthPages = ['/', '/login', '/register', '/forgot-password'];
+    if (typeof window !== 'undefined' && !publicAuthPages.includes(window.location.pathname)) {
+      window.location.replace('/login');
+    }
+    return null;
+  }
+  if ([403, 404].includes(response.status)) return null;
   if (!response.ok) throw new Error('No se pudo validar la sesión');
   return response.json();
 }

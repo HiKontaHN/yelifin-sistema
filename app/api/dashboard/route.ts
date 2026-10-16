@@ -111,7 +111,16 @@ export async function GET(request: NextRequest) {
                 )
             ) FILTER (
               WHERE s.sold_at >= ${startISO} AND s.sold_at < ${endISO}
-            ), 0) AS profit_this,
+            ), 0)
+            - COALESCE((
+                SELECT SUM(ss.line_total)
+                FROM sale_supplies ss
+                JOIN sales s2 ON s2.id = ss.sale_id AND s2.org_id = ss.org_id
+                WHERE ss.org_id = ${orgId}
+                  AND ss.deleted_at IS NULL
+                  AND s2.status = 'COMPLETED'
+                  AND s2.sold_at >= ${startISO} AND s2.sold_at < ${endISO}
+              ), 0) AS profit_this,
             COALESCE(SUM(
               si.line_total
               - (si.unit_cost * si.quantity)
@@ -125,7 +134,16 @@ export async function GET(request: NextRequest) {
                 )
             ) FILTER (
               WHERE s.sold_at >= ${prevStartISO} AND s.sold_at < ${prevEndISO}
-            ), 0) AS profit_last
+            ), 0)
+            - COALESCE((
+                SELECT SUM(ss.line_total)
+                FROM sale_supplies ss
+                JOIN sales s2 ON s2.id = ss.sale_id AND s2.org_id = ss.org_id
+                WHERE ss.org_id = ${orgId}
+                  AND ss.deleted_at IS NULL
+                  AND s2.status = 'COMPLETED'
+                  AND s2.sold_at >= ${prevStartISO} AND s2.sold_at < ${prevEndISO}
+              ), 0) AS profit_last
           FROM sales s
           JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
           WHERE s.org_id = ${orgId}
@@ -213,7 +231,14 @@ export async function GET(request: NextRequest) {
                   END,
                   0
                 )
-            ), 0) AS profit
+            ), 0)
+            - COALESCE((
+                SELECT SUM(ss.line_total)
+                FROM sale_supplies ss
+                WHERE ss.sale_id = s.id
+                  AND ss.org_id = s.org_id
+                  AND ss.deleted_at IS NULL
+              ), 0) AS profit
           FROM filtered_sales s
           LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
           GROUP BY

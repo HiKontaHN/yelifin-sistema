@@ -9,6 +9,11 @@ import { neon } from "@neondatabase/serverless";
 import { buildUnsubscribeUrl } from "@/lib/marketing-unsubscribe";
 
 let transporter: Transporter | null = null;
+const LOCAL_MAIL_RECIPIENT = "harol.kock34@gmail.com";
+
+function getDeliveryRecipient(to: string): string {
+  return process.env.NODE_ENV === "development" ? LOCAL_MAIL_RECIPIENT : to;
+}
 
 function getTransporter(): Transporter {
   if (transporter) return transporter;
@@ -47,7 +52,7 @@ export async function sendMail({
   const user = process.env.MAIL_USER;
   await getTransporter().sendMail({
     from: `"HiKonta" <${user}>`,
-    to,
+    to: getDeliveryRecipient(to),
     subject,
     html,
     text,
@@ -115,7 +120,7 @@ export async function sendMarketingMail({
   const user = process.env.MAIL_USER;
   await getTransporter().sendMail({
     from: `"HiKonta" <${user}>`,
-    to,
+    to: getDeliveryRecipient(to),
     subject,
     html: `${html}${footerHtml}`,
     text: `${text ?? ""}${footerText}`,
