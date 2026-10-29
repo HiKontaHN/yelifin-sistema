@@ -63,7 +63,16 @@ export async function resolveWarehouseId(
     return { warehouseId: Number(w.id), error: null };
   }
 
-  const [def] = await sql`SELECT id FROM warehouses WHERE org_id = ${orgId} AND is_default = TRUE`;
-  if (!def) return { warehouseId: null, error: "La organización no tiene una bodega por defecto configurada" };
+  // La UI usa la primera bodega activa como respaldo cuando la organización
+  // aún no tiene una marcada como default. Mantener la misma regla aquí evita
+  // bloquear compras e ingresos iniciales creados desde una sola modal.
+  const [def] = await sql`
+    SELECT id
+    FROM warehouses
+    WHERE org_id = ${orgId} AND is_active = TRUE
+    ORDER BY is_default DESC, id ASC
+    LIMIT 1
+  `;
+  if (!def) return { warehouseId: null, error: "La organización no tiene ninguna bodega activa configurada" };
   return { warehouseId: Number(def.id), error: null };
 }

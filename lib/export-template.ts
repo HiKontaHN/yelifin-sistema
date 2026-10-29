@@ -1,6 +1,6 @@
 // lib/export-template.ts
 // Genera la plantilla de importación (.xlsx) en el navegador con exceljs.
-// exceljs (y no la lib xlsx ya instalada) porque la Community Edition de
+// exceljs porque la Community Edition de SheetJS
 // SheetJS no puede escribir data validations — y la columna cuenta necesita
 // un dropdown nativo de Excel.
 import ExcelJS from "exceljs";

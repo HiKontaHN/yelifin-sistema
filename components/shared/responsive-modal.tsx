@@ -5,6 +5,7 @@ import * as React from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -226,7 +227,7 @@ export function ResponsiveModal({
   const bodyProps = {
     ...(as === "form" ? formProps : {}),
     ref: (node: HTMLElement | null) => { bodyRef.current = node; },
-    className: cn("flex-1 overflow-y-auto px-5 py-4 space-y-4", bodyClassName),
+    className: cn("min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4", bodyClassName),
     children,
   };
 
@@ -239,7 +240,7 @@ export function ResponsiveModal({
           "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
           "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
           HEIGHT_CLASSES[height],
-          "flex flex-col p-0",
+          "flex flex-col overflow-hidden p-0",
           "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
           "sm:-translate-x-1/2 sm:-translate-y-1/2",
           "sm:w-full",
@@ -278,6 +279,10 @@ export function ResponsiveModal({
             )}
           </DialogHeader>
         )}
+
+        <DialogDescription className="sr-only">
+          {subtitle ?? (title ? `Opciones para ${title}` : "Contenido del diálogo")}
+        </DialogDescription>
 
         {topContent}
 

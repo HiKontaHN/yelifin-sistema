@@ -215,7 +215,10 @@ export default function TransactionsPage() {
     const p = Number(searchParams.get("page"));
     return Number.isInteger(p) && p > 0 ? p : 1;
   });
-  const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState(() => {
+    const value = Number(searchParams.get("page_size"));
+    return [10, 20, 50, 100].includes(value) ? value : DEFAULT_DATA_TABLE_PAGE_SIZE;
+  });
 
   const debouncedSearch = useDebounce(search, 300);
   const isSearching = debouncedSearch.trim().length > 0;
@@ -317,11 +320,12 @@ export default function TransactionsPage() {
     if (typeFilter !== "all") params.set("type", typeFilter);
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (page > 1) params.set("page", String(page));
+    if (pageSize !== DEFAULT_DATA_TABLE_PAGE_SIZE) params.set("page_size", String(pageSize));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [
     filterMode, selectedYear, selectedMonth, specificDate,
-    sourceFilter, typeFilter, debouncedSearch, page, pathname, replace,
+    sourceFilter, typeFilter, debouncedSearch, page, pageSize, pathname, replace,
   ]);
 
   // Sincroniza la pestaña del gráfico con el filtro de tipo

@@ -13,6 +13,8 @@ export type Warehouse = {
   is_active: boolean;
   is_default: boolean;
   created_at: string;
+  product_count: number;
+  unit_count: number;
 };
 
 function useAuthFetch() {

@@ -22,7 +22,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   try {
     const [customer] = await sql`
       SELECT
-        c.id, c.name, c.phone, c.email, c.notes,
+        c.id,
+        COALESCE(NULLIF(BTRIM(c.name), ''), 'Sin nombre') AS name,
+        c.phone, c.email, c.notes,
         c.total_orders, c.total_spent, c.created_at,
         MAX(s.sold_at) AS last_purchase_at,
         CASE WHEN COUNT(s.id) > 0

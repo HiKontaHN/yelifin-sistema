@@ -14,26 +14,33 @@ export type PDFTable = {
 };
 
 export async function exportToExcel(filename: string, sheets: ExcelSheet[]) {
-  const XLSX = await import("xlsx");
-
-  const wb = XLSX.utils.book_new();
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
 
   for (const sheet of sheets) {
-    const ws = XLSX.utils.aoa_to_sheet([sheet.columns, ...sheet.rows]);
+    const ws = wb.addWorksheet(sheet.name.slice(0, 31));
+    ws.addRow(sheet.columns);
+    sheet.rows.forEach((row) => ws.addRow(row));
 
     // Auto-width columns
-    const colWidths = sheet.columns.map((col, i) => ({
-      wch: Math.min(
+    ws.columns = sheet.columns.map((col, i) => ({
+      header: col,
+      key: `column-${i}`,
+      width: Math.min(
         Math.max(col.length, ...sheet.rows.map(r => String(r[i] ?? "").length)) + 2,
         40
       ),
     }));
-    ws["!cols"] = colWidths;
-
-    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
   }
 
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filename}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function exportToPDF(options: {

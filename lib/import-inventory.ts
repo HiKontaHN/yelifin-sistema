@@ -1,7 +1,7 @@
 // lib/import-inventory.ts
 // Parseo, validación y resolución de filas del import masivo por Excel.
 // Solo lectura de DB (resolveRows) — las escrituras viven en la route.
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import {
   ESTADO_OPTIONS,
   MAX_IMPORT_ROWS,
@@ -124,37 +124,42 @@ function cellToDate(value: unknown): { iso: string | null; invalid: boolean } {
     : { iso: parsed.toISOString(), invalid: false };
 }
 
-export function parseWorkbook(buffer: Buffer): { rows: ImportRow[]; error: string | null } {
-  let workbook: XLSX.WorkBook;
+export async function parseWorkbook(buffer: Buffer): Promise<{ rows: ImportRow[]; error: string | null }> {
+  const workbook = new ExcelJS.Workbook();
   try {
-    workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    await workbook.xlsx.load(buffer as any);
   } catch {
     return { rows: [], error: "No se pudo leer el archivo. Debe ser un .xlsx válido." };
   }
 
-  const sheetName = workbook.SheetNames.includes("Productos")
-    ? "Productos"
-    : workbook.SheetNames.find((n) => !n.startsWith("_") && n !== "Instrucciones");
-  if (!sheetName) return { rows: [], error: "El archivo no tiene una hoja de productos." };
+  const sheet = workbook.getWorksheet("Productos")
+    ?? workbook.worksheets.find((candidate) => !candidate.name.startsWith("_") && candidate.name !== "Instrucciones");
+  const sheetName = sheet?.name;
+  if (!sheetName || !sheet) return { rows: [], error: "El archivo no tiene una hoja de productos." };
 
-  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-    workbook.Sheets[sheetName],
-    { defval: null, raw: true }
-  );
+  const headers = new Map<number, string>();
+  sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
+    const canonical = HEADER_ALIASES[normalizeHeader(excelCellValue(cell.value))];
+    if (canonical) headers.set(column, canonical);
+  });
+
+  const rawRows: Record<string, unknown>[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const raw: Record<string, unknown> = {};
+    headers.forEach((key, column) => {
+      raw[key] = excelCellValue(row.getCell(column).value);
+    });
+    if (Object.values(raw).some((value) => value !== null && value !== undefined && String(value).trim() !== ""))
+      rawRows.push(raw);
+  });
 
   if (rawRows.length === 0)
     return { rows: [], error: "El archivo no tiene filas de datos." };
   if (rawRows.length > MAX_IMPORT_ROWS)
     return { rows: [], error: `El archivo supera el máximo de ${MAX_IMPORT_ROWS} filas.` };
 
-  const rows: ImportRow[] = rawRows.map((raw, index) => {
-    // Normalizar encabezados a las columnas canónicas
-    const record: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(raw)) {
-      const canonical = HEADER_ALIASES[normalizeHeader(key)];
-      if (canonical) record[canonical] = value;
-    }
-
+  const rows: ImportRow[] = rawRows.map((record, index) => {
     const errors: string[] = [];
 
     const precio = cellToNumber(record.precio);
@@ -185,7 +190,7 @@ export function parseWorkbook(buffer: Buffer): { rows: ImportRow[]; error: strin
     const cuentaRef = cuentaRaw ? parseAccountLabel(cuentaRaw) : null;
 
     return {
-      rowNumber: index + 2, // +1 por base 1, +1 por el encabezado
+      rowNumber: index + 2,
       sku: cellToString(record.sku),
       nombre: cellToString(record.nombre),
       descripcion: cellToString(record.descripcion),
@@ -201,6 +206,15 @@ export function parseWorkbook(buffer: Buffer): { rows: ImportRow[]; error: strin
   });
 
   return { rows, error: null };
+}
+
+function excelCellValue(value: ExcelJS.CellValue): any {
+  if (value && typeof value === "object") {
+    if ("result" in value) return value.result;
+    if ("text" in value) return value.text;
+    if ("richText" in value) return value.richText.map((part) => part.text).join("");
+  }
+  return value ?? null;
 }
 
 // ── Validaciones puras (sin DB) ─────────────────────────────────────────

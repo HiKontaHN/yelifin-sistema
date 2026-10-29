@@ -1,20 +1,11 @@
 ﻿// app/(dashboard)/settings/categories/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -29,10 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Pagination, PaginationContent, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis,
-} from "@/components/ui/pagination";
 import {
   Plus,
   Pencil,
@@ -49,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SearchBar } from "@/components/shared/search-bar";
+import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { useDebounce } from "@/hooks/use-debounce";
 import {
   useTransactionCategories,
@@ -83,19 +71,36 @@ export default function CategoriesPage() {
 const pageLimit = 15;
 
 function CategoriesPageContent() {
-  const [selectedType, setSelectedType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
-  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const { replace } = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const validTypes = ["INCOME", "EXPENSE", "TRANSFER"] as const;
+  const validStatuses = ["active", "inactive", "all"] as const;
+  const initialType = searchParams.get("type");
+  const initialStatus = searchParams.get("status");
+  const initialPageSize = Number(searchParams.get("page_size"));
+
+  const [selectedType, setSelectedType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">(
+    validTypes.includes(initialType as typeof validTypes[number]) ? initialType as typeof validTypes[number] : "EXPENSE",
+  );
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">(
+    validStatuses.includes(initialStatus as typeof validStatuses[number]) ? initialStatus as typeof validStatuses[number] : "active",
+  );
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [page, setPage] = useState(() => {
+    const value = Number(searchParams.get("page"));
+    return Number.isInteger(value) && value > 0 ? value : 1;
+  });
+  const [pageSize, setPageSize] = useState(() => [15, 30, 50].includes(initialPageSize) ? initialPageSize : pageLimit);
   const debouncedSearch = useDebounce(search, 300);
   const { can_edit: canEdit } = useModulePermissions("ADMIN", "CATEGORIES");
 
-  const { categories, totalPages, isLoading, mutate } = useTransactionCategories({
+  const { categories, total, isLoading, mutate } = useTransactionCategories({
     type:   selectedType,
     status: statusFilter,
     search: debouncedSearch || undefined,
     page,
-    limit: pageLimit,
+    limit: pageSize,
   });
   const { create } = useCreateCategory();
   const { update } = useUpdateCategory();
@@ -110,9 +115,22 @@ function CategoriesPageContent() {
   const [formName, setFormName] = useState("");
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
 
-  useEffect(() => { setPage(1); }, [selectedType, statusFilter, debouncedSearch]);
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
+    setPage(1);
+  }, [selectedType, statusFilter, debouncedSearch]);
 
-  const filtered = Array.isArray(categories) ? categories : [];
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedType !== "EXPENSE") params.set("type", selectedType);
+    if (statusFilter !== "active") params.set("status", statusFilter);
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
+    if (page > 1) params.set("page", String(page));
+    if (pageSize !== pageLimit) params.set("page_size", String(pageSize));
+    const query = params.toString();
+    replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [debouncedSearch, page, pageSize, pathname, replace, selectedType, statusFilter]);
 
   // Prevenir autofocus al abrir modales
   useEffect(() => {
@@ -249,216 +267,92 @@ function CategoriesPageContent() {
         </Select>
       </div>
 
-      {/* Tabla Desktop */}
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead className="w-24">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-8 w-16" /></TableCell>
-                  </TableRow>
-                ))
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center py-12 text-muted-foreground">
-                    No hay categorías. Crea una para comenzar.
-                  </TableCell>
-                </TableRow>
+      <DataTableTimeSection
+        columns={[
+          {
+            id: "name",
+            header: "Nombre",
+            cell: (cat) => <span className="font-medium">{cat.name}</span>,
+            width: "55%",
+          },
+          {
+            id: "type",
+            header: "Tipo",
+            cell: (cat) => (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className={TYPE_CONFIG[cat.type].badge}>
+                  {TYPE_CONFIG[cat.type].label}
+                </Badge>
+                {!cat.is_active && <Badge variant="secondary" className="text-xs">Inactiva</Badge>}
+              </div>
+            ),
+            width: "30%",
+          },
+          {
+            id: "actions",
+            header: "Acciones",
+            align: "right",
+            cell: (cat) => cat.is_active ? (
+              <div className="flex justify-end gap-1">
+                <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}>
+                  <Pencil className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Eliminar ${cat.name}`}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" disabled={reactivatingId === cat.id} onClick={() => handleReactivate(cat)}>
+                  {reactivatingId === cat.id ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                  Reactivar
+                </Button>
+              </div>
+            ),
+            width: "15%",
+            stopRowClick: true,
+          },
+        ] satisfies DataTableTimeSectionColumn<TransactionCategory>[]}
+        data={categories}
+        getRowKey={(cat) => cat.id}
+        isLoading={isLoading}
+        emptyState="No hay categorías. Crea una para comenzar."
+        recordLabel="categorías"
+        minWidth="620px"
+        rowClassName={(cat) => !cat.is_active ? "opacity-60" : undefined}
+        pagination={{
+          page,
+          pageSize,
+          total,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+          pageSizeOptions: [15, 30, 50],
+        }}
+        showFooterPagination={false}
+        renderMobileRow={(cat) => (
+          <div className={cn("flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-3", !cat.is_active && "opacity-60")}>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{cat.name}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className={`${TYPE_CONFIG[cat.type].badge} text-xs`}>{TYPE_CONFIG[cat.type].label}</Badge>
+                {!cat.is_active && <Badge variant="secondary" className="text-xs">Inactiva</Badge>}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {cat.is_active ? (
+                <>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}><Pencil className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Eliminar ${cat.name}`}><Trash2 className="size-4" /></Button>
+                </>
               ) : (
-                filtered.map((cat) => (
-                  <TableRow key={cat.id} className={cn(!cat.is_active && "opacity-60")}>
-                    <TableCell className="font-medium">{cat.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge variant="outline" className={TYPE_CONFIG[cat.type].badge}>
-                          {TYPE_CONFIG[cat.type].label}
-                        </Badge>
-                        {!cat.is_active && (
-                          <Badge variant="secondary" className="text-xs">Inactiva</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {cat.is_active ? (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => {
-                              setEditCategory(cat);
-                              setFormName(cat.name);
-                            }}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive hover:text-destructive"
-                            onClick={() => setDeleteCategory(cat)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 text-xs"
-                          disabled={reactivatingId === cat.id}
-                          onClick={() => handleReactivate(cat)}
-                        >
-                          {reactivatingId === cat.id
-                            ? <Loader2 className="size-3.5 animate-spin" />
-                            : <RotateCcw className="size-3.5" />
-                          }
-                          Reactivar
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                <Button variant="ghost" size="icon" className="size-8" disabled={reactivatingId === cat.id} onClick={() => handleReactivate(cat)} aria-label={`Reactivar ${cat.name}`}>
+                  {reactivatingId === cat.id ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+                </Button>
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Cards Móvil */}
-      <div className="md:hidden space-y-3">
-        {isLoading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
-          ))
-        ) : filtered.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="text-sm text-muted-foreground">No hay categorías</p>
-            </CardContent>
-          </Card>
-        ) : (
-          filtered.map((cat) => (
-            <Card key={cat.id} className={cn(!cat.is_active && "opacity-60")}>
-              <CardContent className="flex items-center justify-between px-3 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{cat.name}</p>
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                    <Badge variant="outline" className={`${TYPE_CONFIG[cat.type].badge} text-xs`}>
-                      {TYPE_CONFIG[cat.type].label}
-                    </Badge>
-                    {!cat.is_active && (
-                      <Badge variant="secondary" className="text-xs">Inactiva</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {cat.is_active ? (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => {
-                          setEditCategory(cat);
-                          setFormName(cat.name);
-                        }}
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive"
-                        onClick={() => setDeleteCategory(cat)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      disabled={reactivatingId === cat.id}
-                      onClick={() => handleReactivate(cat)}
-                    >
-                      {reactivatingId === cat.id
-                        ? <Loader2 className="size-4 animate-spin" />
-                        : <RotateCcw className="size-4" />
-                      }
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))
+            </div>
+          </div>
         )}
-      </div>
-
-      {/* Paginación */}
-      {totalPages > 1 && (
-        <div className="flex justify-center">
-          <Pagination className="w-auto mx-0">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((p) =>
-                  p === 1 || p === totalPages ||
-                  (p >= page - 1 && p <= page + 1)
-                )
-                .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                  if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "…" ? (
-                    <PaginationItem key={`ellipsis-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        isActive={p === page}
-                        onClick={() => setPage(p as number)}
-                        className="cursor-pointer"
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
+      />
 
       {/* FAB */}
       {canEdit && <Fab

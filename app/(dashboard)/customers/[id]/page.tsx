@@ -18,7 +18,7 @@ import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/compone
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Mail, Phone, Calendar, ShoppingCart, TrendingUp,
-  Banknote, Star, Pencil, Trash2, Clock, Users, Package, MoreHorizontal,
+  Banknote, Star, Pencil, Trash2, Clock, Users, Package, MoreHorizontal, Copy,
 } from "lucide-react";
 import {
   useCustomerSummary, useLoyaltyPolicies, computeLoyaltyTier,
@@ -29,6 +29,7 @@ import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { EditCustomerDialog } from "@/components/customers/edit-customer-dialog";
 import { DeleteCustomerDialog } from "@/components/customers/delete-customer-dialog";
 import { useTimezone } from "@/hooks/swr/use-timezone";
+import { toast } from "sonner";
 
 const STATUS_COLOR: Record<string, string> = {
   COMPLETED: "bg-green-100 text-green-700 border-green-200",
@@ -62,6 +63,16 @@ export default function CustomerDetailPage({ params }: Props) {
 
   const [editOpen,   setEditOpen]   = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const copyCustomerPhone = async () => {
+    if (!summary?.phone) return;
+    try {
+      await navigator.clipboard.writeText(summary.phone);
+      toast.success("Número de teléfono copiado");
+    } catch {
+      toast.error("No se pudo copiar el número de teléfono");
+    }
+  };
 
   if (isLoading) return <CustomerDetailSkeleton />;
 
@@ -131,7 +142,9 @@ export default function CustomerDetailPage({ params }: Props) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight leading-tight whitespace-normal break-words">{summary.name}</h1>
+          <p role="heading" aria-level={2} className="text-2xl font-semibold tracking-tight leading-tight whitespace-normal break-words">
+            {summary.name || "Sin nombre"}
+          </p>
           <div className="flex flex-wrap items-center gap-2 mt-1.5">
             {summary.email && (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -139,9 +152,16 @@ export default function CustomerDetailPage({ params }: Props) {
               </span>
             )}
             {summary.phone && (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <button
+                type="button"
+                onClick={copyCustomerPhone}
+                className="inline-flex items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground"
+                title="Copiar número de teléfono"
+                aria-label="Copiar número de teléfono"
+              >
                 <Phone className="size-3" /> {summary.phone}
-              </span>
+                <Copy className="size-3" />
+              </button>
             )}
             {tier && tierColors && (
               <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border", tierColors.bg, tierColors.text, tierColors.border)}>

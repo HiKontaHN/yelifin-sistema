@@ -13,10 +13,22 @@ export async function GET(request: NextRequest) {
     const { orgId } = auth.data;
 
     const warehouses = await sql`
-      SELECT id, name, is_active, is_default, created_at
-      FROM warehouses
-      WHERE org_id = ${orgId}
-      ORDER BY is_default DESC, name ASC
+      SELECT
+        w.id,
+        w.name,
+        w.is_active,
+        w.is_default,
+        w.created_at,
+        COUNT(DISTINCT ib.product_id)::int AS product_count,
+        COALESCE(SUM(ib.qty_available), 0)::int AS unit_count
+      FROM warehouses w
+      LEFT JOIN inventory_batches ib
+        ON ib.warehouse_id = w.id
+       AND ib.org_id = w.org_id
+       AND ib.qty_available > 0
+      WHERE w.org_id = ${orgId}
+      GROUP BY w.id
+      ORDER BY w.is_default DESC, w.name ASC
     `;
 
     return Response.json({ data: warehouses });

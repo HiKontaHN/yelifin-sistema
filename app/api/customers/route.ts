@@ -49,7 +49,10 @@ export async function GET(request: NextRequest) {
 
     // ── Data paginada ─────────────────────────────────────────────────
     const customers = await sql`
-      SELECT id, name, phone, email, notes, total_orders, total_spent, created_at
+      SELECT
+        id,
+        COALESCE(NULLIF(BTRIM(name), ''), 'Sin nombre') AS name,
+        phone, email, notes, total_orders, total_spent, created_at
       FROM customers
       WHERE org_id = ${orgId}
         AND (

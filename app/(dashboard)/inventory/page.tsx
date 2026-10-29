@@ -804,9 +804,9 @@ export default function InventoryPage() {
         </div>
 
         <div className="min-w-0 flex-1 sm:py-1">
-          <p className="mb-2 text-base font-medium leading-none tabular-nums text-muted-foreground">
+          <div className="mb-2 text-base font-medium leading-none tabular-nums text-muted-foreground">
             {loadingInventory ? <Skeleton className="h-5 w-28" /> : `${stats.total_products.toLocaleString("es-HN")} productos`}
-          </p>
+          </div>
 
           <div role="group" aria-label="Filtrar por estado de inventario" className="flex h-2.5 w-full rounded-full bg-muted md:w-2/3">
             {stockSummary.map((item, index) => (

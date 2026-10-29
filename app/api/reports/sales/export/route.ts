@@ -650,7 +650,7 @@ async function buildChartSheet(byDay: any[], byProduct: any[], symbol: string, s
     },
   ];
 
-  // !ref necesario para que xlsx incluya la hoja
+  // Rango explícito para conservar el espacio visual de la hoja de gráficos.
   ws["!ref"] = "A1:P60";
   ws["!cols"] = Array.from({ length: 16 }, () => ({ wch: 12 }));
 
@@ -662,12 +662,13 @@ async function generateExcel(
   summary: any, byDay: any[], byProduct: any[], detail: any[],
   symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean
 ): Promise<Uint8Array> {
-  const XLSX = await import("xlsx");
+  const ExcelJS = (await import("exceljs")).default;
 
   const periodLabel = `${fmtDate(from)} — ${fmtDate(to)}`;
 
-  const wb = XLSX.utils.book_new();
-  (wb as any).Props = { Title: "Reporte de Ventas — HiKonta", Author: "HiKonta SaaS" };
+  const wb = new ExcelJS.Workbook();
+  wb.title = "Reporte de Ventas — HiKonta";
+  wb.creator = "HiKonta SaaS";
 
   const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel, showCosts, showProfit);
   const wsGrafico    = await buildChartSheet(byDay, byProduct, symbol, showProfit);
@@ -675,14 +676,69 @@ async function generateExcel(
   const wsDetalle    = buildDetailSheet(detail, symbol, showProfit);
   const wsByDay      = buildByDaySheet(byDay, symbol, showProfit);
 
-  XLSX.utils.book_append_sheet(wb, wsDashboard,  "Dashboard");
-  XLSX.utils.book_append_sheet(wb, wsGrafico,    "Gráfico");
-  XLSX.utils.book_append_sheet(wb, wsProductos,  "Productos");
-  XLSX.utils.book_append_sheet(wb, wsDetalle,    "Detalle");
-  XLSX.utils.book_append_sheet(wb, wsByDay,      "Por día");
+  appendExcelJsSheet(wb, "Dashboard", wsDashboard);
+  appendExcelJsSheet(wb, "Gráfico", wsGrafico);
+  appendExcelJsSheet(wb, "Productos", wsProductos);
+  appendExcelJsSheet(wb, "Detalle", wsDetalle);
+  appendExcelJsSheet(wb, "Por día", wsByDay);
 
-  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx", cellStyles: true });
-  return new Uint8Array(buf);
+  return new Uint8Array(await wb.xlsx.writeBuffer());
+}
+
+function appendExcelJsSheet(workbook: any, name: string, source: Record<string, any>) {
+  const worksheet = workbook.addWorksheet(name);
+  const argb = (color?: { rgb?: string }) => color?.rgb ? `FF${color.rgb}` : undefined;
+
+  for (const [address, sourceCell] of Object.entries(source)) {
+    if (address.startsWith("!") || !sourceCell || typeof sourceCell !== "object") continue;
+    const target = worksheet.getCell(address) as any;
+    target.value = sourceCell.v ?? null;
+    const style = sourceCell.s;
+    if (!style) continue;
+    target.font = {
+      name: style.font?.name,
+      size: style.font?.sz,
+      bold: style.font?.bold,
+      italic: style.font?.italic,
+      color: argb(style.font?.color),
+    };
+    if (style.fill?.patternType === "solid") {
+      target.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(style.fill.fgColor) } };
+    }
+    target.alignment = {
+      horizontal: style.alignment?.horizontal,
+      vertical: style.alignment?.vertical,
+      wrapText: style.alignment?.wrapText,
+    };
+    if (style.numFmt) target.numFmt = style.numFmt;
+    if (style.border && Object.keys(style.border).length > 0) {
+      target.border = Object.fromEntries(Object.entries(style.border).map(([side, border]: [string, any]) => [side, {
+        style: border.style,
+        color: argb(border.color) ? { argb: argb(border.color) } : undefined,
+      }]));
+    }
+  }
+
+  for (const merge of source["!merges"] ?? []) {
+    worksheet.mergeCells(merge.s.r + 1, merge.s.c + 1, merge.e.r + 1, merge.e.c + 1);
+  }
+  for (const [index, column] of (source["!cols"] ?? []).entries()) {
+    if (column?.wch) worksheet.getColumn(index + 1).width = column.wch;
+  }
+  for (const [index, row] of (source["!rows"] ?? []).entries()) {
+    if (row?.hpt) worksheet.getRow(index + 1).height = row.hpt;
+  }
+  for (const image of source["!images"] ?? []) {
+    const position = image["!pos"];
+    const imageId = workbook.addImage({
+      base64: `data:image/png;base64,${image["!content"]}`,
+      extension: "png",
+    });
+    worksheet.addImage(imageId, {
+      tl: { col: position.c, row: position.r },
+      ext: { width: position.w, height: position.h },
+    });
+  }
 }
 
 // ── Generar PDF en servidor ────────────────────────────────────────────

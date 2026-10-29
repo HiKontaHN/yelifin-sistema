@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     const warehouseId: number = wh.warehouseId;
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { rows, error: parseError } = parseWorkbook(buffer);
+    const { rows, error: parseError } = await parseWorkbook(buffer);
     if (parseError) return createErrorResponse(parseError, 400);
 
     validateRows(rows);
