@@ -22,6 +22,7 @@ INSERT INTO system_features (feature_key, feature_name, category) VALUES
 ('finances.accounts',     'Cuentas financieras',          'FINANCES'),
 ('finances.transactions', 'Transacciones',                'FINANCES'),
 ('finances.reports',      'Reportes financieros',         'FINANCES'),
+('finances.receivables_payables', 'Cuentas por cobrar y pagar', 'FINANCES'),
 -- EVENTS
 ('events.manage',         'Gestión de eventos',           'EVENTS'),
 ('events.inventory',      'Inventario por evento',        'EVENTS'),

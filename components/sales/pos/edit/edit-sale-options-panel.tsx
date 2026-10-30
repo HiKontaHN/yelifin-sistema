@@ -13,6 +13,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
     User,
@@ -34,11 +35,16 @@ export type EditSaleOptionsPanelProps = {
     shippingCost: number;
     isCreating: boolean;
     isPending: boolean;
+    canPartialPayment: boolean;
+    isPartialPayment: boolean;
+    amountPaid: number;
     onCustomerChange: (id: number | null) => void;
     onAccountChange: (id: number | null) => void;
     onNotesChange: (val: string) => void;
     onShippingCostChange: (val: number) => void;
     onIsPendingChange: (val: boolean) => void;
+    onPartialPaymentChange: (val: boolean) => void;
+    onAmountPaidChange: (val: number) => void;
     onOpenSupplies: () => void;
     onSavePending: () => void;
     onCompleteRequest: () => void;
@@ -57,10 +63,15 @@ export function EditSaleOptionsPanel({
     shippingCost,
     isCreating,
     isPending,
+    canPartialPayment,
+    isPartialPayment,
+    amountPaid,
     onCustomerChange,
     onAccountChange,
     onNotesChange,
     onShippingCostChange,
+    onPartialPaymentChange,
+    onAmountPaidChange,
     onOpenSupplies,
     onSavePending,
     onCompleteRequest,
@@ -116,6 +127,31 @@ export function EditSaleOptionsPanel({
                         </SelectContent>
                     </Select>
                 </div>
+
+                {isPending && canPartialPayment && customerId && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+                            <Checkbox checked={isPartialPayment} onCheckedChange={(checked) => onPartialPaymentChange(checked === true)} />
+                            Cobro parcial al completar
+                        </label>
+                        {isPartialPayment && (
+                            <div className="space-y-1.5">
+                                <Label className="text-[11px]">Pagado ahora</Label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max={grandTotal}
+                                    step="0.01"
+                                    value={amountPaid === 0 ? "" : amountPaid}
+                                    onChange={(e) => onAmountPaidChange(Math.max(0, Number(e.target.value) || 0))}
+                                    placeholder="0"
+                                    className="h-8 text-sm"
+                                />
+                                <p className="text-[11px] text-muted-foreground">Saldo pendiente: <strong>{format(Math.max(0, grandTotal - amountPaid))}</strong></p>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Cuenta + Envío */}
                 <div className="flex flex-col gap-3 md:flex-row">

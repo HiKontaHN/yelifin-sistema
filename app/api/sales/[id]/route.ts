@@ -1,7 +1,7 @@
 // app/api/sales/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import {
   consumeFifo,
   InsufficientStockError,
@@ -48,10 +48,20 @@ export async function GET(request: NextRequest, { params }: Params) {
         EXTRACT(EPOCH FROM s.updated_at)::text AS updated_at_version,
         c.name  AS customer_name,
         c.phone AS customer_phone,
-        a.name  AS account_name
+        a.name  AS account_name,
+        s.payment_status,
+        CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN s.total ELSE 0 END ELSE s.total - ar.outstanding_amount END AS amount_paid,
+        CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN 0 ELSE s.total END ELSE ar.outstanding_amount END AS amount_due
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN accounts  a ON a.id = s.account_id
+      LEFT JOIN LATERAL (
+        SELECT id, outstanding_amount
+        FROM accounts_receivable
+        WHERE org_id = s.org_id AND source_type = 'CREDIT_SALE' AND source_id = s.id
+        ORDER BY id DESC
+        LIMIT 1
+      ) ar ON TRUE
       WHERE s.id = ${saleId} AND s.org_id = ${orgId}
     `;
 
@@ -179,6 +189,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // ── CONFIRM ──────────────────────────────────────────────────────
     if (action === "confirm") {
       const confirmedAt = body.confirmed_at ?? new Date().toISOString();
+      const hasPartialPayment = body.amount_paid !== undefined;
+      const requestedAmountPaid = hasPartialPayment ? Number(body.amount_paid) : Number(sale.total);
+
+      if (hasPartialPayment) {
+        const creditFeature = await requireFeature(orgId, "finances.receivables_payables");
+        if (creditFeature) return creditFeature;
+        if (!sale.customer_id) return createErrorResponse("Selecciona un cliente para una venta con pago parcial", 400);
+        if (!Number.isFinite(requestedAmountPaid) || requestedAmountPaid < 0 || requestedAmountPaid > Number(sale.total)) {
+          return createErrorResponse("El pago parcial debe estar entre 0 y el total de la venta", 400);
+        }
+      }
 
       // La transacción siempre referencia la venta puntual (reference_type='SALE',
       // reference_id=saleId), incluso si está ligada a un evento — ver nota en
@@ -196,6 +217,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           );
         }
 
+        const paidNow = hasPartialPayment ? requestedAmountPaid : Number(lockedSale.total);
+        const receivableAmount = Number(lockedSale.total) - paidNow;
+
         const txParts: string[] = [`Venta ${lockedSale.sale_number}`];
         if (Number(lockedSale.tax_rate) > 0)
           txParts.push(`ISV ${lockedSale.tax_rate}% incluido`);
@@ -209,22 +233,50 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             : txParts[0];
 
         await tx`
-          UPDATE sales SET status = 'COMPLETED', sold_at = ${confirmedAt}, updated_at = CURRENT_TIMESTAMP, updated_by = ${userId}
+          UPDATE sales SET
+            status = 'COMPLETED',
+            payment_status = ${receivableAmount > 0 ? (paidNow > 0 ? "PARTIAL" : "PENDING") : "PAID"},
+            sold_at = ${confirmedAt}, updated_at = CURRENT_TIMESTAMP, updated_by = ${userId}
           WHERE id = ${saleId} AND org_id = ${orgId} AND status = 'PENDING'
         `;
-        await tx`
-          INSERT INTO transactions (
-            org_id, created_by, type, account_id, amount,
-            category, description, reference_type, reference_id, occurred_at
-          ) VALUES (
-            ${orgId}, ${userId}, 'INCOME', ${lockedSale.account_id}, ${lockedSale.total},
-            'Ventas', ${txDescription}, 'SALE', ${saleId}, ${confirmedAt}
-          )
-        `;
-        await tx`
-          UPDATE accounts SET balance = balance + ${lockedSale.total}, updated_by = ${userId}
-          WHERE id = ${lockedSale.account_id} AND org_id = ${orgId}
-        `;
+        let saleTransaction: any = null;
+        if (paidNow > 0) {
+          [saleTransaction] = await tx`
+            INSERT INTO transactions (
+              org_id, created_by, type, account_id, amount,
+              category, description, reference_type, reference_id, occurred_at
+            ) VALUES (
+              ${orgId}, ${userId}, 'INCOME', ${lockedSale.account_id}, ${paidNow},
+              'Ventas', ${txDescription}, 'SALE', ${saleId}, ${confirmedAt}
+            )
+            RETURNING id
+          `;
+          await tx`
+            UPDATE accounts SET balance = balance + ${paidNow}, updated_by = ${userId}
+            WHERE id = ${lockedSale.account_id} AND org_id = ${orgId}
+          `;
+        }
+        if (receivableAmount > 0) {
+          const [receivable] = await tx`
+            INSERT INTO accounts_receivable (
+              org_id, customer_id, source_type, source_id, description,
+              original_amount, outstanding_amount, start_date, status, created_by, updated_by
+            ) VALUES (
+              ${orgId}, ${lockedSale.customer_id}, 'CREDIT_SALE', ${saleId}, ${txDescription},
+              ${lockedSale.total}, ${receivableAmount}, CURRENT_DATE, ${paidNow > 0 ? "PARTIAL" : "PENDING"}, ${userId}, ${userId}
+            )
+            RETURNING id
+          `;
+          if (paidNow > 0 && saleTransaction) {
+            await tx`
+              INSERT INTO accounts_receivable_payments (
+                receivable_id, account_id, transaction_id, amount, payment_method, created_by
+              ) VALUES (
+                ${receivable.id}, ${lockedSale.account_id}, ${saleTransaction.id}, ${paidNow}, ${lockedSale.payment_method}, ${userId}
+              )
+            `;
+          }
+        }
         if (lockedSale.customer_id) {
           await tx`
             UPDATE customers

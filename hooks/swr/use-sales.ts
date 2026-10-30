@@ -25,15 +25,17 @@ export type CreateSaleInput = {
   discount?:       number;
   shipping_cost?:  number;
   payment_method:  string;
-  account_id:      number;
+  account_id?:     number | null;
   notes?:          string;
   tax_rate?:       number;
   supplies_used?:  { supply_id: number; quantity: number; unit_cost: number }[];
   event_id?:       number;
   status?:         SaleStatus;
+  credit_sale?:    boolean;
+  amount_paid?:    number;
 };
 
-export type ConfirmSaleInput = { action: 'confirm'; confirmed_at: string };
+export type ConfirmSaleInput = { action: 'confirm'; confirmed_at: string; amount_paid?: number };
 export type CancelSaleInput  = { action: 'cancel'; reason?: string };
 
 export type EditSaleInput = {
@@ -71,6 +73,9 @@ export type Sale = {
   event_id:       number | null;
   warehouse_id:   number;
   status:         SaleStatus;
+  payment_status: 'PENDING' | 'PARTIAL' | 'PAID';
+  amount_paid:    number;
+  amount_due:     number;
   sold_at:        string;
   notes:          string | null;
   items_count:    number;
@@ -290,7 +295,7 @@ export function usePatchSale(id: number | null) {
     }
   };
 
-  const confirmSale = () => patchSale({ action: 'confirm', confirmed_at: new Date().toISOString() });
+  const confirmSale = (amountPaid?: number) => patchSale({ action: 'confirm', confirmed_at: new Date().toISOString(), ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}) });
   const cancelSale  = (reason?: string) => patchSale({ action: 'cancel', reason });
   const editSale    = (data: Omit<EditSaleInput, 'action'>) =>
     patchSale({ action: 'edit', ...data });

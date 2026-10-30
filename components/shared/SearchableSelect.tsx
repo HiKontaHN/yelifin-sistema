@@ -57,12 +57,7 @@ export function SearchableSelect({
   const selectedLabel = allItems.find((i) => i.value === value)?.label ?? placeholder;
 
   useEffect(() => {
-    if (open) {
-      const id = setTimeout(() => inputRef.current?.focus(), 0);
-      return () => clearTimeout(id);
-    } else {
-      setSearch("");
-    }
+    if (!open) setSearch("");
   }, [open]);
 
   return (
@@ -114,7 +109,7 @@ export function SearchableSelect({
             {search && (
               <button
                 type="button"
-                onClick={() => { setSearch(""); inputRef.current?.focus(); }}
+                onClick={() => setSearch("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="size-4" />

@@ -33,6 +33,7 @@ import {
 } from "@/hooks/swr/use-sales";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCustomers } from "@/hooks/swr/use-costumers";
+import { useMe } from "@/hooks/swr/use-me";
 import { useSupplies } from "@/hooks/swr/use-supplies";
 import { useInventory } from "@/hooks/swr/use-inventory";
 import { Product, ProductVariant } from "@/types";
@@ -88,6 +89,8 @@ function EditSaleContent() {
   const params = useParams();
   const { push } = useRouter();
   const { format } = useCurrency();
+  const { hasFeature } = useMe();
+  const canPartialPayment = hasFeature("finances.receivables_payables");
 
   const saleId = Number(params.id);
   const backHref = "/sales";
@@ -115,6 +118,8 @@ function EditSaleContent() {
   const [accountId, setAccountId] =
     useState<number | null>(null);
   const [isPending, setIsPending] = useState(true);
+  const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [amountPaid, setAmountPaid] = useState(0);
 
   const [search, setSearch] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -219,6 +224,8 @@ function EditSaleContent() {
     setCustomerId(sale.customer_id ?? null);
     setAccountId((sale as any).account_id ?? null);
     setIsPending(sale.status === "PENDING");
+    setIsPartialPayment(false);
+    setAmountPaid(0);
     // `undefined` significa que el dato vino de un caché SWR creado por una
     // versión anterior de la app. JSON.stringify omitirá el campo y el backend
     // mantendrá compatibilidad, en lugar de convertirlo en un conflicto falso.
@@ -499,6 +506,11 @@ function EditSaleContent() {
     setConfirmCompleteOpen(false);
     if (cart.length === 0) return toast.error("El carrito está vacío");
     if (!accountId) return toast.error("Selecciona una cuenta de destino");
+    if (isPartialPayment) {
+      if (!canPartialPayment) return toast.error("Esta función no está disponible en tu plan");
+      if (!customerId) return toast.error("Selecciona un cliente para registrar un pago parcial");
+      if (amountPaid < 0 || amountPaid > grandTotal) return toast.error("El pago parcial no puede superar el total");
+    }
 
     try {
       // 1. Primero guardar todos los cambios (SIN cambiar status)
@@ -530,7 +542,7 @@ function EditSaleContent() {
       });
 
       // 2. Luego completar la venta (cambiar status)
-      await confirmSale();
+      await confirmSale(isPartialPayment ? amountPaid : undefined);
 
       mutateInventory();
       toast.success("Venta completada");
@@ -607,11 +619,25 @@ function EditSaleContent() {
     shippingCost,
     isCreating: isPatching,
     isPending,
-    onCustomerChange: setCustomerId,
+    onCustomerChange: (value: number | null) => {
+      setCustomerId(value);
+      if (!value) {
+        setIsPartialPayment(false);
+        setAmountPaid(0);
+      }
+    },
     onAccountChange: setAccountId,
     onNotesChange: setNotes,
     onShippingCostChange: setShippingCost,
     onIsPendingChange: setIsPending,
+    canPartialPayment,
+    isPartialPayment,
+    amountPaid,
+    onPartialPaymentChange: (value: boolean) => {
+      setIsPartialPayment(value);
+      if (!value) setAmountPaid(0);
+    },
+    onAmountPaidChange: setAmountPaid,
     onOpenSupplies: () => setSuppliesModalOpen(true),
     onSavePending: handleSavePending,
     onCompleteRequest: () => setConfirmCompleteOpen(true),

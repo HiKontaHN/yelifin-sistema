@@ -68,6 +68,8 @@ const mainNav: NavItemDef[] = [
       { title: "Cuentas",          url: "/finances",               subitem: "ACCOUNTS" },
       { title: "Transacciones",    url: "/finances/transactions",  subitem: "TRANSACTIONS" },
       { title: "Tarjetas crédito", url: "/finances/credit-cards",  subitem: "CREDIT_CARDS" },
+      { title: "Cobros y pagos",   url: "/finances/receivables-payables", subitem: "ACCOUNTS", feature: "finances.receivables_payables" },
+      { title: "Entidades",        url: "/finances/financial-entities",    subitem: "ACCOUNTS", feature: "finances.receivables_payables" },
     ],
   },
   { title: "Eventos",     url: "/events",   icon: Calendar,  module: "EVENTS" },

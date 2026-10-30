@@ -23,10 +23,12 @@ export function SummaryStats({
   ariaLabel: string;
   isLoading?: boolean;
   compact?: boolean;
-  columns?: "auto" | "two";
+  columns?: "auto" | "two" | "three";
 }) {
   const visibleOnMobile = items.filter((item) => !item.hideOnMobile);
-  const columns = columnLayout === "two"
+  const columns = columnLayout === "three"
+    ? "grid-cols-3"
+    : columnLayout === "two"
     ? "grid-cols-2"
     : items.length === 4
       ? "grid-cols-2 lg:grid-cols-4"
@@ -35,7 +37,9 @@ export function SummaryStats({
       : visibleOnMobile.length === 1
         ? "grid-cols-1 sm:grid-cols-2"
         : "grid-cols-2";
-  const width = columnLayout === "two"
+  const width = columnLayout === "three"
+    ? "w-full"
+    : columnLayout === "two"
     ? "w-full"
     : items.length === 4 ? "max-w-6xl" : items.length === 3 ? "max-w-4xl" : "max-w-2xl";
 
@@ -47,8 +51,8 @@ export function SummaryStats({
     >
       {items.map((item, index) => {
         const mobileIndex = visibleOnMobile.indexOf(item);
-        const onMobileSecondRow = mobileIndex >= 2;
-        const lastMobileItem = visibleOnMobile.length % 2 === 1 && mobileIndex === visibleOnMobile.length - 1 && mobileIndex > 0;
+        const onMobileSecondRow = columnLayout !== "three" && mobileIndex >= 2;
+        const lastMobileItem = columnLayout !== "three" && visibleOnMobile.length % 2 === 1 && mobileIndex === visibleOnMobile.length - 1 && mobileIndex > 0;
         const desktopBreakpoint = items.length === 4 && columnLayout !== "two" ? "lg" : "sm";
         const alignmentBreakpoint = columnLayout === "two" ? "md" : "sm";
         const itemCompact = item.compact ?? compact;
@@ -66,14 +70,14 @@ export function SummaryStats({
                   : "min-w-0 space-y-2 px-3 py-1 text-center sm:px-8 sm:py-2 sm:text-left",
               index === 0 && (columnLayout === "two" ? "md:pl-4" : "sm:pl-4"),
               item.hideOnMobile && "hidden sm:block",
-              (columnLayout === "two" ? index % 2 === 1 : mobileIndex % 2 === 1) && "border-l",
+              (columnLayout === "three" ? index > 0 : columnLayout === "two" ? index % 2 === 1 : mobileIndex % 2 === 1) && "border-l",
               onMobileSecondRow && "border-t",
               columnLayout === "two" && index >= 2 && "border-t",
               lastMobileItem && "col-span-2 sm:col-span-1",
-              desktopBreakpoint === "lg"
+              columnLayout !== "three" && desktopBreakpoint === "lg"
                 ? (index > 0 && "lg:border-l")
-                : (index > 0 && columnLayout !== "two" && "sm:border-l"),
-              columnLayout !== "two" && (desktopBreakpoint === "lg" ? "lg:border-t-0" : "sm:border-t-0"),
+                : (columnLayout !== "three" && index > 0 && columnLayout !== "two" && "sm:border-l"),
+              columnLayout !== "two" && columnLayout !== "three" && (desktopBreakpoint === "lg" ? "lg:border-t-0" : "sm:border-t-0"),
             )}
           >
             <dt className={cn(

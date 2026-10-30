@@ -24,6 +24,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { TIER_COLOR_CLASSES, type LoyaltyPolicy } from "@/hooks/swr/use-costumers";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type Props = {
   customers: any[];
@@ -36,11 +37,16 @@ type Props = {
   shippingCost: number;
   isCreating: boolean;
   isPending: boolean;
+  isCreditSale: boolean;
+  amountPaid: number;
+  canCreditSale: boolean;
   onCustomerChange: (id: number | null) => void;
   onAccountChange: (id: number) => void;
   onNotesChange: (v: string) => void;
   onShippingCostChange: (v: number) => void;
   onIsPendingChange: (v: boolean) => void;
+  onCreditSaleChange: (v: boolean) => void;
+  onAmountPaidChange: (v: number) => void;
   onCheckout: () => void;
   onOpenSupplies: () => void;
   onBack?: () => void;
@@ -59,11 +65,16 @@ export function SaleOptionsPanel({
   shippingCost,
   isCreating,
   isPending,
+  isCreditSale,
+  amountPaid,
+  canCreditSale,
   onCustomerChange,
   onAccountChange,
   onNotesChange,
   onShippingCostChange,
   onIsPendingChange,
+  onCreditSaleChange,
+  onAmountPaidChange,
   onCheckout,
   onOpenSupplies,
   onBack,
@@ -106,7 +117,7 @@ export function SaleOptionsPanel({
             <Label className="text-xs flex items-center gap-1.5">
               <User className="size-3.5" />
               Cliente
-              <span className="text-muted-foreground ml-1">(opcional)</span>
+              <span className="text-muted-foreground ml-1">{isCreditSale ? "(requerido)" : "(opcional)"}</span>
             </Label>
             <SearchableSelect
               value={customerId?.toString() ?? "anonymous"}
@@ -121,6 +132,32 @@ export function SaleOptionsPanel({
               className="h-8 text-sm w-full"
             />
           </div>
+
+          {canCreditSale && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+                <Checkbox checked={isCreditSale} onCheckedChange={(checked) => onCreditSaleChange(checked === true)} />
+                Venta a crédito / con abonos
+              </label>
+              {isCreditSale && (
+                <div className="space-y-1.5">
+                  <Label className="text-[11px]">Pagado ahora</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={amountPaid === 0 ? "" : amountPaid}
+                    onChange={(e) => onAmountPaidChange(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="0"
+                    className="h-8 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Saldo pendiente: <strong>{format(Math.max(0, grandTotal - amountPaid))}</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Sugerencia de fidelización */}
           {loyaltyTier && (() => {
@@ -155,7 +192,7 @@ export function SaleOptionsPanel({
           <div className="space-y-1.5">
             <Label className="text-xs flex items-center gap-1.5">
               <Wallet className="size-3.5" />
-              Cuenta de destino *
+              {isCreditSale ? "Cuenta donde entra el pago" : "Cuenta de destino *"}
             </Label>
             <Select
               value={accountId?.toString() ?? ""}
@@ -233,6 +270,7 @@ export function SaleOptionsPanel({
           <button
             type="button"
             onClick={() => onIsPendingChange(!isPending)}
+            disabled={isCreditSale}
             className={`mt-1 w-full rounded-xl border px-3 py-2.5 text-xs flex items-center gap-3 cursor-pointer transition-colors
             ${isPending
                 ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20"

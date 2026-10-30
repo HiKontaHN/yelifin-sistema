@@ -1,7 +1,7 @@
 // app/api/sales/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, requireFeature, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import {
   consumeFifo,
   InsufficientStockError,
@@ -201,6 +201,9 @@ export async function GET(request: NextRequest) {
         a.name         AS account_name,
         s.event_id,
         s.status,
+        s.payment_status,
+        CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN s.total ELSE 0 END ELSE s.total - ar.outstanding_amount END AS amount_paid,
+        CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN 0 ELSE s.total END ELSE ar.outstanding_amount END AS amount_due,
         s.sold_at,
         s.notes,
         s.created_at,
@@ -212,6 +215,7 @@ export async function GET(request: NextRequest) {
       FROM sales s
       LEFT JOIN customers  c  ON c.id      = s.customer_id
       LEFT JOIN accounts   a  ON a.id      = s.account_id
+      LEFT JOIN accounts_receivable ar ON ar.org_id = s.org_id AND ar.source_type = 'CREDIT_SALE' AND ar.source_id = s.id
       LEFT JOIN sale_items si ON si.sale_id = s.id
       WHERE s.org_id = ${orgId}
         AND (${fromDateISO}::timestamptz IS NULL OR s.sold_at >= ${fromDateISO})
@@ -220,7 +224,7 @@ export async function GET(request: NextRequest) {
         AND (${search}::text             IS NULL OR s.sale_number ILIKE ${'%' + (search ?? '') + '%'} OR c.name ILIKE ${'%' + (search ?? '') + '%'} OR s.notes ILIKE ${'%' + (search ?? '') + '%'})
         AND (${accountId}::text          IS NULL OR s.account_id::text = ${accountId})
         AND (${status}::text             IS NULL OR s.status = ${status})
-      GROUP BY s.id, c.name, a.name
+      GROUP BY s.id, c.name, a.name, ar.id
       ORDER BY s.sold_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
@@ -278,7 +282,11 @@ export async function POST(request: NextRequest) {
       supplies_used,
       event_id,
       status = "COMPLETED",
+      credit_sale = false,
+      amount_paid,
     } = body;
+
+    const isCreditSale = credit_sale === true;
 
     // ── Validaciones básicas ────────────────────────────────────────────
     // Una venta es un ingreso: siempre se destina a una cuenta (nunca a una
@@ -286,9 +294,14 @@ export async function POST(request: NextRequest) {
     // no ingresos).
     if (!items || !Array.isArray(items) || items.length === 0)
       return createErrorResponse("Se requiere al menos un producto", 400);
-    if (!payment_method)
+    if (!payment_method && !isCreditSale)
       return createErrorResponse("El método de pago es requerido", 400);
-    if (!account_id)
+    if (isCreditSale) {
+      const creditFeature = await requireFeature(orgId, "finances.receivables_payables");
+      if (creditFeature) return creditFeature;
+      if (!customer_id) return createErrorResponse("Selecciona un cliente para una venta a crédito", 400);
+    }
+    if (!account_id && (!isCreditSale || Number(amount_paid) > 0))
       return createErrorResponse("La cuenta de destino es requerida", 400);
     if (!["PENDING", "COMPLETED"].includes(status))
       return createErrorResponse("Estado inválido", 400);
@@ -300,6 +313,10 @@ export async function POST(request: NextRequest) {
         400,
       );
 
+    const paidNow = isCreditSale ? Number(amount_paid ?? 0) : 0;
+    if (isCreditSale && (!Number.isFinite(paidNow) || paidNow < 0))
+      return createErrorResponse("El pago inicial no es válido", 400);
+
     for (const item of items) {
       if (!item.product_id || !item.quantity || item.quantity <= 0)
         return createErrorResponse("Datos de producto inválidos", 400);
@@ -308,11 +325,13 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Validar cuenta ───────────────────────────────────────────────────
-    const [account] = await sql`
-      SELECT id FROM accounts
-      WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
-    `;
-    if (!account) return createErrorResponse("Cuenta no encontrada", 404);
+    if (account_id) {
+      const [account] = await sql`
+        SELECT id FROM accounts
+        WHERE id = ${account_id} AND org_id = ${orgId} AND is_active = TRUE
+      `;
+      if (!account) return createErrorResponse("Cuenta no encontrada", 404);
+    }
 
     // Bodega de la que descuenta esta venta — la asignada a quien la
     // registra, sin pedir selector (ver lib/warehouses.ts).
@@ -490,6 +509,15 @@ export async function POST(request: NextRequest) {
     const taxAmount =
       taxRateNum > 0 ? (taxableBase * taxRateNum) / (100 + taxRateNum) : 0;
     const grandTotal = taxableBase + shippingAmount;
+    if (isCreditSale && paidNow > grandTotal)
+      return createErrorResponse("El pago inicial no puede superar el total", 400);
+    const paymentStatus = status === "PENDING"
+      ? "PENDING"
+      : isCreditSale && grandTotal > paidNow
+        ? (paidNow > 0 ? "PARTIAL" : "PENDING")
+        : "PAID";
+    if (isCreditSale && status !== "COMPLETED")
+      return createErrorResponse("Una venta a crédito debe quedar completada", 400);
     const suppliesCost = normalizedSupplies.reduce(
       (acc, s) => acc + s.line_total,
       0,
@@ -523,13 +551,13 @@ export async function POST(request: NextRequest) {
           org_id, created_by, sale_number, customer_id,
           subtotal, discount, tax_rate, tax, shipping_cost, total,
           payment_method, account_id, event_id, warehouse_id,
-          status, sold_at, notes
+          status, payment_status, sold_at, notes
         ) VALUES (
           ${orgId}, ${userId}, ${saleNumber}, ${customer_id ?? null},
           ${subtotal}, ${totalDiscount}, ${taxRateNum}, ${taxAmount},
           ${shippingAmount}, ${grandTotal},
           ${payment_method}, ${account_id}, ${eventIdNum}, ${warehouseId},
-          ${status}, ${occurredAt}::timestamptz, ${notes ?? null}
+          ${status}, ${paymentStatus}, ${occurredAt}::timestamptz, ${notes ?? null}
         )
         RETURNING id
       `;
@@ -620,30 +648,68 @@ export async function POST(request: NextRequest) {
         `;
       }
 
-      // 4. Transacción + balance + cliente — solo si COMPLETED
+      // 4. Pago recibido + balance + cliente — solo si COMPLETED
       if (status === "COMPLETED") {
         // La transacción siempre referencia la venta puntual (reference_type='SALE',
         // reference_id=saleId), incluso si está ligada a un evento — así el flujo de
         // cancelación/eliminación puede encontrarla y revertirla. Los reportes de
         // eventos calculan sus totales sumando sales.total directamente, no a través
         // de este tag, así que no dependen de reference_type='EVENT' para el ingreso.
-        await tx`
-          INSERT INTO transactions (
-            org_id, created_by, type, account_id, amount,
-            category, description,
-            reference_type, reference_id, occurred_at
-          ) VALUES (
-            ${orgId}, ${userId}, 'INCOME', ${account_id}, ${grandTotal},
-            'Ventas', ${txDescription},
-            'SALE', ${saleId}, ${occurredAt}::timestamptz
-          )
-        `;
+        const receivedAmount = isCreditSale ? paidNow : grandTotal;
+        let saleTransactionId: number | null = null;
+        if (receivedAmount > 0) {
+          const [saleTransaction] = await tx`
+            INSERT INTO transactions (
+              org_id, created_by, type, account_id, amount,
+              category, description,
+              reference_type, reference_id, occurred_at
+            ) VALUES (
+              ${orgId}, ${userId}, 'INCOME', ${account_id}, ${receivedAmount},
+              'Ventas', ${txDescription},
+              'SALE', ${saleId}, ${occurredAt}::timestamptz
+            )
+            RETURNING id
+          `;
+          saleTransactionId = saleTransaction ? Number(saleTransaction.id) : null;
 
-        await tx`
-          UPDATE accounts
-          SET balance = balance + ${grandTotal}
-          WHERE id = ${account_id} AND org_id = ${orgId}
-        `;
+          await tx`
+            UPDATE accounts
+            SET balance = balance + ${receivedAmount}
+            WHERE id = ${account_id} AND org_id = ${orgId}
+          `;
+
+        }
+
+        if (isCreditSale && grandTotal - paidNow > 0) {
+          await tx`
+            INSERT INTO accounts_receivable (
+              org_id, customer_id, source_type, source_id, description,
+              original_amount, outstanding_amount, currency, start_date, notes, created_by
+            ) VALUES (
+              ${orgId}, ${customer_id}, 'CREDIT_SALE', ${saleId},
+              ${`Venta ${saleNumber}`}, ${grandTotal}, ${grandTotal - paidNow},
+              'HNL', CURRENT_DATE, ${notes ?? null}, ${userId}
+            )
+          `;
+
+          if (receivedAmount > 0) {
+            const [receivable] = await tx`
+              SELECT id FROM accounts_receivable
+              WHERE org_id = ${orgId} AND source_type = 'CREDIT_SALE' AND source_id = ${saleId}
+              FOR UPDATE
+            `;
+            if (receivable) {
+              await tx`
+                INSERT INTO accounts_receivable_payments (
+                  receivable_id, account_id, transaction_id, amount, payment_method, notes, created_by
+                ) VALUES (
+                  ${receivable.id}, ${account_id}, ${saleTransactionId}, ${receivedAmount},
+                  ${payment_method ?? null}, ${notes ?? null}, ${userId}
+                )
+              `;
+            }
+          }
+        }
 
         if (customer_id) {
           await tx`

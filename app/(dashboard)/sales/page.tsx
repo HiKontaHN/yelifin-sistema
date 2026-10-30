@@ -383,13 +383,17 @@ export default function SalesPage() {
     },
     {
       id: "status", header: "Estado", width: "clamp(7rem, 11vw, 8.5rem)",
-      cell: (sale) => sale.status === "PENDING" ? (
-        <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline"><Clock className="size-3" /> Pendiente</Badge>
-      ) : sale.status === "CANCELLED" ? (
-        <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline"><XCircle className="size-3" /> Cancelada</Badge>
-      ) : (
-        <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline"><CheckCircle className="size-3" /> Completada</Badge>
-      ),
+      cell: (sale) => <div className="flex flex-col items-start gap-1">
+        {sale.status === "PENDING" ? (
+          <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline"><Clock className="size-3" /> Pendiente</Badge>
+        ) : sale.status === "CANCELLED" ? (
+          <Badge className="bg-destructive/10 text-destructive border-destructive/30 gap-1" variant="outline"><XCircle className="size-3" /> Cancelada</Badge>
+        ) : (
+          <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline"><CheckCircle className="size-3" /> Completada</Badge>
+        )}
+        {sale.payment_status === "PARTIAL" && <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px]" variant="outline">Pago parcial</Badge>}
+        {sale.payment_status === "PENDING" && sale.status === "COMPLETED" && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]" variant="outline">Pago pendiente</Badge>}
+      </div>,
     },
     {
       id: "products", header: "Productos", width: "clamp(6rem, 9vw, 7rem)",
@@ -408,6 +412,10 @@ export default function SalesPage() {
     {
       id: "total", header: "Total", width: 96, align: "right", className: "font-medium",
       cell: (sale) => format(Number(sale.total)),
+    },
+    {
+      id: "paid", header: "Pagado", width: 110, align: "right", className: "font-medium",
+      cell: (sale) => <div><span className="block">{format(Number(sale.amount_paid ?? (sale.payment_status === "PAID" ? sale.total : 0)))}</span>{Number(sale.amount_due ?? 0) > 0 && <span className="block text-[10px] font-normal text-amber-700">Debe {format(Number(sale.amount_due))}</span>}</div>,
     },
   ];
   if (showProfit) saleColumns.push({
@@ -462,6 +470,8 @@ export default function SalesPage() {
                     <XCircle className="size-2.5" /> Cancelada
                   </Badge>
                 )}
+                {sale.payment_status === "PARTIAL" && <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200" variant="outline">Pago parcial</Badge>}
+                {sale.payment_status === "PENDING" && sale.status === "COMPLETED" && <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">Pago pendiente</Badge>}
                 {taxRate > 0 && (
                   <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200" variant="outline">
                     ISV {taxRate}%
@@ -487,7 +497,7 @@ export default function SalesPage() {
               </div>
             )}
           </div>
-          <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && !isCancelled && showProfit) ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className={`grid gap-1 pt-2 border-t text-center ${(!isPending && !isCancelled && showProfit) ? "grid-cols-4" : "grid-cols-3"}`}>
             <div>
               <p className="text-[10px] text-muted-foreground mb-0.5">Productos</p>
               <p className="text-sm font-semibold">{sale.items_count}</p>
@@ -495,6 +505,11 @@ export default function SalesPage() {
             <div>
               <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
               <p className="text-sm font-bold truncate">{format(Number(sale.total))}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-0.5">Pagado</p>
+              <p className="text-sm font-bold truncate">{format(Number(sale.amount_paid ?? (sale.payment_status === "PAID" ? sale.total : 0)))}</p>
+              {Number(sale.amount_due ?? 0) > 0 && <p className="text-[10px] text-amber-700 truncate">Debe {format(Number(sale.amount_due))}</p>}
             </div>
             {!isPending && !isCancelled && showProfit && (
               <div>

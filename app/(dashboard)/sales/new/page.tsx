@@ -27,6 +27,7 @@ import { MobileCartSheet } from "@/components/sales/pos/mobile-cart-sheet";
 
 import { VariantPickerSheet } from "@/components/sales/pos/variant-picker-sheet";
 import { useInventory }        from "@/hooks/swr/use-inventory";
+import { useMe } from "@/hooks/swr/use-me";
 import { Product, ProductVariant } from "@/types";
 
 const ACCOUNT_TYPE_TO_PAYMENT: Record<string, string> = {
@@ -59,6 +60,7 @@ function NewSaleContent() {
   const { policies: loyaltyPolicies } = useLoyaltyPolicies();
   const { supplies } = useSupplies();
   const { mutate: mutateEvents } = useEvents();
+  const { hasFeature } = useMe();
 
 
   // ── Estado principal ───────────────────────────────────────────────
@@ -72,6 +74,8 @@ function NewSaleContent() {
   const [shippingCost, setShippingCost] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
   const [isPending, setIsPending] = useState(false);  // ← nuevo
+  const [isCreditSale, setIsCreditSale] = useState(false);
+  const [amountPaid, setAmountPaid] = useState(0);
   const [suppliesOpen, setSuppliesOpen] = useState(false);
   const [suppliesUsed, setSuppliesUsed] = useState<SupplyUsed[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -250,7 +254,9 @@ function NewSaleContent() {
   // ── Checkout ───────────────────────────────────────────────────────
   const handleCheckout = async () => {
     if (cart.length === 0) return toast.error("El carrito está vacío");
-    if (!accountId) return toast.error("Selecciona una cuenta de destino");
+    if (isCreditSale && !customerId) return toast.error("Selecciona un cliente para una venta a crédito");
+    if (isCreditSale && amountPaid > grandTotal) return toast.error("El pago inicial no puede superar el total");
+    if ((!isCreditSale || amountPaid > 0) && !accountId) return toast.error("Selecciona una cuenta de destino");
 
     const account = accounts.find((a) => Number(a.id) === Number(accountId));
     const paymentMethod = ACCOUNT_TYPE_TO_PAYMENT[account?.type ?? "OTHER"] ?? "OTHER";
@@ -273,6 +279,8 @@ function NewSaleContent() {
         tax_rate: taxRate > 0 ? taxRate : undefined,
         payment_method: paymentMethod as any,
         account_id: accountId,
+        credit_sale: isCreditSale,
+        amount_paid: isCreditSale ? amountPaid : undefined,
         notes: notes || undefined,
         status: isPending ? "PENDING" : "COMPLETED",
         supplies_used: suppliesUsed.length > 0
@@ -315,13 +323,19 @@ function NewSaleContent() {
     customers, accounts, hasSupplies,
     customerId, accountId,
     notes, grandTotal, shippingCost,
-    isCreating, isPending,
+    isCreating, isPending, isCreditSale, amountPaid,
+    canCreditSale: hasFeature("finances.receivables_payables"),
     loyaltyTier,
     onCustomerChange: setCustomerId,
     onAccountChange: setAccountId,
     onNotesChange: setNotes,
     onShippingCostChange: setShippingCost,
     onIsPendingChange: setIsPending,
+    onCreditSaleChange: (value: boolean) => {
+      setIsCreditSale(value);
+      if (value) setIsPending(false);
+    },
+    onAmountPaidChange: setAmountPaid,
     onCheckout: handleCheckout,
     onOpenSupplies: () => setSuppliesOpen(true),
     onApplyLoyaltyDiscount: (pct: number) => {

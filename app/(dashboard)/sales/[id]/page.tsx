@@ -78,6 +78,9 @@ export default function SaleDetailPage({ params }: Props) {
   const isPending   = sale.status === "PENDING";
   const isCompleted = sale.status === "COMPLETED";
   const isCancelled = sale.status === "CANCELLED";
+  const paymentStatus = sale.payment_status ?? (isPending ? "PENDING" : "PAID");
+  const amountPaid = Number(sale.amount_paid ?? (paymentStatus === "PAID" ? sale.total : 0));
+  const amountDue = Number(sale.amount_due ?? 0);
 
   // Costo y ganancia vienen calculados y filtrados por el backend según
   // show_costs / show_profit del rol (pueden llegar en null). Los ?? 0 son
@@ -143,6 +146,12 @@ export default function SaleDetailPage({ params }: Props) {
                   <XCircle className="size-3" />
                   Cancelada
                 </Badge>
+              )}
+              {paymentStatus === "PARTIAL" && (
+                <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1" variant="outline">Pago parcial</Badge>
+              )}
+              {paymentStatus === "PENDING" && isCompleted && (
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" variant="outline">Pago pendiente</Badge>
               )}
               {taxRate > 0 && (
                 <Badge className="bg-amber-100 text-amber-700 border-amber-200" variant="outline">
@@ -281,7 +290,7 @@ export default function SaleDetailPage({ params }: Props) {
         ariaLabel="Resumen financiero de la venta"
         items={[
           {
-            label: "Total cobrado",
+            label: "Total de venta",
             icon: Receipt,
             value: format(Number(sale.total)),
             detail: (shippingAmount > 0 || taxRate > 0) && (
@@ -304,7 +313,7 @@ export default function SaleDetailPage({ params }: Props) {
       />
 
       {/* Cliente + Cuenta */}
-      <div className="grid max-w-2xl grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Card>
           <CardContent className="pl-3 flex items-center gap-2.5">
             <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -329,6 +338,23 @@ export default function SaleDetailPage({ params }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {paymentStatus !== "PAID" && (
+        <Card className="border-blue-200 bg-blue-50/40 dark:bg-blue-950/20">
+          <CardHeader className="pb-3"><CardTitle className="text-base">Estado del pago</CardTitle></CardHeader>
+          <CardContent className="pt-0">
+            <SummaryStats
+              ariaLabel="Estado del pago"
+              columns="three"
+              items={[
+                { label: "Total", icon: Receipt, value: format(Number(sale.total)) },
+                { label: "Pagado", icon: CheckCircle, value: format(amountPaid), valueClassName: "text-green-700" },
+                { label: "Saldo pendiente", icon: Clock, value: format(amountDue), valueClassName: "text-amber-700" },
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Productos vendidos */}
       <Card>

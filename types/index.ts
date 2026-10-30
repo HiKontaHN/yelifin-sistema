@@ -86,6 +86,7 @@ export type FeatureKey =
   | 'finances.accounts'
   | 'finances.transactions'
   | 'finances.reports'
+  | 'finances.receivables_payables'
   // EVENTS
   | 'events.manage'
   | 'events.inventory'

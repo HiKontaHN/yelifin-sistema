@@ -104,16 +104,20 @@ WHERE feature_key IN (
   'finances.accounts',
   'finances.transactions',
   'finances.reports',
+  'finances.receivables_payables',
   'events.manage',
   'events.inventory',
   'reports.basic',
   'reports.advanced'
-);
+)
+ON CONFLICT (plan_id, feature_id) DO UPDATE SET is_enabled = EXCLUDED.is_enabled;
 
--- PRO: todas las features
+-- PRO: todas las features públicas; cuentas por cobrar/pagar sigue experimental
 INSERT INTO plan_features (plan_id, feature_id, is_enabled)
 SELECT
   (SELECT id FROM subscription_plans WHERE slug = 'pro'),
   id,
   TRUE
-FROM system_features;
+FROM system_features
+WHERE feature_key <> 'finances.receivables_payables'
+ON CONFLICT (plan_id, feature_id) DO UPDATE SET is_enabled = EXCLUDED.is_enabled;
