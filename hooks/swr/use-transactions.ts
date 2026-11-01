@@ -41,6 +41,9 @@ export type CreateTransactionInput = {
   category?: string | null;
   description?: string | null;
   occurred_at?: string;
+  create_receivable?: boolean;
+  customer_id?: number;
+  due_date?: string;
 };
 
 export type UpdateTransactionInput = {

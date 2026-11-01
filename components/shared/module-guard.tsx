@@ -1,8 +1,8 @@
 // components/shared/module-guard.tsx
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { ShieldOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,9 @@ type Props = {
 };
 
 export function ModuleGuard({ module, subitem, permission = "can_view", children }: Props) {
-  const { push } = useRouter();
+  const { replace } = useRouter();
+  const pathname = usePathname();
+  const redirectedTo = useRef<string | null>(null);
   const perms = useModulePermissions(module, subitem);
   const { getModulePermissions, isLoading: meIsLoading } = useMe();
 
@@ -30,14 +32,21 @@ export function ModuleGuard({ module, subitem, permission = "can_view", children
   // primera sección con acceso real.
   const isDashboard = module === "DASHBOARD";
   const autoRedirecting = blocked && isDashboard;
+  const landingRoute = autoRedirecting ? getLandingRoute(getModulePermissions) : null;
+  const shouldRedirect = Boolean(
+    autoRedirecting && !meIsLoading && landingRoute && landingRoute !== pathname,
+  );
 
   useEffect(() => {
-    if (autoRedirecting && !meIsLoading) {
-      push(getLandingRoute(getModulePermissions));
+    if (shouldRedirect && landingRoute && redirectedTo.current !== landingRoute) {
+      redirectedTo.current = landingRoute;
+      replace(landingRoute);
+    } else if (!shouldRedirect) {
+      redirectedTo.current = null;
     }
-  }, [autoRedirecting, meIsLoading, getModulePermissions, push]);
+  }, [landingRoute, replace, shouldRedirect]);
 
-  if (perms.isLoading || autoRedirecting) {
+  if (perms.isLoading || shouldRedirect) {
     return (
       <div className="space-y-4 max-w-3xl">
         <Skeleton className="h-8 w-48" />
@@ -62,7 +71,7 @@ export function ModuleGuard({ module, subitem, permission = "can_view", children
         <Button
           variant="outline"
           size="sm"
-          onClick={() => push(getLandingRoute(getModulePermissions))}
+          onClick={() => replace(getLandingRoute(getModulePermissions))}
         >
           Volver al inicio
         </Button>

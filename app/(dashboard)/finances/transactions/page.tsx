@@ -108,6 +108,9 @@ const REF_LABELS: Record<string, string> = {
   EVENT: "Evento",
   OTHER: "Manual",
   CREDIT_CARD_PAYMENT: "Pago tarjeta",
+  RECEIVABLE: "Cuenta por cobrar",
+  RECEIVABLE_PAYMENT: "Cobro de cuenta",
+  PAYABLE_PAYMENT: "Pago de cuenta",
 };
 
 // ── Unified row type ───────────────────────────────────────────────────
@@ -409,11 +412,16 @@ export default function TransactionsPage() {
   const isPurchaseRef = (t: Transaction) =>
     (t.reference_type === "PURCHASE" || t.reference_type === "PURCHASE_SHIPPING") && !!t.reference_id;
 
+  const isReceivablePayableRef = (t: Transaction) =>
+    (t.reference_type === "RECEIVABLE" || t.reference_type === "RECEIVABLE_PAYMENT" || t.reference_type === "PAYABLE_PAYMENT") && !!t.reference_id;
+
   const handleTransactionClick = (t: Transaction) => {
     if (t.reference_type === "SALE" && t.reference_id) {
       push(`/sales/${t.reference_id}`);
     } else if (isPurchaseRef(t)) {
       setViewingPurchaseId(t.reference_id);
+    } else if (isReceivablePayableRef(t)) {
+      push(`/finances/receivables-payables/${t.reference_type === "PAYABLE_PAYMENT" ? "pagar" : "cobrar"}/${t.reference_id}`);
     }
   };
 
@@ -448,7 +456,7 @@ export default function TransactionsPage() {
       const t = row.data;
       const cfg = TYPE_CONFIG[t.type];
       const Icon = cfg.icon;
-      const clickable = (t.reference_type === "SALE" || isPurchaseRef(t)) && t.reference_id;
+      const clickable = (t.reference_type === "SALE" || isPurchaseRef(t) || isReceivablePayableRef(t)) && t.reference_id;
       const isCancelled = !!t.deleted_at;
       return (
         <Card
@@ -921,7 +929,7 @@ export default function TransactionsPage() {
         renderMobileRow={(row) => renderMobileCard(row)}
         onRowClick={(row) => row._src === "account" && handleTransactionClick(row.data)}
         isRowClickable={(row) => row._src === "account" && (
-          row.data.reference_type === "SALE" || isPurchaseRef(row.data)
+          row.data.reference_type === "SALE" || isPurchaseRef(row.data) || isReceivablePayableRef(row.data)
         )}
         rowClassName={(row) => row._src === "account" && row.data.deleted_at ? "opacity-60" : undefined}
         isLoading={isLoading}

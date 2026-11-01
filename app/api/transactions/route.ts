@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
       type, account_id, to_account_id, amount,
       category, description, occurred_at,
       reference_type, reference_id,
+      create_receivable, customer_id, due_date,
       // Tarjeta de crédito (solo para EXPENSE)
       credit_card_id, currency, exchange_rate,
     } = body;
@@ -126,6 +127,12 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("Las cuentas deben ser diferentes", 400);
 
     const occurredAt = occurred_at ?? new Date().toISOString();
+    const createReceivable = create_receivable === true;
+    const receivableCustomerId = Number(customer_id);
+    if (createReceivable && type !== "EXPENSE")
+      return createErrorResponse("Una cuenta por cobrar desde transacciones debe ser un egreso", 400);
+    if (createReceivable && (!Number.isSafeInteger(receivableCustomerId) || receivableCustomerId <= 0))
+      return createErrorResponse("El cliente es requerido para la cuenta por cobrar", 400);
 
     // ── Egreso con tarjeta de crédito ──────────────────────────────────
     if (isCreditCardExpense) {
@@ -178,11 +185,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Transacción normal (cuenta) ────────────────────────────────────
-    const VALID_REF_TYPES = ["SALE", "PURCHASE", "SUPPLY_PURCHASE", "EVENT", "OTHER", "CREDIT_CARD_PAYMENT"];
-    const refType = reference_type && VALID_REF_TYPES.includes(reference_type)
+    const VALID_REF_TYPES = ["SALE", "PURCHASE", "SUPPLY_PURCHASE", "EVENT", "OTHER", "CREDIT_CARD_PAYMENT", "RECEIVABLE"];
+    const refType = createReceivable ? "RECEIVABLE" : reference_type && VALID_REF_TYPES.includes(reference_type)
       ? reference_type
       : "OTHER";
-    const refId = reference_id ? Number(reference_id) : null;
+    const refId = createReceivable ? null : reference_id ? Number(reference_id) : null;
 
     const result = await withTransaction(async (tx) => {
       const accountIds = type === "TRANSFER"
@@ -209,6 +216,13 @@ export async function POST(request: NextRequest) {
           return { ok: false as const, error: "Cuenta destino no encontrada", status: 404 as const };
       }
 
+      if (createReceivable) {
+        const [customer] = await tx`
+          SELECT id FROM customers WHERE id = ${receivableCustomerId} AND org_id = ${orgId}
+        `;
+        if (!customer) return { ok: false as const, error: "Cliente no encontrado", status: 404 as const };
+      }
+
       const [transaction] = await tx`
         INSERT INTO transactions (
           org_id, created_by, type, account_id, to_account_id,
@@ -229,6 +243,20 @@ export async function POST(request: NextRequest) {
       } else {
         await tx`UPDATE accounts SET balance = balance - ${amt}, updated_by = ${userId} WHERE id = ${sourceAccountId}      AND org_id = ${orgId}`;
         await tx`UPDATE accounts SET balance = balance + ${amt}, updated_by = ${userId} WHERE id = ${destinationAccountId} AND org_id = ${orgId}`;
+      }
+
+      if (createReceivable) {
+        const [receivable] = await tx`
+          INSERT INTO accounts_receivable (
+            org_id, customer_id, source_type, source_id, description,
+            original_amount, outstanding_amount, currency, start_date, due_date, created_by
+          ) VALUES (
+            ${orgId}, ${receivableCustomerId}, 'PERSONAL_LOAN', ${transaction.id},
+            ${description ?? "Cuenta por cobrar"}, ${amt}, ${amt}, 'HNL', ${occurredAt}::date, ${due_date ?? null}, ${userId}
+          ) RETURNING id
+        `;
+        await tx`UPDATE transactions SET reference_id = ${receivable.id} WHERE id = ${transaction.id} AND org_id = ${orgId}`;
+        return { ok: true as const, id: Number(transaction.id), receivableId: Number(receivable.id) };
       }
 
       return { ok: true as const, id: Number(transaction.id) };

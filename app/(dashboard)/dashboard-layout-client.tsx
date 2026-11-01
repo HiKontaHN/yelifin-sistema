@@ -61,6 +61,7 @@ function getPageTitle(pathname: string) {
   if (/^\/customers\/[^/]+$/.test(pathname)) return "Detalle de cliente";
   if (/^\/events\/[^/]+$/.test(pathname)) return "Detalle de evento";
   if (/^\/finances\/credit-cards\/[^/]+$/.test(pathname)) return "Detalle de tarjeta";
+  if (/^\/finances\/receivables-payables\/(cobrar|pagar)\/[^/]+$/.test(pathname)) return "Detalle de cuenta";
   const lastSegment = pathname.split("/").filter(Boolean).at(-1);
   return lastSegment
     ? lastSegment.replaceAll("-", " ").replace(/^./, (letter) => letter.toLocaleUpperCase("es-HN"))

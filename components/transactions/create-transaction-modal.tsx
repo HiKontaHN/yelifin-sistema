@@ -8,6 +8,7 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -32,6 +33,7 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
+import { useCustomers } from "@/hooks/swr/use-costumers";
 import { CreditCard as CreditCardType } from "@/hooks/swr/use-credit-cards";
 
 type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
@@ -74,6 +76,10 @@ export function CreateTransactionModal({
   const [occurredAt, setOccurredAt] = useState(
     toLocalDateInput(new Date()),
   );
+  const [createReceivable, setCreateReceivable] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const { customers } = useCustomers({ limit: 500 });
 
   const showCreditCardOption = type === "EXPENSE" && creditCards.length > 0;
   const isCreditCardMode = showCreditCardOption && sourceMode === "credit_card";
@@ -103,6 +109,9 @@ export function CreateTransactionModal({
     setCategory("");
     setDescription("");
     setOccurredAt(toLocalDateInput(new Date()));
+    setCreateReceivable(false);
+    setCustomerId("");
+    setDueDate("");
   };
 
   const handleClose = () => {
@@ -134,6 +143,11 @@ export function CreateTransactionModal({
     if (!amount || Number(amount) <= 0)
       return toast.error("El monto debe ser mayor a 0");
 
+    if (createReceivable && type !== "EXPENSE")
+      return toast.error("La cuenta por cobrar desde transacciones debe ser un egreso");
+    if (createReceivable && !customerId)
+      return toast.error("Selecciona el cliente de la cuenta por cobrar");
+
     if (isCreditCardMode) {
       if (!creditCardId) return toast.error("Selecciona una tarjeta de crédito");
       if (isCcUsd && (!ccExchangeRate || Number(ccExchangeRate) <= 0))
@@ -158,6 +172,9 @@ export function CreateTransactionModal({
         category: category || undefined,
         description: description || undefined,
         occurred_at: localDateToISO(occurredAt),
+        create_receivable: createReceivable,
+        customer_id: createReceivable ? Number(customerId) : undefined,
+        due_date: createReceivable && dueDate ? dueDate : undefined,
       } as any);
 
       toast.success("Transacción registrada exitosamente");
@@ -212,7 +229,7 @@ export function CreateTransactionModal({
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setType(t)}
+                    onClick={() => { setType(t); if (t !== "EXPENSE") { setCreateReceivable(false); setCustomerId(""); setDueDate(""); } }}
                     className={cn(
                       "flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-all duration-200",
                       type === t
@@ -391,6 +408,19 @@ export function CreateTransactionModal({
               />
             </div>
           </div>
+
+          {type === "EXPENSE" && (
+            <div className="space-y-3 rounded-xl border p-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                <Checkbox checked={createReceivable} onCheckedChange={(checked) => setCreateReceivable(checked === true)} />
+                Cuenta por cobrar
+              </label>
+              {createReceivable && <>
+                <div className="space-y-1.5"><Label>Cliente <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={customerId} onValueChange={setCustomerId} items={customers.map((customer) => ({ value: String(customer.id), label: customer.name }))} placeholder="Seleccionar cliente..." searchPlaceholder="Buscar cliente..." className="h-11 w-full" /></div>
+                <div className="space-y-1.5"><Label>Fecha de vencimiento <span className="text-xs text-muted-foreground">(opcional)</span></Label><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="h-11" /></div>
+              </>}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">
