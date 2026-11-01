@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/exchange-rate",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/payable-auto-payments",
+      "schedule": "15 6 * * *"
     }
   ]
 }

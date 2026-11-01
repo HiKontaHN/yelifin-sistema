@@ -56,7 +56,7 @@ function NewSaleContent() {
   const { products } = useProducts();
   const { createSale, isCreating } = useCreateSale();
   const { accounts } = useAccounts();
-  const { customers } = useCustomers({ limit: 500 });
+  const { customers } = useCustomers({ limit: 500, activeOnly: true });
   const { policies: loyaltyPolicies } = useLoyaltyPolicies();
   const { supplies } = useSupplies();
   const { mutate: mutateEvents } = useEvents();

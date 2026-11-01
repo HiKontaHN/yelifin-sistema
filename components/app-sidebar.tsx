@@ -61,7 +61,7 @@ const mainNav: NavItemDef[] = [
       { title: "Nueva Venta (POS)", url: "/sales/new" },
     ],
   },
-  { title: "Clientes",    url: "/customers", icon: Users,     module: "CUSTOMERS", feature: "customers.manage" },
+  { title: "Personas",    url: "/people", icon: Users,     module: "CUSTOMERS", feature: "customers.manage" },
   {
     title: "Finanzas", url: "/finances", icon: CreditCard, module: "FINANCES",
     submenu: [

@@ -6,6 +6,7 @@ import {
   AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useSWRConfig } from "swr";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useDeleteCustomer, Customer } from "@/hooks/swr/use-costumers";
@@ -19,12 +20,14 @@ type Props = {
 
 export function DeleteCustomerDialog({ customer, open, onOpenChange, onSuccess }: Props) {
   const { deleteCustomer, isDeleting } = useDeleteCustomer();
+  const { mutate: mutateCache } = useSWRConfig();
 
   const handleDelete = async () => {
     if (!customer) return;
     try {
       await deleteCustomer(customer.id);
       toast.success("Cliente eliminado correctamente");
+      await mutateCache((key) => typeof key === "string" && (key.startsWith("/api/people") || key.startsWith("/api/customers")), undefined, { revalidate: true });
       onOpenChange(false);
       onSuccess();
     } catch (error: any) {

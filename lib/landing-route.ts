@@ -12,7 +12,7 @@ const LANDING_PRIORITY: LandingCandidate[] = [
   { module: "SALES",      url: "/sales" },
   { module: "INVENTORY",  subitem: "STOCK",     url: "/inventory" },
   { module: "FINANCES",   subitem: "ACCOUNTS",  url: "/finances" },
-  { module: "CUSTOMERS",  url: "/customers" },
+  { module: "CUSTOMERS",  url: "/people" },
   { module: "EVENTS",     url: "/events" },
   { module: "REPORTS",    subitem: "SALES",     url: "/reports/sales" },
   { module: "INVENTORY",  subitem: "SUPPLIES",  url: "/supplies" },

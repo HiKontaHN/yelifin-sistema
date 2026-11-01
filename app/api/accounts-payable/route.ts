@@ -17,15 +17,28 @@ function addDays(date: Date, days: number) {
   return result.toISOString().slice(0, 10);
 }
 
-function calculatePlan(amount: number, frequency: string, termUnit: string, termCount: number, rate: number, interestPeriod: string) {
+function firstAutoPaymentDate(day: number) {
+  const today = new Date();
+  const current = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12));
+  const candidate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), Math.min(day, 28), 12));
+  if (candidate < current) candidate.setUTCMonth(candidate.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, 0)).getUTCDate();
+  candidate.setUTCDate(Math.min(day, lastDay));
+  return candidate.toISOString().slice(0, 10);
+}
+
+function calculatePlan(amount: number, frequency: string, termUnit: string, termCount: number, rate: number, interestPeriod: string, manualInstallment = 0) {
   const durationDays = termUnit === "DAYS" ? termCount : termUnit === "WEEKS" ? termCount * 7 : termCount * 30;
   const durationMonths = durationDays / 30;
   const durationWeeks = durationDays / 7;
   const periods = frequency === "WEEKLY" ? Math.max(1, Math.ceil(durationWeeks)) : frequency === "BIWEEKLY" ? Math.max(1, Math.ceil(durationWeeks / 2)) : frequency === "MONTHLY" ? Math.max(1, Math.ceil(durationMonths)) : 1;
   const interestBase = interestPeriod === "ANNUAL" ? durationMonths / 12 : interestPeriod === "MONTHLY" ? durationMonths : interestPeriod === "WEEKLY" ? durationWeeks : 0;
-  const totalInterest = Math.round(amount * (rate / 100) * interestBase * 100) / 100;
-  const totalPayable = Math.round((amount + totalInterest) * 100) / 100;
-  return { durationDays, periods, totalInterest, totalPayable, installmentAmount: Math.round((totalPayable / periods) * 100) / 100 };
+  const calculatedInterest = Math.round(amount * (rate / 100) * interestBase * 100) / 100;
+  const calculatedTotal = Math.round((amount + calculatedInterest) * 100) / 100;
+  const totalPayable = manualInstallment > 0 ? Math.round(manualInstallment * periods * 100) / 100 : calculatedTotal;
+  const totalInterest = manualInstallment > 0 ? Math.round((totalPayable - amount) * 100) / 100 : calculatedInterest;
+  const calculatedInstallment = Math.round((calculatedTotal / periods) * 100) / 100;
+  return { durationDays, periods, totalInterest, totalPayable, installmentAmount: manualInstallment > 0 ? manualInstallment : calculatedInstallment };
 }
 
 async function authFor(request: NextRequest, permission: "canView" | "canEdit") {
@@ -50,6 +63,7 @@ export async function GET(request: NextRequest) {
       JOIN financial_entities e ON e.id = ap.entity_id
       LEFT JOIN accounts_payable_payments app ON app.payable_id = ap.id
       WHERE ap.org_id = ${checked.auth.data.orgId}
+        AND ap.status <> 'CANCELLED'
         AND (${search}::text IS NULL OR e.name ILIKE ${"%" + (search ?? "") + "%"} OR ap.description ILIKE ${"%" + (search ?? "") + "%"})
       GROUP BY ap.id, e.name, e.entity_type
       ORDER BY ap.status = 'PAID', ap.due_date NULLS LAST, ap.created_at DESC
@@ -73,18 +87,32 @@ export async function POST(request: NextRequest) {
     const termCount = Number(body.term_count ?? 1);
     const interestPeriod = String(body.interest_period ?? "NONE");
     const interestRate = Number(body.interest_rate ?? 0);
+    const manualInstallment = Number(body.installment_amount ?? 0);
+    const autoPaymentEnabled = body.auto_payment_enabled === true;
+    const autoPaymentAccountId = body.auto_payment_account_id ? Number(body.auto_payment_account_id) : null;
+    const autoPaymentDay = body.auto_payment_day ? Number(body.auto_payment_day) : null;
     const accountType = String(body.account_type ?? "OTHER");
     const description = String(body.description ?? "Cuenta por pagar").trim();
     if (!Number.isSafeInteger(entityId) || entityId <= 0 || !Number.isFinite(amount) || amount <= 0) {
       return createErrorResponse("Entidad y monto son requeridos", 400);
     }
-    if (!ACCOUNT_TYPES.includes(accountType as any) || !description || !FREQUENCIES.includes(frequency as any) || !TERM_UNITS.includes(termUnit as any) || !INTEREST_PERIODS.includes(interestPeriod as any) || !Number.isInteger(termCount) || termCount <= 0 || !Number.isFinite(interestRate) || interestRate < 0) {
+    if (!ACCOUNT_TYPES.includes(accountType as any) || !description || !FREQUENCIES.includes(frequency as any) || !TERM_UNITS.includes(termUnit as any) || !INTEREST_PERIODS.includes(interestPeriod as any) || !Number.isInteger(termCount) || termCount <= 0 || !Number.isFinite(interestRate) || interestRate < 0 || !Number.isFinite(manualInstallment) || manualInstallment < 0) {
       return createErrorResponse("Configuración de financiamiento inválida", 400);
+    }
+    if (autoPaymentEnabled && (!Number.isSafeInteger(autoPaymentAccountId) || !Number.isInteger(autoPaymentDay) || Number(autoPaymentDay) < 1 || Number(autoPaymentDay) > 31)) {
+      return createErrorResponse("Selecciona la cuenta y un día del mes válido", 400);
     }
     const [entity] = await sql`SELECT id FROM financial_entities WHERE id = ${entityId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
     if (!entity) return createErrorResponse("Entidad no encontrada", 404);
+    if (autoPaymentEnabled) {
+      const [autoAccount] = await sql`SELECT id FROM accounts WHERE id = ${autoPaymentAccountId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
+      if (!autoAccount) return createErrorResponse("Cuenta para abonos automáticos no encontrada", 404);
+    }
     const startDate = String(body.start_date ?? new Date().toISOString().slice(0, 10));
-    const plan = calculatePlan(amount, frequency, termUnit, termCount, interestRate, interestPeriod);
+    const plan = calculatePlan(amount, frequency, termUnit, termCount, interestRate, interestPeriod, manualInstallment);
+    if (manualInstallment > 0 && plan.totalPayable < amount) {
+      return createErrorResponse("La cuota manual no puede generar un total menor al monto original", 400);
+    }
     const dueDate = body.due_date ?? addDays(new Date(`${startDate}T12:00:00`), plan.durationDays);
     const row = await withTransaction(async (tx) => {
       const [payable] = await tx`
@@ -92,18 +120,20 @@ export async function POST(request: NextRequest) {
           org_id, entity_id, account_type, description, original_amount, outstanding_amount,
           currency, interest_rate, start_date, due_date, notes, created_by,
           payment_frequency, term_unit, term_count, interest_period, total_interest,
-          total_payable, installment_count, installment_amount
+          total_payable, installment_count, installment_amount, principal_outstanding,
+          auto_payment_enabled, auto_payment_account_id, auto_payment_day, auto_payment_next_date
         ) VALUES (
           ${checked.auth.data.orgId}, ${entityId}, ${accountType},
           ${description}, ${amount}, ${plan.totalPayable},
           ${body.currency ?? "HNL"}, ${interestRate || null}, ${startDate}, ${dueDate}, ${body.notes ?? null}, ${checked.auth.data.userId},
           ${frequency}, ${termUnit}, ${termCount}, ${interestPeriod}, ${plan.totalInterest},
-          ${plan.totalPayable}, ${plan.periods}, ${plan.installmentAmount}
+          ${plan.totalPayable}, ${plan.periods}, ${plan.installmentAmount}, ${amount},
+          ${autoPaymentEnabled}, ${autoPaymentAccountId}, ${autoPaymentDay}, ${autoPaymentEnabled && autoPaymentDay ? firstAutoPaymentDate(autoPaymentDay) : null}
         ) RETURNING *
       `;
       for (let index = 1; index <= plan.periods; index += 1) {
         const stepDays = frequency === "WEEKLY" ? index * 7 : frequency === "BIWEEKLY" ? index * 14 : frequency === "MONTHLY" ? index * 30 : plan.durationDays;
-        const installmentAmount = index === plan.periods ? plan.totalPayable - plan.installmentAmount * (plan.periods - 1) : plan.installmentAmount;
+        const installmentAmount = plan.installmentAmount;
         await tx`
           INSERT INTO accounts_payable_installments (payable_id, installment_number, due_date, amount)
           VALUES (${payable.id}, ${index}, ${addDays(new Date(`${startDate}T12:00:00`), Math.min(stepDays, plan.durationDays))}, ${Math.round(installmentAmount * 100) / 100})

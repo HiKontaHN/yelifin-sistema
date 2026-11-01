@@ -29,7 +29,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/inventory": "Inventario",
   "/inventory/movements": "Movimientos",
   "/purchases/pending": "En camino",
-  "/customers": "Clientes",
+  "/customers": "Personas",
+  "/people": "Personas",
   "/finances": "Finanzas",
   "/finances/transactions": "Transacciones",
   "/finances/credit-cards": "Tarjetas de crédito",
@@ -58,7 +59,7 @@ function getPageTitle(pathname: string) {
   if (/^\/sales\/[^/]+\/edit$/.test(pathname)) return "Editar venta";
   if (/^\/sales\/[^/]+$/.test(pathname)) return "Detalle de venta";
   if (/^\/inventory\/[^/]+$/.test(pathname)) return "Detalle de producto";
-  if (/^\/customers\/[^/]+$/.test(pathname)) return "Detalle de cliente";
+  if (/^\/customers\/[^/]+$/.test(pathname)) return "Detalle de persona";
   if (/^\/events\/[^/]+$/.test(pathname)) return "Detalle de evento";
   if (/^\/finances\/credit-cards\/[^/]+$/.test(pathname)) return "Detalle de tarjeta";
   if (/^\/finances\/receivables-payables\/(cobrar|pagar)\/[^/]+$/.test(pathname)) return "Detalle de cuenta";

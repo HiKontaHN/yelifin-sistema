@@ -48,6 +48,7 @@ export type CustomerFilters = {
   search?: string;
   page?:   number;
   limit?:  number;
+  activeOnly?: boolean;
 };
 
 export type CustomerStats = {
@@ -64,6 +65,7 @@ export function useCustomers(filters?: CustomerFilters) {
   if (filters?.search) params.set("search", filters.search);
   if (filters?.page)   params.set("page",   String(filters.page));
   if (filters?.limit)  params.set("limit",  String(filters.limit));
+  if (filters?.activeOnly) params.set("active_only", "true");
 
   const url = params.toString() ? `${KEY}?${params.toString()}` : KEY;
 

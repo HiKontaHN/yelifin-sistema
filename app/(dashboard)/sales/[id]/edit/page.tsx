@@ -98,7 +98,7 @@ function EditSaleContent() {
   const { sale, isLoading } = useSale(saleId);
   const { products } = useProducts();
   const { accounts } = useAccounts();
-  const { customers } = useCustomers({ limit: 500 });
+  const { customers } = useCustomers({ limit: 500, activeOnly: true });
   const { supplies } = useSupplies();
   const { inventory, mutate: mutateInventory } = useInventory({
     limit: 500,

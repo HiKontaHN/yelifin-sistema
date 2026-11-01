@@ -20,7 +20,7 @@ export const MODULE_LABELS: Record<OrgModule, string> = {
   PRODUCTS:  "Productos",
   INVENTORY: "Inventario",
   SALES:     "Ventas",
-  CUSTOMERS: "Clientes",
+  CUSTOMERS: "Personas",
   FINANCES:  "Finanzas",
   EVENTS:    "Eventos",
   REPORTS:   "Reportes",
@@ -42,7 +42,7 @@ export const MODULE_SUBITEMS: Record<OrgModule, readonly ModuleSubitem[]> = {
     { code: "SUPPLIES",  label: "Suministros" },
   ],
   SALES:     [{ code: "SALES", label: "Ventas" }],
-  CUSTOMERS: [{ code: "CUSTOMERS", label: "Clientes" }],
+  CUSTOMERS: [{ code: "CUSTOMERS", label: "Personas" }],
   FINANCES: [
     { code: "ACCOUNTS",     label: "Cuentas" },
     { code: "TRANSACTIONS", label: "Transacciones" },

@@ -17,10 +17,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!Number.isSafeInteger(id) || id <= 0) return createErrorResponse("Cuenta inválida", 400);
   try {
     const [account] = await sql`
-      SELECT ar.*, c.name AS customer_name,
+      SELECT ar.*, COALESCE(p.name, c.name) AS customer_name,
         COALESCE((SELECT SUM(amount) FROM accounts_receivable_payments WHERE receivable_id = ar.id), 0) AS paid_amount
       FROM accounts_receivable ar
-      JOIN customers c ON c.id = ar.customer_id
+      LEFT JOIN customers c ON c.id = ar.customer_id
+      LEFT JOIN people p ON p.id = ar.person_id
       WHERE ar.id = ${id} AND ar.org_id = ${auth.data.orgId}
     `;
     if (!account) return createErrorResponse("Cuenta por cobrar no encontrada", 404);

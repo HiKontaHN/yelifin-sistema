@@ -82,7 +82,7 @@ export default function CustomerDetailPage({ params }: Props) {
         <Users className="size-12 text-muted-foreground/40" />
         <p className="text-muted-foreground">{error ?? "Cliente no encontrado"}</p>
         <Button variant="outline" asChild>
-          <Link href="/customers">Volver a clientes</Link>
+          <Link href="/customers">Volver a personas</Link>
         </Button>
       </div>
     );

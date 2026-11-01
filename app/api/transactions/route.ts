@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       type, account_id, to_account_id, amount,
       category, description, occurred_at,
       reference_type, reference_id,
-      create_receivable, customer_id, due_date,
+      create_receivable, customer_id, person_id, due_date,
       // Tarjeta de crédito (solo para EXPENSE)
       credit_card_id, currency, exchange_rate,
     } = body;
@@ -128,11 +128,11 @@ export async function POST(request: NextRequest) {
 
     const occurredAt = occurred_at ?? new Date().toISOString();
     const createReceivable = create_receivable === true;
-    const receivableCustomerId = Number(customer_id);
+    const receivablePersonId = Number(person_id);
     if (createReceivable && type !== "EXPENSE")
       return createErrorResponse("Una cuenta por cobrar desde transacciones debe ser un egreso", 400);
-    if (createReceivable && (!Number.isSafeInteger(receivableCustomerId) || receivableCustomerId <= 0))
-      return createErrorResponse("El cliente es requerido para la cuenta por cobrar", 400);
+    if (createReceivable && (!Number.isSafeInteger(receivablePersonId) || receivablePersonId <= 0))
+      return createErrorResponse("La persona es requerida para la cuenta por cobrar", 400);
 
     // ── Egreso con tarjeta de crédito ──────────────────────────────────
     if (isCreditCardExpense) {
@@ -216,11 +216,14 @@ export async function POST(request: NextRequest) {
           return { ok: false as const, error: "Cuenta destino no encontrada", status: 404 as const };
       }
 
+      let receivableCustomerId: number | null = null;
       if (createReceivable) {
-        const [customer] = await tx`
-          SELECT id FROM customers WHERE id = ${receivableCustomerId} AND org_id = ${orgId}
+        const [person] = await tx`
+          SELECT id, source_customer_id FROM people
+          WHERE id = ${receivablePersonId} AND org_id = ${orgId} AND is_active = TRUE
         `;
-        if (!customer) return { ok: false as const, error: "Cliente no encontrado", status: 404 as const };
+        if (!person) return { ok: false as const, error: "Persona no encontrada", status: 404 as const };
+        receivableCustomerId = person.source_customer_id ? Number(person.source_customer_id) : null;
       }
 
       const [transaction] = await tx`
@@ -248,10 +251,10 @@ export async function POST(request: NextRequest) {
       if (createReceivable) {
         const [receivable] = await tx`
           INSERT INTO accounts_receivable (
-            org_id, customer_id, source_type, source_id, description,
+            org_id, customer_id, person_id, source_type, source_id, description,
             original_amount, outstanding_amount, currency, start_date, due_date, created_by
           ) VALUES (
-            ${orgId}, ${receivableCustomerId}, 'PERSONAL_LOAN', ${transaction.id},
+            ${orgId}, ${receivableCustomerId}, ${receivablePersonId}, 'PERSONAL_LOAN', ${transaction.id},
             ${description ?? "Cuenta por cobrar"}, ${amt}, ${amt}, 'HNL', ${occurredAt}::date, ${due_date ?? null}, ${userId}
           ) RETURNING id
         `;

@@ -126,9 +126,9 @@ function CustomersPageInner() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Personas</h1>
           <p className="text-muted-foreground text-sm">
-            {isLoading ? "Cargando..." : `${stats.total_customers} cliente${stats.total_customers !== 1 ? "s" : ""}`}
+            {isLoading ? "Cargando..." : `${stats.total_customers} persona${stats.total_customers !== 1 ? "s" : ""}`}
           </p>
         </div>
        {/* <Button
@@ -144,12 +144,12 @@ function CustomersPageInner() {
 
       {/* Stats */}
       <SummaryStats
-        ariaLabel="Resumen de clientes"
+        ariaLabel="Resumen de personas"
         isLoading={isLoading}
         items={[
-          { label: "Total clientes", icon: Users, value: stats.total_customers, detail: "registrados" },
+          { label: "Total personas", icon: Users, value: stats.total_customers, detail: "registradas" },
           { label: "Total órdenes", icon: ShoppingCart, value: stats.total_orders, detail: "ventas realizadas" },
-          { label: "Total facturado", icon: TrendingUp, value: format(stats.total_spent), detail: "a clientes registrados" },
+          { label: "Total facturado", icon: TrendingUp, value: format(stats.total_spent), detail: "en ventas registradas" },
         ]}
       />
 
@@ -163,9 +163,9 @@ function CustomersPageInner() {
           getRowKey={(customer) => customer.id}
           onRowClick={(customer) => push(`/customers/${customer.id}`)}
           isLoading={isLoading}
-          emptyState="No se encontraron clientes"
-          recordLabel={total === 1 ? "cliente" : "clientes"}
-          ariaLabel="Clientes"
+          emptyState="No se encontraron personas"
+          recordLabel={total === 1 ? "persona" : "personas"}
+          ariaLabel="Personas"
           renderMobileRow={(customer) => {
             const tier = computeLoyaltyTier(customer, policies);
             const tierColors = tier ? (TIER_COLOR_CLASSES[tier.color] ?? TIER_COLOR_CLASSES.amber) : null;

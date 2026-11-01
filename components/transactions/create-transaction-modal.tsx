@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import useSWR from "swr";
 import { useSWRConfig } from "swr";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
@@ -33,7 +34,6 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
-import { useCustomers } from "@/hooks/swr/use-costumers";
 import { CreditCard as CreditCardType } from "@/hooks/swr/use-credit-cards";
 
 type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
@@ -77,9 +77,15 @@ export function CreateTransactionModal({
     toLocalDateInput(new Date()),
   );
   const [createReceivable, setCreateReceivable] = useState(false);
-  const [customerId, setCustomerId] = useState("");
+  const [personId, setPersonId] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const { customers } = useCustomers({ limit: 500 });
+  const { data: peopleData } = useSWR<{ data: any[] }>(open ? "/api/people?limit=500" : null, async (url: string) => {
+    const response = await fetch(url);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error ?? "No se pudieron cargar las personas");
+    return body;
+  });
+  const people = peopleData?.data ?? [];
 
   const showCreditCardOption = type === "EXPENSE" && creditCards.length > 0;
   const isCreditCardMode = showCreditCardOption && sourceMode === "credit_card";
@@ -110,7 +116,7 @@ export function CreateTransactionModal({
     setDescription("");
     setOccurredAt(toLocalDateInput(new Date()));
     setCreateReceivable(false);
-    setCustomerId("");
+    setPersonId("");
     setDueDate("");
   };
 
@@ -145,8 +151,8 @@ export function CreateTransactionModal({
 
     if (createReceivable && type !== "EXPENSE")
       return toast.error("La cuenta por cobrar desde transacciones debe ser un egreso");
-    if (createReceivable && !customerId)
-      return toast.error("Selecciona el cliente de la cuenta por cobrar");
+    if (createReceivable && !personId)
+      return toast.error("Selecciona la persona de la cuenta por cobrar");
 
     if (isCreditCardMode) {
       if (!creditCardId) return toast.error("Selecciona una tarjeta de crédito");
@@ -173,7 +179,7 @@ export function CreateTransactionModal({
         description: description || undefined,
         occurred_at: localDateToISO(occurredAt),
         create_receivable: createReceivable,
-        customer_id: createReceivable ? Number(customerId) : undefined,
+        person_id: createReceivable ? Number(personId) : undefined,
         due_date: createReceivable && dueDate ? dueDate : undefined,
       } as any);
 
@@ -229,7 +235,7 @@ export function CreateTransactionModal({
                   <button
                     key={t}
                     type="button"
-                    onClick={() => { setType(t); if (t !== "EXPENSE") { setCreateReceivable(false); setCustomerId(""); setDueDate(""); } }}
+                  onClick={() => { setType(t); if (t !== "EXPENSE") { setCreateReceivable(false); setPersonId(""); setDueDate(""); } }}
                     className={cn(
                       "flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-all duration-200",
                       type === t
@@ -416,7 +422,7 @@ export function CreateTransactionModal({
                 Cuenta por cobrar
               </label>
               {createReceivable && <>
-                <div className="space-y-1.5"><Label>Cliente <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={customerId} onValueChange={setCustomerId} items={customers.map((customer) => ({ value: String(customer.id), label: customer.name }))} placeholder="Seleccionar cliente..." searchPlaceholder="Buscar cliente..." className="h-11 w-full" /></div>
+                <div className="space-y-1.5"><Label>Persona <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={personId} onValueChange={setPersonId} items={people.map((person) => ({ value: String(person.id), label: `${person.name}${person.roles?.length ? ` · ${person.roles.map((role: string) => ({ CLIENT: "Cliente", SUPPLIER: "Proveedor", THIRD_PARTY: "Tercero", CONTACT: "Contacto" } as Record<string, string>)[role] ?? role).join(", ")}` : ""}` }))} placeholder="Seleccionar persona..." searchPlaceholder="Buscar persona..." className="h-11 w-full" /></div>
                 <div className="space-y-1.5"><Label>Fecha de vencimiento <span className="text-xs text-muted-foreground">(opcional)</span></Label><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="h-11" /></div>
               </>}
             </div>

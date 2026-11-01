@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const search = searchParams.get("search")?.trim() || null;
+    const activeOnly = searchParams.get("active_only") === "true";
     const page   = Math.max(1, Number(searchParams.get("page"))  || 1);
     const limit  = Math.min(500, Math.max(1, Number(searchParams.get("limit")) || 25));
     const offset = (page - 1) * limit;
@@ -30,6 +31,13 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(total_orders), 0)::int            AS total_orders
       FROM customers
       WHERE org_id = ${orgId}
+        AND (
+          ${activeOnly} = FALSE OR NOT EXISTS (
+            SELECT 1 FROM people p
+            WHERE p.source_customer_id = customers.id
+              AND p.is_active = FALSE
+          )
+        )
     `;
 
     // ── Count para paginación ─────────────────────────────────────────
@@ -37,6 +45,13 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*)::int AS count
       FROM customers
       WHERE org_id = ${orgId}
+        AND (
+          ${activeOnly} = FALSE OR NOT EXISTS (
+            SELECT 1 FROM people p
+            WHERE p.source_customer_id = customers.id
+              AND p.is_active = FALSE
+          )
+        )
         AND (
           ${search}::text IS NULL OR
           name  ILIKE ${'%' + (search ?? '') + '%'} OR
@@ -55,6 +70,13 @@ export async function GET(request: NextRequest) {
         phone, email, notes, total_orders, total_spent, created_at
       FROM customers
       WHERE org_id = ${orgId}
+        AND (
+          ${activeOnly} = FALSE OR NOT EXISTS (
+            SELECT 1 FROM people p
+            WHERE p.source_customer_id = customers.id
+              AND p.is_active = FALSE
+          )
+        )
         AND (
           ${search}::text IS NULL OR
           name  ILIKE ${'%' + (search ?? '') + '%'} OR
