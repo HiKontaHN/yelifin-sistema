@@ -71,7 +71,7 @@ export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = t
                     <div className="min-w-0">
                       <p className="font-mono text-sm font-medium">{sale.sale_number}</p>
                       <p className="text-xs text-muted-foreground truncate" suppressHydrationWarning>
-                        {sale.customer_name ?? "Anónimo"} · {formatDateFull(sale.sold_at)}
+                        {sale.customer_name ?? "Consumidor Final"} · {formatDateFull(sale.sold_at)}
                       </p>
                     </div>
                     <div className="text-right shrink-0 ml-3">

@@ -321,7 +321,7 @@ export default function SaleDetailPage({ params }: Props) {
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Cliente</p>
-              <p className="font-medium text-sm truncate">{sale.customer_name ?? "Anónimo"}</p>
+              <p className="font-medium text-sm truncate">{sale.customer_name ?? "Consumidor Final"}</p>
             </div>
           </CardContent>
         </Card>

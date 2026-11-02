@@ -14,7 +14,7 @@ const slides = [
   },
   {
     title: "Registra tus clientes",
-    subtitle: "o usa uno anónimo",
+    subtitle: "o registra como consumidor final",
     gradient: "bg-[linear-gradient(145deg,#a85df5_0%,#b77af7_52%,#f3e7ff_100%)]",
     art: "customers",
     trigger: "Ver demo",

@@ -159,7 +159,7 @@ export default function InvoicePage({ params }: Props) {
                 Cliente
               </p>
               <p className="text-sm font-semibold text-gray-900">
-                {sale.customer_name ?? "Cliente general"}
+                {sale.customer_name ?? "Consumidor Final"}
               </p>
               {sale.customer_phone && (
                 <p className="text-sm text-gray-500 mt-0.5">{sale.customer_phone}</p>

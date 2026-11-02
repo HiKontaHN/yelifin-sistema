@@ -379,7 +379,7 @@ export default function SalesPage() {
     },
     {
       id: "customer", header: "Cliente", width: "clamp(6rem, 12vw, 9rem)",
-      cell: (sale) => <span className={`block whitespace-normal break-words leading-snug ${sale.customer_name ? "" : "text-muted-foreground"}`} title={sale.customer_name ?? "Anónimo"}>{sale.customer_name ?? "Anónimo"}</span>,
+      cell: (sale) => <span className={`block whitespace-normal break-words leading-snug ${sale.customer_name ? "" : "text-muted-foreground"}`} title={sale.customer_name ?? "Consumidor Final"}>{sale.customer_name ?? "Consumidor Final"}</span>,
     },
     {
       id: "status", header: "Estado", width: "clamp(7rem, 11vw, 8.5rem)",
@@ -479,7 +479,7 @@ export default function SalesPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">
-                {sale.customer_name ?? "Anónimo"}
+                {sale.customer_name ?? "Consumidor Final"}
               </p>
             </div>
             {isPending ? (

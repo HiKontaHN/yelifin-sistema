@@ -126,8 +126,8 @@ export function SaleOptionsPanel({
                 value: c.id.toString(),
                 label: c.name
               }))}
-              defaultOption={{ value: "anonymous", label: "Venta anónima" }}
-              placeholder="Venta anónima"
+              defaultOption={{ value: "anonymous", label: "Consumidor Final" }}
+              placeholder="Consumidor Final"
               searchPlaceholder="Buscar cliente..."
               className="h-8 text-sm w-full"
             />
@@ -137,7 +137,7 @@ export function SaleOptionsPanel({
             <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 space-y-2">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
                 <Checkbox checked={isCreditSale} onCheckedChange={(checked) => onCreditSaleChange(checked === true)} />
-                Venta a crédito / con abonos
+                Venta en pagos
               </label>
               {isCreditSale && (
                 <div className="space-y-1.5">

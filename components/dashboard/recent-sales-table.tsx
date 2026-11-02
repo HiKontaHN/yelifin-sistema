@@ -68,7 +68,7 @@ export function RecentSalesTable({ recentSales, isLoading, showProfit = true }: 
                 return (
                   <TableRow key={sale.id} className="cursor-pointer hover:bg-muted/50" onClick={() => push(`/sales/${sale.id}`)}>
                     <TableCell className="font-mono font-medium">{sale.sale_number}</TableCell>
-                    <TableCell>{sale.customer_name ?? <span className="text-muted-foreground">Anónimo</span>}</TableCell>
+                    <TableCell>{sale.customer_name ?? <span className="text-muted-foreground">Consumidor Final</span>}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="gap-1">
                         <PayIcon className="size-3" />{pay.label}

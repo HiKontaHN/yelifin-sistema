@@ -295,7 +295,7 @@ export default function EventDetailPage({ params }: Props) {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {sale.customer_name ?? "Anónimo"} · {formatDate(sale.sold_at)}
+                        {sale.customer_name ?? "Consumidor Final"} · {formatDate(sale.sold_at)}
                       </p>
                     </div>
                     <div className="text-right shrink-0">

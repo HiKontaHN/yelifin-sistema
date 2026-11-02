@@ -115,10 +115,10 @@ export function EditSaleOptionsPanel({
                         }
                     >
                         <SelectTrigger className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Venta anónima" />
+                            <SelectValue placeholder="Consumidor Final" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="none">Venta anónima</SelectItem>
+                            <SelectItem value="none">Consumidor Final</SelectItem>
                             {customers.map((c: any) => (
                                 <SelectItem key={c.id} value={String(c.id)}>
                                     {c.name}
