@@ -39,7 +39,6 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const [viewMode, setViewMode] = useState<ViewMode>("accounts");
-  const [selectedOwner, setSelectedOwner] = useState<OwnerSummary | null>(null);
   const [message, setMessage] = useState("");
   const [target, setTarget] = useState<PaymentTarget>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -224,6 +223,9 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   }), { total: 0, paid: 0, balance: 0 }), [rows, tab]);
   const displayedRows = viewMode === "accounts" ? rows : ownerRows;
   const pagedRows = displayedRows.slice((page - 1) * pageSize, page * pageSize);
+  const ownerDetailPath = (owner: OwnerSummary) => tab === "receivable"
+    ? `/finances/receivables-payables/cobrar/persona/${owner.id}`
+    : `/finances/receivables-payables/pagar/entidad/${owner.id.replace(/^entity-/, "")}`;
   const statusBadge = (row: any) => row.status === "PAID"
     ? <Badge className="gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge>
     : <Badge className="gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />Pendiente</Badge>;
@@ -288,7 +290,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   );
 
   const renderMobileOwner = (owner: OwnerSummary) => (
-    <Card className="cursor-pointer pt-1 pb-1" onClick={() => setSelectedOwner(owner)}>
+    <Card className="cursor-pointer pt-1 pb-1" onClick={() => router.push(ownerDetailPath(owner))}>
       <CardContent className="px-4 py-3">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} en historial · {owner.active} pendiente{owner.active === 1 ? "" : "s"}</p></div><p className="shrink-0 font-semibold text-amber-700">{format(owner.balance)}</p></div>
         <div className="mt-3 text-xs text-muted-foreground"><span>Total {format(owner.total)}</span><span className="ml-3 text-green-700">{tab === "receivable" ? "Cobrado" : "Pagado"} {format(owner.paid)}</span></div>
@@ -331,7 +333,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         data={pagedRows}
         getRowKey={(row: any) => row.id}
         renderMobileRow={viewMode === "accounts" ? renderMobileAccount : renderMobileOwner}
-        onRowClick={(row: any) => viewMode === "accounts" ? router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`) : setSelectedOwner(row)}
+        onRowClick={(row: any) => viewMode === "accounts" ? router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`) : router.push(ownerDetailPath(row))}
         isLoading={isLoadingRows}
         emptyState={viewMode === "accounts" ? `No hay cuentas ${tab === "receivable" ? "por cobrar" : "por pagar"} registradas` : `No hay ${tab === "receivable" ? "personas" : "entidades"} con historial`}
         recordLabel={viewMode === "accounts" ? (tab === "receivable" ? "cuentas por cobrar" : "cuentas por pagar") : (tab === "receivable" ? "personas" : "entidades")}
@@ -404,23 +406,6 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         <div className="space-y-1.5"><Label>Monto <span className="text-destructive text-xs">*</span></Label><Input type="number" min="0.01" max={target?.type === "payable" && paymentType === "CAPITAL" ? target.principalBalance : target?.balance} step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="h-11" /></div>
         <div className="space-y-1.5"><Label>Cuenta financiera <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={paymentAccount} onValueChange={setPaymentAccount} items={accounts.map((a: any) => ({ value: a.id.toString(), label: a.name }))} placeholder="Seleccionar..." searchPlaceholder="Buscar cuenta..." className="h-11 w-full" /></div>
         {target && <p className="text-sm text-muted-foreground">{target.type === "payable" && paymentType === "CAPITAL" ? <>Capital pendiente: <strong>{format(target.principalBalance ?? 0)}</strong></> : <>Saldo pendiente: <strong>{format(target.balance)}</strong></>}</p>}
-      </ResponsiveModal>
-
-      <ResponsiveModal open={Boolean(selectedOwner)} onOpenChange={(open) => { if (!open) setSelectedOwner(null); }} title={selectedOwner?.name ?? "Detalle"} width="wide">
-        {selectedOwner && <div className="space-y-4">
-          <SummaryStats ariaLabel={`Resumen de ${selectedOwner.name}`} columns="three" compact items={[
-            { label: "Total", icon: tab === "receivable" ? ArrowDownToLine : ArrowUpFromLine, value: format(selectedOwner.total) },
-            { label: tab === "receivable" ? "Cobrado" : "Pagado", icon: CheckCircle, value: format(selectedOwner.paid), valueClassName: "text-green-600" },
-            { label: "Saldo", icon: Clock, value: format(selectedOwner.balance), valueClassName: "text-amber-600" },
-          ]} />
-          <div><h3 className="text-sm font-semibold">Historial de cuentas</h3><p className="text-xs text-muted-foreground">Incluye cuentas pendientes y pagadas.</p></div>
-          <div className="divide-y rounded-xl border">
-            {selectedOwner.accounts.map((account: any) => <button key={account.id} type="button" onClick={() => router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${account.id}`)} className="flex w-full items-center gap-3 p-3 text-left transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-muted/50">
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-medium">{account.description}</p>{statusBadge(account)}</div><p className="mt-1 text-xs text-muted-foreground">{account.due_date ? `Vence ${new Date(`${account.due_date}T12:00:00`).toLocaleDateString("es-HN")}` : "Sin fecha de vencimiento"}</p></div>
-              <div className="shrink-0 text-right"><p className="text-sm font-semibold text-amber-700">{format(getBalance(account))}</p><p className="text-xs text-muted-foreground">de {format(getTotal(account))}</p></div>
-            </button>)}
-          </div>
-        </div>}
       </ResponsiveModal>
 
     </div>
