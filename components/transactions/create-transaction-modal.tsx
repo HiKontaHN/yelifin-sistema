@@ -125,7 +125,7 @@ export function CreateTransactionModal({
     onOpenChange(false);
   };
 
-  const revalidateAffectedData = (includesCreditCard: boolean) => {
+  const revalidateAffectedData = (includesCreditCard: boolean, includesReceivable: boolean) => {
     const prefixes = [
       "/api/transactions",
       "/api/accounts",
@@ -134,6 +134,7 @@ export function CreateTransactionModal({
       ...(includesCreditCard
         ? ["/api/credit-cards", "/api/credit-card-transactions"]
         : []),
+      ...(includesReceivable ? ["/api/accounts-receivable"] : []),
     ];
 
     return mutate(
@@ -183,8 +184,8 @@ export function CreateTransactionModal({
         due_date: createReceivable && dueDate ? dueDate : undefined,
       } as any);
 
-      toast.success("Transacción registrada exitosamente");
-      await revalidateAffectedData(isCreditCardMode);
+      toast.success(createReceivable ? "Transacción y cuenta por cobrar registradas" : "Transacción registrada exitosamente");
+      await revalidateAffectedData(isCreditCardMode, createReceivable);
       handleClose();
     } catch (error: any) {
       toast.error(error.message || "Error al registrar");

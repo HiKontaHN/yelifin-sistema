@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   const role = request.nextUrl.searchParams.get("role")?.toUpperCase() || null;
   const search = request.nextUrl.searchParams.get("search")?.trim() || null;
   const page = Math.max(1, Number(request.nextUrl.searchParams.get("page")) || 1);
-  const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get("limit")) || 10));
+  const limit = Math.min(500, Math.max(1, Number(request.nextUrl.searchParams.get("limit")) || 10));
   const offset = (page - 1) * limit;
   if (role && !ROLES.includes(role as any)) return createErrorResponse("Rol inválido", 400);
   try {

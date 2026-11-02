@@ -146,6 +146,18 @@ export async function POST(request: NextRequest) {
       const amountLocal = isUsd ? amt * Number(rateNum) : amt;
 
       const result = await withTransaction(async (tx) => {
+        let receivablePerson: { id: number; source_customer_id: number | null; currency: string } | null = null;
+        if (createReceivable) {
+          const [person] = await tx<{ id: number; source_customer_id: number | null; currency: string }>`
+            SELECT p.id, p.source_customer_id, o.currency
+            FROM people p
+            JOIN organizations o ON o.id = p.org_id
+            WHERE p.id = ${receivablePersonId} AND p.org_id = ${orgId} AND p.is_active = TRUE
+          `;
+          if (!person) return { ok: false as const, error: "Persona no encontrada", status: 404 as const };
+          receivablePerson = person;
+        }
+
         const [card] = await tx`
           SELECT id FROM credit_cards
           WHERE id = ${cardId} AND org_id = ${orgId} AND is_active = TRUE
@@ -173,13 +185,27 @@ export async function POST(request: NextRequest) {
           await tx`UPDATE credit_cards SET balance = balance + ${amt}, updated_at = NOW(), updated_by = ${userId} WHERE id = ${cardId} AND org_id = ${orgId}`;
         }
 
-        return { ok: true as const, id: Number(ccTxn.id) };
+        if (receivablePerson) {
+          const [receivable] = await tx`
+            INSERT INTO accounts_receivable (
+              org_id, customer_id, person_id, source_type, source_id, description,
+              original_amount, outstanding_amount, currency, start_date, due_date, created_by
+            ) VALUES (
+              ${orgId}, ${receivablePerson.source_customer_id}, ${receivablePerson.id}, 'CREDIT_CARD_TRANSACTION', ${ccTxn.id},
+              ${description ?? "Cuenta por cobrar"}, ${amountLocal}, ${amountLocal}, ${receivablePerson.currency},
+              ${occurredAt}::date, ${due_date ?? null}, ${userId}
+            ) RETURNING id
+          `;
+          return { ok: true as const, id: Number(ccTxn.id), receivableId: Number(receivable.id) };
+        }
+
+        return { ok: true as const, id: Number(ccTxn.id), receivableId: null };
       });
 
       if (!result.ok) return createErrorResponse(result.error, result.status);
 
       return Response.json(
-        { message: "Cargo a tarjeta registrado", data: { id: result.id } },
+        { message: "Cargo a tarjeta registrado", data: { id: result.id, receivableId: result.receivableId } },
         { status: 201 }
       );
     }

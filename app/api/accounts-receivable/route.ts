@@ -50,9 +50,11 @@ export async function POST(request: NextRequest) {
     if ((!Number.isSafeInteger(customerId) || Number(customerId) <= 0) && (!Number.isSafeInteger(personId) || Number(personId) <= 0) || !Number.isFinite(amount) || amount <= 0) {
       return createErrorResponse("Persona y monto son requeridos", 400);
     }
+    let resolvedCustomerId = customerId;
     if (personId) {
-      const [person] = await sql`SELECT id FROM people WHERE id = ${personId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
+      const [person] = await sql`SELECT id, source_customer_id FROM people WHERE id = ${personId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
       if (!person) return createErrorResponse("Persona no encontrada", 404);
+      resolvedCustomerId = person.source_customer_id ? Number(person.source_customer_id) : null;
     } else {
       const [customer] = await sql`SELECT id FROM customers WHERE id = ${customerId ?? 0} AND org_id = ${checked.auth.data.orgId}`;
       if (!customer) return createErrorResponse("Cliente no encontrado", 404);
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
         org_id, customer_id, person_id, source_type, description, original_amount, outstanding_amount,
         currency, interest_rate, start_date, due_date, notes, created_by
       ) VALUES (
-        ${checked.auth.data.orgId}, ${customerId}, ${personId}, ${body.source_type ?? "OTHER"},
+        ${checked.auth.data.orgId}, ${resolvedCustomerId}, ${personId}, ${body.source_type ?? "OTHER"},
         ${String(body.description ?? "Cuenta por cobrar").trim()}, ${amount}, ${amount},
         ${body.currency ?? "HNL"}, ${body.interest_rate ?? null}, ${body.start_date ?? new Date().toISOString().slice(0, 10)},
         ${body.due_date ?? null}, ${body.notes ?? null}, ${checked.auth.data.userId}

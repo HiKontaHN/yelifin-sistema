@@ -16,7 +16,6 @@ import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { useAccounts } from "@/hooks/swr/use-accounts";
-import { useCustomers } from "@/hooks/swr/use-costumers";
 import { useCurrency } from "@/hooks/swr/use-currency";
 
 const fetcher = async (url: string) => {
@@ -45,7 +44,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const [isPaying, setIsPaying] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [customerId, setCustomerId] = useState("");
+  const [personId, setPersonId] = useState("");
   const [entityId, setEntityId] = useState("");
   const [accountType, setAccountType] = useState("SUPPLIER_CREDIT");
   const [originalAmount, setOriginalAmount] = useState("");
@@ -63,8 +62,8 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const receivables = useSWR<{ data: any[] }>("/api/accounts-receivable", fetcher);
   const payables = useSWR<{ data: any[] }>("/api/accounts-payable", fetcher);
   const entities = useSWR<{ data: any[] }>("/api/financial-entities", fetcher);
+  const people = useSWR<{ data: any[] }>(createOpen && tab === "receivable" ? "/api/people?limit=500" : null, fetcher);
   const { accounts } = useAccounts();
-  const { customers } = useCustomers({ limit: 500 });
   const { format } = useCurrency();
 
   const paymentPlan = useMemo(() => {
@@ -97,7 +96,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   };
 
   const resetCreateForm = () => {
-    setCustomerId("");
+    setPersonId("");
     setEntityId("");
     setAccountType("SUPPLIER_CREDIT");
     setOriginalAmount("");
@@ -132,7 +131,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     const data = new FormData(event.currentTarget);
     try {
       await submit(tab === "receivable" ? "/api/accounts-receivable" : "/api/accounts-payable", {
-        customer_id: tab === "receivable" ? Number(customerId) : undefined,
+        person_id: tab === "receivable" ? Number(personId) : undefined,
         entity_id: tab === "payable" ? Number(entityId) : undefined,
         source_type: tab === "receivable" ? "OTHER" : undefined,
         account_type: tab === "payable" ? accountType : undefined,
@@ -190,7 +189,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   };
 
   const rows = tab === "receivable" ? (receivables.data?.data ?? []) : (payables.data?.data ?? []);
-  const selectedId = tab === "receivable" ? customerId : entityId;
+  const selectedId = tab === "receivable" ? personId : entityId;
   const isLoadingRows = tab === "receivable" ? receivables.isLoading : payables.isLoading;
   const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
   const getName = (row: any) => tab === "receivable" ? row.customer_name : row.entity_name;
@@ -202,7 +201,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
 
   const accountColumns: DataTableTimeSectionColumn<any>[] = [
     {
-      id: "name", header: tab === "receivable" ? "Cliente" : "Entidad", width: "clamp(10rem, 18vw, 15rem)",
+      id: "name", header: tab === "receivable" ? "Persona" : "Entidad", width: "clamp(10rem, 18vw, 15rem)",
       cell: (row) => <span className="block truncate font-medium" title={getName(row)}>{getName(row)}</span>,
     },
     {
@@ -255,7 +254,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     <div className="space-y-6 p-4 pb-24 md:p-6 md:pb-6">
       <div>
         <h1 className="text-2xl font-semibold">Cobros y pagos</h1>
-        <p className="text-sm text-muted-foreground">Controla lo que tus clientes deben y las obligaciones de tu negocio.</p>
+        <p className="text-sm text-muted-foreground">Controla lo que otras personas deben y las obligaciones de tu negocio.</p>
       </div>
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
@@ -293,8 +292,20 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         footer={<><Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={isCreating} className="flex-1 h-11">Cancelar</Button><Button type="submit" form="create-receivable-payable-form" disabled={!selectedId || (tab === "payable" && autoPaymentEnabled && (!autoPaymentAccount || !autoPaymentDay))} loading={isCreating} className="flex-1 h-11">Registrar cuenta</Button></>}
       >
         <div className="space-y-1.5">
-          <Label>{tab === "receivable" ? "Cliente" : "Entidad"} <span className="text-destructive text-xs">*</span></Label>
-          <SearchableSelect value={selectedId} onValueChange={tab === "receivable" ? setCustomerId : setEntityId} items={(tab === "receivable" ? customers : (entities.data?.data ?? [])).map((item: any) => ({ value: item.id.toString(), label: item.name ?? item.entity_name }))} placeholder="Seleccionar..." searchPlaceholder={tab === "receivable" ? "Buscar cliente..." : "Buscar entidad..."} className="h-11 w-full" />
+          <Label>{tab === "receivable" ? "Persona" : "Entidad"} <span className="text-destructive text-xs">*</span></Label>
+          <SearchableSelect
+            value={selectedId}
+            onValueChange={tab === "receivable" ? setPersonId : setEntityId}
+            items={(tab === "receivable" ? (people.data?.data ?? []) : (entities.data?.data ?? [])).map((item: any) => ({
+              value: item.id.toString(),
+              label: tab === "receivable"
+                ? `${item.name}${item.roles?.length ? ` · ${item.roles.map((role: string) => ({ CLIENT: "Cliente", SUPPLIER: "Proveedor", THIRD_PARTY: "Tercero", CONTACT: "Contacto" } as Record<string, string>)[role] ?? role).join(", ")}` : ""}`
+                : item.name ?? item.entity_name,
+            }))}
+            placeholder={tab === "receivable" ? "Seleccionar persona..." : "Seleccionar entidad..."}
+            searchPlaceholder={tab === "receivable" ? "Buscar persona..." : "Buscar entidad..."}
+            className="h-11 w-full"
+          />
         </div>
         {tab === "payable" && <div className="space-y-1.5"><Label>Tipo</Label><SearchableSelect value={accountType} onValueChange={setAccountType} items={[{ value: "SUPPLIER_CREDIT", label: "Crédito de proveedor" }, { value: "BANK_LOAN", label: "Préstamo bancario" }, { value: "CREDIT_CARD", label: "Tarjeta de crédito" }, { value: "PERSONAL_LOAN", label: "Préstamo personal" }, { value: "OTHER", label: "Otro" }]} placeholder="Seleccionar tipo..." searchPlaceholder="Buscar tipo..." className="h-11 w-full" /></div>}
         <div className="space-y-1.5"><Label>Descripción <span className="text-destructive text-xs">*</span></Label><Input name="description" placeholder="Ej: Venta a crédito" required className="h-11" /></div>
