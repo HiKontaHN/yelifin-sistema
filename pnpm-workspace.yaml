@@ -1,5 +1,6 @@
 allowBuilds:
   '@firebase/util': true
+  '@parcel/watcher': false
   core-js: true
   protobufjs: true
   sharp: true

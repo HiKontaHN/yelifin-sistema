@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ArrowDownToLine, ArrowUpFromLine, CheckCircle, Clock } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Building2, CheckCircle, Clock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import { Fab } from "@/components/ui/fab";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
+import { SummaryStats } from "@/components/shared/summary-stats";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 
@@ -26,7 +28,9 @@ const fetcher = async (url: string) => {
 };
 
 type AccountTab = "receivable" | "payable";
+type ViewMode = "accounts" | "owners";
 type PaymentTarget = { type: AccountTab; id: number; balance: number; principalBalance?: number } | null;
+type OwnerSummary = { id: string; name: string; accounts: any[]; total: number; paid: number; balance: number; active: number };
 
 
 export default function ReceivablesPayablesPage({ initialTab = "receivable" }: { initialTab?: AccountTab }) {
@@ -34,6 +38,8 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<AccountTab>(initialTab);
+  const [viewMode, setViewMode] = useState<ViewMode>("accounts");
+  const [selectedOwner, setSelectedOwner] = useState<OwnerSummary | null>(null);
   const [message, setMessage] = useState("");
   const [target, setTarget] = useState<PaymentTarget>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -122,7 +128,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     router.replace(pathname);
   }, [newAccountType, pathname, router]);
 
-  useEffect(() => setPage(1), [tab]);
+  useEffect(() => setPage(1), [tab, viewMode]);
 
   const createAccount = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -191,10 +197,33 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const rows = tab === "receivable" ? (receivables.data?.data ?? []) : (payables.data?.data ?? []);
   const selectedId = tab === "receivable" ? personId : entityId;
   const isLoadingRows = tab === "receivable" ? receivables.isLoading : payables.isLoading;
-  const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
   const getName = (row: any) => tab === "receivable" ? row.customer_name : row.entity_name;
   const getPaid = (row: any) => Number(row.paid_amount ?? 0);
   const getBalance = (row: any) => Number(row.outstanding_amount ?? 0);
+  const getTotal = (row: any) => getPaid(row) + getBalance(row);
+  const ownerRows = useMemo<OwnerSummary[]>(() => {
+    const grouped = new Map<string, OwnerSummary>();
+    rows.forEach((row: any) => {
+      const ownerId = tab === "receivable"
+        ? row.customer_id ? `customer-${row.customer_id}` : `person-${row.person_id}`
+        : `entity-${row.entity_id}`;
+      const current: OwnerSummary = grouped.get(ownerId) ?? { id: ownerId, name: getName(row) || "Sin nombre", accounts: [], total: 0, paid: 0, balance: 0, active: 0 };
+      current.accounts.push(row);
+      current.total += getTotal(row);
+      current.paid += getPaid(row);
+      current.balance += getBalance(row);
+      if (getBalance(row) > 0) current.active += 1;
+      grouped.set(ownerId, current);
+    });
+    return Array.from(grouped.values()).sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name, "es"));
+  }, [rows, tab]);
+  const totals = useMemo(() => rows.reduce((result, row) => ({
+    total: result.total + getTotal(row),
+    paid: result.paid + getPaid(row),
+    balance: result.balance + getBalance(row),
+  }), { total: 0, paid: 0, balance: 0 }), [rows, tab]);
+  const displayedRows = viewMode === "accounts" ? rows : ownerRows;
+  const pagedRows = displayedRows.slice((page - 1) * pageSize, page * pageSize);
   const statusBadge = (row: any) => row.status === "PAID"
     ? <Badge className="gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge>
     : <Badge className="gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />Pendiente</Badge>;
@@ -211,7 +240,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     { id: "status", header: "Estado", width: 125, cell: statusBadge },
     {
       id: "total", header: "Total", width: 110, align: "right", className: "font-medium",
-      cell: (row) => format(Number(row.original_amount ?? row.total_payable ?? 0)),
+      cell: (row) => format(getTotal(row)),
     },
     {
       id: "paid", header: "Pagado", width: 110, align: "right", className: "font-medium text-green-700",
@@ -229,6 +258,14 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     },
   ];
 
+  const ownerColumns: DataTableTimeSectionColumn<OwnerSummary>[] = [
+    { id: "name", header: tab === "receivable" ? "Persona" : "Entidad", width: "clamp(12rem, 28vw, 22rem)", cell: (owner) => <div><p className="font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} cuenta{owner.accounts.length === 1 ? "" : "s"} en el historial</p></div> },
+    { id: "accounts", header: "Pendientes", width: 105, align: "right", cell: (owner) => owner.active },
+    { id: "total", header: "Total", width: 120, align: "right", className: "font-medium", cell: (owner) => format(owner.total) },
+    { id: "paid", header: tab === "receivable" ? "Cobrado" : "Pagado", width: 120, align: "right", className: "font-medium text-green-700", cell: (owner) => format(owner.paid) },
+    { id: "balance", header: "Saldo", width: 120, align: "right", className: "font-semibold text-amber-700", cell: (owner) => format(owner.balance) },
+  ];
+
   const renderMobileAccount = (row: any) => (
     <Card className="cursor-pointer pt-1 pb-1" onClick={() => router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`)}>
       <CardContent className="px-4 py-3">
@@ -243,9 +280,18 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
           <p className="shrink-0 font-semibold">{format(getBalance(row))}</p>
         </div>
         <div className="mt-3 flex items-end justify-between gap-3 text-xs text-muted-foreground">
-          <div><span>Total {format(Number(row.original_amount ?? row.total_payable ?? 0))}</span><span className="ml-3 text-green-700">Pagado {format(getPaid(row))}</span></div>
+          <div><span>Total {format(getTotal(row))}</span><span className="ml-3 text-green-700">Pagado {format(getPaid(row))}</span></div>
           {getBalance(row) > 0 && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setTarget({ type: tab, id: row.id, balance: getBalance(row), principalBalance: Number(row.principal_outstanding ?? row.original_amount ?? 0) }); }}>Registrar {tab === "receivable" ? "cobro" : "pago"}</Button>}
         </div>
+      </CardContent>
+    </Card>
+  );
+
+  const renderMobileOwner = (owner: OwnerSummary) => (
+    <Card className="cursor-pointer pt-1 pb-1" onClick={() => setSelectedOwner(owner)}>
+      <CardContent className="px-4 py-3">
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} en historial · {owner.active} pendiente{owner.active === 1 ? "" : "s"}</p></div><p className="shrink-0 font-semibold text-amber-700">{format(owner.balance)}</p></div>
+        <div className="mt-3 text-xs text-muted-foreground"><span>Total {format(owner.total)}</span><span className="ml-3 text-green-700">{tab === "receivable" ? "Cobrado" : "Pagado"} {format(owner.paid)}</span></div>
       </CardContent>
     </Card>
   );
@@ -259,21 +305,42 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-      <DataTableTimeSection
-        columns={accountColumns}
-        data={pagedRows}
-        getRowKey={(row) => row.id}
-        renderMobileRow={renderMobileAccount}
-        onRowClick={(row) => router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`)}
+      <SummaryStats
+        ariaLabel={tab === "receivable" ? "Resumen de cuentas por cobrar" : "Resumen de cuentas por pagar"}
         isLoading={isLoadingRows}
-        emptyState={`No hay cuentas ${tab === "receivable" ? "por cobrar" : "por pagar"} registradas`}
-        recordLabel={tab === "receivable" ? "cuentas por cobrar" : "cuentas por pagar"}
-        ariaLabel={tab === "receivable" ? "Cuentas por cobrar" : "Cuentas por pagar"}
+        items={[
+          { label: tab === "receivable" ? "Total por cobrar" : "Total por pagar", icon: tab === "receivable" ? ArrowDownToLine : ArrowUpFromLine, value: format(totals.total), detail: `${rows.length} cuenta${rows.length === 1 ? "" : "s"} en el historial` },
+          { label: tab === "receivable" ? "Cobrado" : "Pagado", icon: CheckCircle, value: format(totals.paid), valueClassName: "text-green-600 dark:text-green-400", detail: "pagos registrados" },
+          { label: "Saldo pendiente", icon: Clock, value: format(totals.balance), valueClassName: "text-amber-600 dark:text-amber-400", detail: `${rows.filter((row: any) => getBalance(row) > 0).length} cuenta${rows.filter((row: any) => getBalance(row) > 0).length === 1 ? "" : "s"} pendiente${rows.filter((row: any) => getBalance(row) > 0).length === 1 ? "" : "s"}` },
+          { label: tab === "receivable" ? "Personas" : "Entidades", icon: tab === "receivable" ? Users : Building2, value: ownerRows.length, detail: "con cuentas actuales o históricas" },
+        ]}
+      />
+
+      <div className="flex items-center justify-between gap-3">
+        <div><p className="text-sm font-semibold">{viewMode === "accounts" ? "Todas las cuentas" : tab === "receivable" ? "Por persona" : "Por entidad"}</p><p className="text-xs text-muted-foreground">{viewMode === "accounts" ? "Consulta cada cuenta por separado." : "Consulta el historial completo de cada responsable."}</p></div>
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
+          <TabsList className="rounded-xl border bg-card">
+            <TabsTrigger value="accounts" className="rounded-lg">Cuentas</TabsTrigger>
+            <TabsTrigger value="owners" className="rounded-lg">{tab === "receivable" ? "Personas" : "Entidades"}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      <DataTableTimeSection
+        columns={viewMode === "accounts" ? accountColumns : ownerColumns}
+        data={pagedRows}
+        getRowKey={(row: any) => row.id}
+        renderMobileRow={viewMode === "accounts" ? renderMobileAccount : renderMobileOwner}
+        onRowClick={(row: any) => viewMode === "accounts" ? router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`) : setSelectedOwner(row)}
+        isLoading={isLoadingRows}
+        emptyState={viewMode === "accounts" ? `No hay cuentas ${tab === "receivable" ? "por cobrar" : "por pagar"} registradas` : `No hay ${tab === "receivable" ? "personas" : "entidades"} con historial`}
+        recordLabel={viewMode === "accounts" ? (tab === "receivable" ? "cuentas por cobrar" : "cuentas por pagar") : (tab === "receivable" ? "personas" : "entidades")}
+        ariaLabel={viewMode === "accounts" ? (tab === "receivable" ? "Cuentas por cobrar" : "Cuentas por pagar") : (tab === "receivable" ? "Personas con cuentas por cobrar" : "Entidades con cuentas por pagar")}
         minWidth={900}
         stickyOffset="var(--data-table-sticky-offset)"
         className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
         showFooterPagination={false}
-        pagination={{ page, pageSize, total: rows.length, onPageChange: setPage, onPageSizeChange: (size) => { setPage(1); setPageSize(size); } }}
+        pagination={{ page, pageSize, total: displayedRows.length, onPageChange: setPage, onPageSizeChange: (size) => { setPage(1); setPageSize(size); } }}
       />
 
       <Fab actions={[
@@ -337,6 +404,23 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         <div className="space-y-1.5"><Label>Monto <span className="text-destructive text-xs">*</span></Label><Input type="number" min="0.01" max={target?.type === "payable" && paymentType === "CAPITAL" ? target.principalBalance : target?.balance} step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="h-11" /></div>
         <div className="space-y-1.5"><Label>Cuenta financiera <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={paymentAccount} onValueChange={setPaymentAccount} items={accounts.map((a: any) => ({ value: a.id.toString(), label: a.name }))} placeholder="Seleccionar..." searchPlaceholder="Buscar cuenta..." className="h-11 w-full" /></div>
         {target && <p className="text-sm text-muted-foreground">{target.type === "payable" && paymentType === "CAPITAL" ? <>Capital pendiente: <strong>{format(target.principalBalance ?? 0)}</strong></> : <>Saldo pendiente: <strong>{format(target.balance)}</strong></>}</p>}
+      </ResponsiveModal>
+
+      <ResponsiveModal open={Boolean(selectedOwner)} onOpenChange={(open) => { if (!open) setSelectedOwner(null); }} title={selectedOwner?.name ?? "Detalle"} width="wide">
+        {selectedOwner && <div className="space-y-4">
+          <SummaryStats ariaLabel={`Resumen de ${selectedOwner.name}`} columns="three" compact items={[
+            { label: "Total", icon: tab === "receivable" ? ArrowDownToLine : ArrowUpFromLine, value: format(selectedOwner.total) },
+            { label: tab === "receivable" ? "Cobrado" : "Pagado", icon: CheckCircle, value: format(selectedOwner.paid), valueClassName: "text-green-600" },
+            { label: "Saldo", icon: Clock, value: format(selectedOwner.balance), valueClassName: "text-amber-600" },
+          ]} />
+          <div><h3 className="text-sm font-semibold">Historial de cuentas</h3><p className="text-xs text-muted-foreground">Incluye cuentas pendientes y pagadas.</p></div>
+          <div className="divide-y rounded-xl border">
+            {selectedOwner.accounts.map((account: any) => <button key={account.id} type="button" onClick={() => router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${account.id}`)} className="flex w-full items-center gap-3 p-3 text-left transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-muted/50">
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-medium">{account.description}</p>{statusBadge(account)}</div><p className="mt-1 text-xs text-muted-foreground">{account.due_date ? `Vence ${new Date(`${account.due_date}T12:00:00`).toLocaleDateString("es-HN")}` : "Sin fecha de vencimiento"}</p></div>
+              <div className="shrink-0 text-right"><p className="text-sm font-semibold text-amber-700">{format(getBalance(account))}</p><p className="text-xs text-muted-foreground">de {format(getTotal(account))}</p></div>
+            </button>)}
+          </div>
+        </div>}
       </ResponsiveModal>
 
     </div>
