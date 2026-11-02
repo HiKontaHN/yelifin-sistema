@@ -15,7 +15,7 @@ const fetcher = async (url: string) => {
   const response = await fetch(url);
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? "No se pudo cargar el historial");
-  return body.data ?? [];
+  return body;
 };
 
 const date = (value: string | null | undefined) => value
@@ -35,8 +35,8 @@ export function ReceivablesPayablesOwnerDetail({ type, ownerId }: Props) {
   const { format } = useCurrency();
   const isReceivable = type === "receivable";
   const endpoint = isReceivable ? "/api/accounts-receivable" : "/api/accounts-payable";
-  const { data = [], error, isLoading } = useSWR<any[]>(endpoint, fetcher);
-  const accounts = data.filter((account) => {
+  const { data, error, isLoading } = useSWR<{ data: any[] }>(endpoint, fetcher);
+  const accounts = (data?.data ?? []).filter((account) => {
     if (!isReceivable) return ownerId === `entity-${account.entity_id}`;
     if (ownerId.startsWith("customer-")) return ownerId === `customer-${account.customer_id}`;
     return ownerId === `person-${account.person_id}` && !account.customer_id;

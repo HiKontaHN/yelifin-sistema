@@ -321,9 +321,9 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
       <div className="flex items-center justify-between gap-3">
         <div><p className="text-sm font-semibold">{viewMode === "accounts" ? "Todas las cuentas" : tab === "receivable" ? "Por persona" : "Por entidad"}</p><p className="text-xs text-muted-foreground">{viewMode === "accounts" ? "Consulta cada cuenta por separado." : "Consulta el historial completo de cada responsable."}</p></div>
         <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
-          <TabsList className="rounded-xl border bg-card">
-            <TabsTrigger value="accounts" className="rounded-lg">Cuentas</TabsTrigger>
-            <TabsTrigger value="owners" className="rounded-lg">{tab === "receivable" ? "Personas" : "Entidades"}</TabsTrigger>
+          <TabsList className="max-w-full gap-1.5 overflow-x-auto rounded-xl border bg-card [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsTrigger value="accounts" className="rounded-xl border-0 px-4 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Cuentas</TabsTrigger>
+            <TabsTrigger value="owners" className="rounded-xl border-0 px-4 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">{tab === "receivable" ? "Personas" : "Entidades"}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
