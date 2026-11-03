@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 const FEATURE = "finances.receivables_payables";
@@ -21,7 +22,10 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get("search")?.trim() || null;
   try {
     const data = await sql`
-      SELECT ar.*, COALESCE(p.name, c.name) AS customer_name,
+      SELECT ar.*,
+        ar.start_date::text AS start_date,
+        ar.due_date::text AS due_date,
+        COALESCE(p.name, c.name) AS customer_name,
         COALESCE(SUM(arp.amount), 0) AS paid_amount
       FROM accounts_receivable ar
       LEFT JOIN customers c ON c.id = ar.customer_id
@@ -50,6 +54,11 @@ export async function POST(request: NextRequest) {
     if ((!Number.isSafeInteger(customerId) || Number(customerId) <= 0) && (!Number.isSafeInteger(personId) || Number(personId) <= 0) || !Number.isFinite(amount) || amount <= 0) {
       return createErrorResponse("Persona y monto son requeridos", 400);
     }
+    const startDate = body.start_date ?? todayInTimeZone(checked.auth.data.timezone);
+    const dueDate = body.due_date || null;
+    if (!isCalendarDate(startDate) || (dueDate !== null && !isCalendarDate(dueDate))) {
+      return createErrorResponse("Fecha inválida", 400);
+    }
     let resolvedCustomerId = customerId;
     if (personId) {
       const [person] = await sql`SELECT id, source_customer_id FROM people WHERE id = ${personId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
@@ -66,9 +75,9 @@ export async function POST(request: NextRequest) {
       ) VALUES (
         ${checked.auth.data.orgId}, ${resolvedCustomerId}, ${personId}, ${body.source_type ?? "OTHER"},
         ${String(body.description ?? "Cuenta por cobrar").trim()}, ${amount}, ${amount},
-        ${body.currency ?? "HNL"}, ${body.interest_rate ?? null}, ${body.start_date ?? new Date().toISOString().slice(0, 10)},
-        ${body.due_date ?? null}, ${body.notes ?? null}, ${checked.auth.data.userId}
-      ) RETURNING *
+        ${body.currency ?? "HNL"}, ${body.interest_rate ?? null}, ${startDate},
+        ${dueDate}, ${body.notes ?? null}, ${checked.auth.data.userId}
+      ) RETURNING *, start_date::text AS start_date, due_date::text AS due_date
     `;
     return Response.json({ data: row }, { status: 201 });
   } catch (error) {

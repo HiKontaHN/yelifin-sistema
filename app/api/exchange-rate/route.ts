@@ -21,10 +21,11 @@ export async function GET(request: NextRequest) {
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
   try {
-    // CURRENT_DATE respeta el timezone de la sesión (America/Tegucigalpa,
-    // fijado en DATABASE_URL), así que "hoy" aquí es hoy en Honduras, no en UTC.
+    // La sesión de Postgres permanece neutral (UTC). El día se calcula con
+    // la zona IANA de la organización que hace la consulta.
     const [row] = await sql`
-      SELECT rate_date, usd_hnl, (rate_date = CURRENT_DATE) AS is_today
+      SELECT rate_date, usd_hnl,
+        (rate_date = (NOW() AT TIME ZONE ${auth.data.timezone})::date) AS is_today
       FROM exchange_rates
       ORDER BY rate_date DESC
       LIMIT 1

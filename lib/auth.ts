@@ -5,6 +5,7 @@ import { neon } from "@neondatabase/serverless";
 import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
 import { withTransaction } from "@/lib/db-transaction";
+import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -38,6 +39,8 @@ export type AuthUser = {
   firebaseUid: string;
   email: string;
   displayName: string;
+  timezone: string;
+  locale: string;
   emailVerified: boolean;
   isActive: boolean;
   subscription: {
@@ -87,6 +90,8 @@ export async function verifyAuth(
         u.is_active,
         o.id                  AS org_id,
         o.owner_user_id,
+        o.timezone,
+        o.locale,
         r.id                  AS role_id,
         r.name                AS role_name,
         r.is_owner            AS role_is_owner,
@@ -126,6 +131,8 @@ export async function verifyAuth(
         firebaseUid: row.firebase_uid,
         email: row.email,
         displayName: row.display_name,
+        timezone: row.timezone ?? DEFAULT_TIMEZONE,
+        locale: row.locale ?? DEFAULT_LOCALE,
         emailVerified: decodedToken.email_verified ?? false,
         isActive: row.is_active,
         subscription: {
@@ -420,9 +427,11 @@ export async function verifyResourceLimit(
         column: "max_sales_per_month",
         countQuery: async () => {
           const [r] = await sql`
-            SELECT COUNT(*) AS count FROM sales
-            WHERE org_id = ${orgId}
-              AND DATE_TRUNC('month', sold_at) = DATE_TRUNC('month', NOW())
+            SELECT COUNT(*) AS count
+            FROM sales s
+            JOIN organizations o ON o.id = s.org_id
+            WHERE s.org_id = ${orgId}
+              AND DATE_TRUNC('month', s.sale_date) = DATE_TRUNC('month', (NOW() AT TIME ZONE o.timezone)::date)
               AND deleted_at IS NULL
           `;
           return Number(r.count);
@@ -432,9 +441,11 @@ export async function verifyResourceLimit(
         column: "max_transactions_per_month",
         countQuery: async () => {
           const [r] = await sql`
-            SELECT COUNT(*) AS count FROM transactions
-            WHERE org_id = ${orgId}
-              AND DATE_TRUNC('month', occurred_at) = DATE_TRUNC('month', NOW())
+            SELECT COUNT(*) AS count
+            FROM transactions t
+            JOIN organizations o ON o.id = t.org_id
+            WHERE t.org_id = ${orgId}
+              AND DATE_TRUNC('month', t.effective_date) = DATE_TRUNC('month', (NOW() AT TIME ZONE o.timezone)::date)
               AND deleted_at IS NULL
           `;
           return Number(r.count);
@@ -517,9 +528,9 @@ export async function getOrgTimezone(orgId: number): Promise<string> {
     const [org] = await sql`
       SELECT timezone FROM organizations WHERE id = ${orgId}
     `;
-    return org?.timezone ?? "America/Tegucigalpa";
+    return org?.timezone ?? DEFAULT_TIMEZONE;
   } catch {
-    return "America/Tegucigalpa";
+    return DEFAULT_TIMEZONE;
   }
 }
 
@@ -549,9 +560,9 @@ export async function verifyAuthAndSubscription(request: NextRequest): Promise<A
 export async function ensureOrgExists(
   userId: number,
   orgName: string,
-  timezone = "America/Tegucigalpa",
+  timezone = DEFAULT_TIMEZONE,
   currency = "HNL",
-  locale = "es-HN"
+  locale = DEFAULT_LOCALE
 ): Promise<{ orgId: number; roleId: number; roleName: string }> {
   return withTransaction(async (tx) => {
     const [existing] = await tx`

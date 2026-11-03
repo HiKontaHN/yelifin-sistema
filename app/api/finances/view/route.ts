@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { createErrorResponse, isAuthSuccess, verifyAuth } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -15,12 +16,8 @@ export async function GET(request: NextRequest) {
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
   try {
-    const { orgId, roleId, isOwner } = auth.data;
+    const { orgId, roleId, isOwner, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
-    const timezoneOffset = Number(searchParams.get("tz_offset") ?? 0);
-    if (!Number.isFinite(timezoneOffset)) {
-      return createErrorResponse("Zona horaria inválida", 400);
-    }
 
     let canViewAccounts = true;
     let canViewCards = true;
@@ -41,30 +38,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
-    const offsetMs = timezoneOffset * 60_000;
-    const localNow = new Date(Date.now() - offsetMs);
-    const todayStart = new Date(Date.UTC(
-      localNow.getUTCFullYear(),
-      localNow.getUTCMonth(),
-      localNow.getUTCDate(),
-    ) + offsetMs);
-    const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
+    const today = todayInTimeZone(timezone);
 
     const [summaryRows, accountRows, cardRows] = await Promise.all([
       sql`
         WITH period_transactions AS MATERIALIZED (
-          SELECT type, amount, occurred_at
+          SELECT type, amount, effective_date
           FROM transactions
           WHERE org_id = ${orgId}
             AND deleted_at IS NULL
-            AND occurred_at >= ${startISO}::timestamptz
-            AND occurred_at < ${endISO}::timestamptz
+            AND effective_date >= ${startDate}::date
+            AND effective_date < ${endDate}::date
         ),
         today_transactions AS MATERIALIZED (
           SELECT
             t.id, t.type, t.amount, t.description, t.category,
-            t.reference_type, t.occurred_at,
+            t.reference_type, t.effective_date, t.occurred_at,
             a.name AS account_name,
             ta.name AS to_account_name
           FROM transactions t
@@ -72,8 +62,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN accounts ta ON ta.id = t.to_account_id
           WHERE t.org_id = ${orgId}
             AND t.deleted_at IS NULL
-            AND t.occurred_at >= ${todayStart.toISOString()}::timestamptz
-            AND t.occurred_at < ${todayEnd.toISOString()}::timestamptz
+            AND t.effective_date = ${today}::date
         ),
         period_totals AS (
           SELECT
@@ -104,11 +93,11 @@ export async function GET(request: NextRequest) {
             ), '[]'::jsonb)
             FROM (
               SELECT
-                DATE(occurred_at)::text AS date,
+                effective_date::text AS date,
                 COALESCE(SUM(amount) FILTER (WHERE type = 'INCOME'), 0) AS income,
                 COALESCE(SUM(amount) FILTER (WHERE type = 'EXPENSE'), 0) AS expense
               FROM period_transactions
-              GROUP BY DATE(occurred_at)
+              GROUP BY effective_date
             ) daily
           ) AS cash_flow,
           (
@@ -120,14 +109,15 @@ export async function GET(request: NextRequest) {
                 'description', recent.description,
                 'category', recent.category,
                 'reference_type', recent.reference_type,
+                'effective_date', recent.effective_date,
                 'occurred_at', recent.occurred_at,
                 'account_name', recent.account_name,
                 'to_account_name', recent.to_account_name
-              ) ORDER BY recent.occurred_at DESC
+              ) ORDER BY recent.effective_date DESC, recent.id DESC
             ), '[]'::jsonb)
             FROM (
               SELECT * FROM today_transactions
-              ORDER BY occurred_at DESC
+              ORDER BY effective_date DESC, id DESC
               LIMIT 50
             ) recent
           ) AS recent_transactions,
@@ -138,8 +128,8 @@ export async function GET(request: NextRequest) {
             ), '[]'::jsonb)
             FROM (
               SELECT DISTINCT
-                EXTRACT(YEAR FROM occurred_at)::int AS year,
-                EXTRACT(MONTH FROM occurred_at)::int AS month
+                EXTRACT(YEAR FROM effective_date)::int AS year,
+                EXTRACT(MONTH FROM effective_date)::int AS month
               FROM transactions
               WHERE org_id = ${orgId}
             ) periods
@@ -161,7 +151,7 @@ export async function GET(request: NextRequest) {
             FROM transactions t
             WHERE t.org_id = ${orgId}
               AND t.deleted_at IS NULL
-              AND t.occurred_at >= ${endISO}::timestamptz
+              AND t.effective_date >= ${endDate}::date
               AND (t.account_id = a.id OR t.to_account_id = a.id)
           ), 0) AS historical_balance
         FROM accounts a

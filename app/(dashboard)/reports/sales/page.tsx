@@ -7,6 +7,7 @@ import { useSalesReport } from "@/hooks/swr/use-reports";
 import { useCurrency }    from "@/hooks/swr/use-currency";
 import { useAuth }        from "@/hooks/use-auth";
 import { fmtN }           from "@/lib/export";
+import { formatCalendarDate } from "@/lib/date-utils";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ReportShell, StatCard, ReportSection, ReportTableSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
@@ -37,7 +38,7 @@ function SalesReportPageInner() {
 
   useEffect(() => { setProductPage(1); }, [from, to]);
 
-  const periodLabel = `${new Date(from + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })} — ${new Date(to + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}`;
+  const periodLabel = `${formatCalendarDate(from, { day: "numeric", month: "short", year: "numeric" })} — ${formatCalendarDate(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
   // ── Exportación via servidor ──────────────────────────────────────
   async function triggerExport(fmt: "xlsx" | "pdf") {
@@ -116,14 +117,14 @@ function SalesReportPageInner() {
             <BarChart data={byDay} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="date" tick={{ fontSize: 10 }}
-                tickFormatter={d => new Date(d + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short" })}
+                tickFormatter={d => formatCalendarDate(d, { day: "numeric", month: "short" })}
               />
               <YAxis tick={{ fontSize: 10 }} width={60}
                 tickFormatter={v => `${symbol}${Number(v).toLocaleString("es-HN", { maximumFractionDigits: 0 })}`}
               />
               <Tooltip
                 formatter={(v: any, name: string) => [format(Number(v)), name === "revenue" ? "Ingresos" : "Utilidad"]}
-                labelFormatter={l => new Date(l + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "long" })}
+                labelFormatter={l => formatCalendarDate(String(l), { day: "numeric", month: "long" })}
               />
               <Bar dataKey="revenue" fill="var(--primary)"    radius={[4,4,0,0]} name="revenue" />
               {showProfit && <Bar dataKey="profit"  fill="hsl(142 76% 36%)"       radius={[4,4,0,0]} name="profit"  />}

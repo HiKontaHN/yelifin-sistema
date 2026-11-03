@@ -33,6 +33,8 @@ import { PayCreditCardDialog } from "@/components/credit-cards/pay-credit-card-d
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { Fab } from "@/components/ui/fab";
 import { SummaryStats } from "@/components/shared/summary-stats";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -41,13 +43,13 @@ const MONTH_NAMES = [
 
 const PIE_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#f97316", "#14b8a6"];
 
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("es-HN", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+const formatDate = (date: string) => formatCalendarDate(date, {
+  day: "numeric", month: "short", year: "numeric",
+});
 
 export default function CreditCardsPage() {
-  const now = new Date();
+  const timezone = useTimezone();
+  const [currentYear, currentMonth] = todayInTimeZone(timezone).split("-").map(Number);
   const { push, replace } = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -66,16 +68,21 @@ export default function CreditCardsPage() {
   // mes/año/tarjeta que se estaban viendo.
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const v = Number(searchParams.get("month"));
-    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+    return v >= 1 && v <= 12 ? v : currentMonth;
   });
   const [selectedYear, setSelectedYear] = useState(() => {
     const v = Number(searchParams.get("year"));
-    return v > 0 ? v : now.getFullYear();
+    return v > 0 ? v : currentYear;
   });
   const [selectedCardId, setSelectedCardId] = useState<number | undefined>(() => {
     const v = searchParams.get("card");
     return v ? Number(v) : undefined;
   });
+
+  useEffect(() => {
+    if (!searchParams.has("month")) setSelectedMonth(currentMonth);
+    if (!searchParams.has("year")) setSelectedYear(currentYear);
+  }, [timezone, currentMonth, currentYear, searchParams]);
 
   const {
     creditCards,
@@ -88,21 +95,17 @@ export default function CreditCardsPage() {
     month: selectedMonth,
     year: selectedYear,
     card_id: selectedCardId,
-    tz_offset: new Date().getTimezoneOffset(),
   });
   const loadingTxs = isLoading;
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
-    if (selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
+    if (selectedMonth !== currentMonth) params.set("month", String(selectedMonth));
+    if (selectedYear !== currentYear) params.set("year", String(selectedYear));
     if (selectedCardId !== undefined) params.set("card", String(selectedCardId));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [selectedMonth, selectedYear, selectedCardId, pathname, replace]);
-
-  const currentMonth = now.getMonth() + 1;
-  const currentYear  = now.getFullYear();
+  }, [selectedMonth, selectedYear, selectedCardId, currentMonth, currentYear, pathname, replace]);
 
   const availableYears = [...new Set([
     ...periods.map((p) => p.year),
@@ -138,7 +141,7 @@ export default function CreditCardsPage() {
   // Recent transactions sorted newest first — last 10 charges + payments
   const recentTxs = useMemo(() =>
     [...ccTxs]
-      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+      .sort((a, b) => b.effective_date.localeCompare(a.effective_date) || b.id - a.id)
       .slice(0, 10),
     [ccTxs]
   );
@@ -454,7 +457,7 @@ export default function CreditCardsPage() {
                               </Badge>
                             )}
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(t.occurred_at)}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(t.effective_date)}</p>
                         </div>
 
                         <div className="text-right shrink-0">

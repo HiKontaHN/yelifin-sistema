@@ -19,6 +19,7 @@ import type {
   ProfitSummary, ProfitByMonth, ProfitByProduct,
   EventRow,
 } from "@/hooks/swr/use-reports";
+import { addCalendarDays, DEFAULT_TIMEZONE, todayInTimeZone } from "@/lib/date-utils";
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -45,17 +46,19 @@ export const NON_OPERATING_EXPENSE_REF_TYPES = [
 // literal dentro de la query.
 const NON_OPERATING_REF_TYPES_SQL_LIST = NON_OPERATING_EXPENSE_REF_TYPES.map(t => `'${t}'`).join(", ");
 
-export function defaultMonthRange() {
-  const now  = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+export function defaultMonthRange(timezone = DEFAULT_TIMEZONE) {
+  const today = todayInTimeZone(timezone);
+  const [year, month] = today.split("-").map(Number);
+  const from = `${year}-${String(month).padStart(2, "0")}-01`;
+  const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const to = addCalendarDays(next, -1);
   return { from, to };
 }
 
-export function defaultYearRange() {
-  const now  = new Date();
-  const from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-  const to   = new Date(now.getFullYear(), 11, 31).toISOString().slice(0, 10);
+export function defaultYearRange(timezone = DEFAULT_TIMEZONE) {
+  const year = Number(todayInTimeZone(timezone).slice(0, 4));
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
   return { from, to };
 }
 
@@ -81,8 +84,8 @@ export async function getSalesSummary(
     LEFT JOIN item_costs ic ON ic.sale_id = s.id
     WHERE s.org_id = ${orgId}
       AND s.status  = 'COMPLETED'
-      AND s.sold_at >= ${from}::date
-      AND s.sold_at <  (${to}::date + INTERVAL '1 day')
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
   `;
   return summary as unknown as SalesSummary;
 }
@@ -98,7 +101,7 @@ export async function getSalesByDay(
       GROUP BY sale_id
     )
     SELECT
-      DATE(s.sold_at)::text                     AS date,
+      s.sale_date::text                         AS date,
       COUNT(*)::int                             AS sales_count,
       COALESCE(SUM(s.total), 0)::float          AS revenue,
       COALESCE(SUM(s.total) - SUM(ic.cogs), 0)::float AS profit
@@ -106,10 +109,10 @@ export async function getSalesByDay(
     LEFT JOIN item_costs ic ON ic.sale_id = s.id
     WHERE s.org_id = ${orgId}
       AND s.status  = 'COMPLETED'
-      AND s.sold_at >= ${from}::date
-      AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-    GROUP BY DATE(s.sold_at)
-    ORDER BY DATE(s.sold_at)
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
+    GROUP BY s.sale_date
+    ORDER BY s.sale_date
   `;
   return rows as unknown as SalesByDay[];
 }
@@ -135,8 +138,8 @@ export async function getSalesByProduct(
     JOIN sales    s ON s.id = si.sale_id
     WHERE si.org_id = ${orgId}
       AND s.status   = 'COMPLETED'
-      AND s.sold_at  >= ${from}::date
-      AND s.sold_at  <  (${to}::date + INTERVAL '1 day')
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
     GROUP BY p.id, p.name, p.sku
     ORDER BY revenue DESC
     LIMIT ${limit}
@@ -150,7 +153,7 @@ export async function getSalesDetail(
   const rows = await sql`
     SELECT
       s.sale_number,
-      DATE(s.sold_at)::text                                                  AS date,
+      s.sale_date::text                                                      AS date,
       COALESCE(c.name, 'Sin cliente')                                        AS customer,
       s.payment_method,
       COALESCE(a.name, '')                                                   AS account_name,
@@ -165,10 +168,10 @@ export async function getSalesDetail(
     LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = ${orgId}
     WHERE s.org_id = ${orgId}
       AND s.status  = 'COMPLETED'
-      AND s.sold_at >= ${from}::date
-      AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-    GROUP BY s.id, s.sale_number, s.sold_at, c.name, s.payment_method, a.name, s.discount, s.total
-    ORDER BY s.sold_at DESC
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
+    GROUP BY s.id, s.sale_number, s.sale_date, c.name, s.payment_method, a.name, s.discount, s.total
+    ORDER BY s.sale_date DESC, s.id DESC
     LIMIT ${limit}
   `;
   return rows as unknown as SaleDetail[];
@@ -205,8 +208,8 @@ export async function getProfitSummary(
     LEFT JOIN item_costs ic ON ic.sale_id = s.id
     WHERE s.org_id = ${orgId}
       AND s.status  = 'COMPLETED'
-      AND s.sold_at >= ${from}::date
-      AND s.sold_at <  (${to}::date + INTERVAL '1 day')
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
   `;
   return summary as unknown as ProfitSummary;
 }
@@ -222,8 +225,8 @@ export async function getProfitByMonth(
       GROUP BY sale_id
     )
     SELECT
-      TO_CHAR(s.sold_at, 'YYYY-MM')                                           AS month,
-      TO_CHAR(s.sold_at, 'Mon YYYY')                                          AS month_label,
+      TO_CHAR(s.sale_date, 'YYYY-MM')                                         AS month,
+      TO_CHAR(s.sale_date, 'Mon YYYY')                                        AS month_label,
       COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)), 0)::float         AS revenue,
       COALESCE(SUM(ic.cogs), 0)::float                                        AS cogs,
       COALESCE(SUM(s.total - COALESCE(s.shipping_cost, 0)) - SUM(ic.cogs), 0)::float AS profit,
@@ -232,9 +235,9 @@ export async function getProfitByMonth(
     LEFT JOIN item_costs ic ON ic.sale_id = s.id
     WHERE s.org_id = ${orgId}
       AND s.status  = 'COMPLETED'
-      AND s.sold_at >= ${from}::date
-      AND s.sold_at <  (${to}::date + INTERVAL '1 day')
-    GROUP BY TO_CHAR(s.sold_at, 'YYYY-MM'), TO_CHAR(s.sold_at, 'Mon YYYY')
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
+    GROUP BY TO_CHAR(s.sale_date, 'YYYY-MM'), TO_CHAR(s.sale_date, 'Mon YYYY')
     ORDER BY month
   `;
   return rows as unknown as ProfitByMonth[];
@@ -261,8 +264,8 @@ export async function getProfitByProduct(
     JOIN sales    s ON s.id = si.sale_id
     WHERE si.org_id = ${orgId}
       AND s.status   = 'COMPLETED'
-      AND s.sold_at  >= ${from}::date
-      AND s.sold_at  <  (${to}::date + INTERVAL '1 day')
+      AND s.sale_date >= ${from}::date
+      AND s.sale_date <  (${to}::date + INTERVAL '1 day')
     GROUP BY p.id, p.name, p.sku
     ORDER BY profit DESC
     LIMIT ${limit}
@@ -282,8 +285,8 @@ export async function getOperatingExpenses(
     WHERE org_id      = ${orgId}
       AND type        = 'EXPENSE'
       AND (reference_type IS NULL OR reference_type NOT IN (${sql.unsafe(NON_OPERATING_REF_TYPES_SQL_LIST)}))
-      AND occurred_at >= ${from}::date
-      AND occurred_at <  (${to}::date + INTERVAL '1 day')
+      AND effective_date >= ${from}::date
+      AND effective_date <  (${to}::date + INTERVAL '1 day')
   `;
   return expenses as unknown as { total_expenses: number };
 }
@@ -317,8 +320,8 @@ export async function getEventRows(
       e.id,
       e.name,
       COALESCE(e.location, '')                                               AS location,
-      e.starts_at::text,
-      e.ends_at::text,
+      e.start_date::text AS starts_at,
+      e.end_date::text AS ends_at,
       COALESCE(e.fixed_cost, 0)::float                                       AS fixed_cost,
       COALESCE(e.notes, '')                                                  AS notes,
 
@@ -350,17 +353,18 @@ export async function getEventRows(
       )::float AS net_profit,
 
       CASE
-        WHEN NOW() < e.starts_at                        THEN 'PLANNED'
-        WHEN NOW() BETWEEN e.starts_at AND e.ends_at    THEN 'ONGOING'
-        ELSE                                                  'COMPLETED'
+        WHEN (NOW() AT TIME ZONE o.timezone)::date < e.start_date THEN 'PLANNED'
+        WHEN (NOW() AT TIME ZONE o.timezone)::date <= e.end_date THEN 'ONGOING'
+        ELSE 'COMPLETED'
       END AS status
 
     FROM events e
+    JOIN organizations o ON o.id = e.org_id
     LEFT JOIN sale_agg sa ON sa.event_id = e.id
     WHERE e.org_id      = ${orgId}
-      AND e.starts_at  >= ${from}::date
-      AND e.starts_at  <  (${to}::date + INTERVAL '1 day')
-    ORDER BY e.starts_at DESC
+      AND e.start_date >= ${from}::date
+      AND e.start_date <  (${to}::date + INTERVAL '1 day')
+    ORDER BY e.start_date DESC, e.id DESC
   `;
   return rows as unknown as EventRow[];
 }
@@ -453,7 +457,10 @@ export async function getInventorySalesVelocity(
       JOIN sales s ON s.id = si.sale_id
       WHERE si.org_id    = ${orgId}
         AND s.status     = 'COMPLETED'
-        AND s.sold_at    >= NOW() - (${days}::text || ' days')::interval
+        AND s.sale_date >= (
+          (NOW() AT TIME ZONE (SELECT timezone FROM organizations WHERE id = ${orgId}))::date
+          - (${days}::int - 1)
+        )
       GROUP BY si.product_id
     ) recent ON recent.product_id = p.id
     WHERE p.org_id = ${orgId}
@@ -546,7 +553,7 @@ export async function getInventoryTurnover(sql: Sql, orgId: number): Promise<Inv
     JOIN sales s ON s.id = si.sale_id
     WHERE si.org_id   = ${orgId}
       AND s.status    = 'COMPLETED'
-      AND s.sold_at  >= ${oldestDate}
+      AND s.sale_date >= ${oldestDate}::date
   `;
 
   const turnoverRatio   = avgStockValue > 0 ? Number(cogs) / avgStockValue : 0;

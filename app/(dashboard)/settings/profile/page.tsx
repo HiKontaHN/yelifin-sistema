@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { useMe, useUpdateProfile } from "@/hooks/swr/use-me";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,7 @@ export default function ProfilePage() {
     mutate,
   } = useMe();
   const { updateProfile, isSaving } = useUpdateProfile();
+  const timezone = useTimezone();
   const [displayName, setDisplayName] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
 
@@ -149,7 +151,7 @@ export default function ProfilePage() {
 
           <span className="block text-xs text-muted-foreground" suppressHydrationWarning>
             Cuenta creada el{" "}
-            {new Date(user.created_at).toLocaleDateString("es-HN", {
+            {formatInTZ(user.created_at, timezone, {
               year: "numeric",
               month: "short",
               day: "numeric",

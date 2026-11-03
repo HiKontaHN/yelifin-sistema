@@ -2,8 +2,9 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, verifyResourceLimit } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -14,14 +15,14 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
 
     const accountId = searchParams.get("account_id");
     const type      = searchParams.get("type") || null; // INCOME | EXPENSE | TRANSFER | null
     const search    = searchParams.get("search")?.trim() || null;
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
     const limit = search ? 1000 : 500;
 
     const transactions = await sql`
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
         t.description,
         t.reference_type,
         t.reference_id,
+        t.effective_date::text AS effective_date,
         t.occurred_at,
         t.created_at,
         t.deleted_at,
@@ -45,11 +47,11 @@ export async function GET(request: NextRequest) {
       JOIN accounts a ON a.id = t.account_id
       LEFT JOIN accounts ta ON ta.id = t.to_account_id
       WHERE t.org_id = ${orgId}
-        ${search ? sql`` : sql`AND t.occurred_at >= ${startISO}::timestamptz AND t.occurred_at < ${endISO}::timestamptz`}
+        ${search ? sql`` : sql`AND t.effective_date >= ${startDate}::date AND t.effective_date < ${endDate}::date`}
         ${search ? sql`AND t.description ILIKE ${"%" + search + "%"}` : sql``}
         ${accountId ? sql`AND (t.account_id = ${Number(accountId)} OR t.to_account_id = ${Number(accountId)})` : sql``}
         ${type ? sql`AND t.type = ${type}` : sql``}
-      ORDER BY t.occurred_at DESC
+      ORDER BY t.effective_date DESC, t.id DESC
       LIMIT ${limit}
     `;
 
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
       FROM transactions t
       WHERE t.org_id = ${orgId}
         AND t.deleted_at IS NULL
-        ${search ? sql`` : sql`AND t.occurred_at >= ${startISO}::timestamptz AND t.occurred_at < ${endISO}::timestamptz`}
+        ${search ? sql`` : sql`AND t.effective_date >= ${startDate}::date AND t.effective_date < ${endDate}::date`}
         ${search ? sql`AND t.description ILIKE ${"%" + search + "%"}` : sql``}
         ${accountId ? sql`AND (t.account_id = ${Number(accountId)} OR t.to_account_id = ${Number(accountId)})` : sql``}
     `;
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       type, account_id, to_account_id, amount,
-      category, description, occurred_at,
+      category, description, occurred_at, effective_date,
       reference_type, reference_id,
       create_receivable, customer_id, person_id, due_date,
       // Tarjeta de crédito (solo para EXPENSE)
@@ -126,7 +128,15 @@ export async function POST(request: NextRequest) {
     if (type === "TRANSFER" && sourceAccountId === destinationAccountId)
       return createErrorResponse("Las cuentas deben ser diferentes", 400);
 
-    const occurredAt = occurred_at ?? new Date().toISOString();
+    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : null;
+    const effectiveDate = effective_date
+      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+      ?? todayInTimeZone(auth.data.timezone);
+    if (!isCalendarDate(effectiveDate))
+      return createErrorResponse("Fecha inválida", 400);
+    const occurredAt = typeof occurred_at === "string" && !isCalendarDate(occurred_at)
+      ? occurred_at
+      : new Date().toISOString();
     const createReceivable = create_receivable === true;
     const receivablePersonId = Number(person_id);
     if (createReceivable && type !== "EXPENSE")
@@ -168,12 +178,12 @@ export async function POST(request: NextRequest) {
         const [ccTxn] = await tx`
           INSERT INTO credit_card_transactions (
             org_id, created_by, credit_card_id, type, description,
-            amount, currency, exchange_rate, amount_local, category, occurred_at
+            amount, currency, exchange_rate, amount_local, category, effective_date, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${cardId}, 'CHARGE',
             ${description ?? null},
             ${amt}, ${currency ?? "LOCAL"}, ${rateNum}, ${amountLocal},
-            ${category ?? null},
+            ${category ?? null}, ${effectiveDate},
             ${occurredAt}
           )
           RETURNING id
@@ -193,7 +203,7 @@ export async function POST(request: NextRequest) {
             ) VALUES (
               ${orgId}, ${receivablePerson.source_customer_id}, ${receivablePerson.id}, 'CREDIT_CARD_TRANSACTION', ${ccTxn.id},
               ${description ?? "Cuenta por cobrar"}, ${amountLocal}, ${amountLocal}, ${receivablePerson.currency},
-              ${occurredAt}::date, ${due_date ?? null}, ${userId}
+              ${effectiveDate}, ${due_date ?? null}, ${userId}
             ) RETURNING id
           `;
           return { ok: true as const, id: Number(ccTxn.id), receivableId: Number(receivable.id) };
@@ -256,11 +266,11 @@ export async function POST(request: NextRequest) {
         INSERT INTO transactions (
           org_id, created_by, type, account_id, to_account_id,
           amount, category, description,
-          reference_type, reference_id, occurred_at
+          reference_type, reference_id, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${type}, ${sourceAccountId}, ${type === "TRANSFER" ? destinationAccountId : null},
           ${amt}, ${category ?? null}, ${description ?? null},
-          ${refType}, ${refId}, ${occurredAt}
+          ${refType}, ${refId}, ${effectiveDate}, ${occurredAt}
         )
         RETURNING id
       `;
@@ -281,7 +291,7 @@ export async function POST(request: NextRequest) {
             original_amount, outstanding_amount, currency, start_date, due_date, created_by
           ) VALUES (
             ${orgId}, ${receivableCustomerId}, ${receivablePersonId}, 'PERSONAL_LOAN', ${transaction.id},
-            ${description ?? "Cuenta por cobrar"}, ${amt}, ${amt}, 'HNL', ${occurredAt}::date, ${due_date ?? null}, ${userId}
+            ${description ?? "Cuenta por cobrar"}, ${amt}, ${amt}, 'HNL', ${effectiveDate}, ${due_date ?? null}, ${userId}
           ) RETURNING id
         `;
         await tx`UPDATE transactions SET reference_id = ${receivable.id} WHERE id = ${transaction.id} AND org_id = ${orgId}`;

@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { adminAuth } from "@/lib/firebase-admin";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
 import { MODULES, MODULE_SUBITEMS } from "@/lib/permissions";
+import { DEFAULT_LOCALE, DEFAULT_TIMEZONE, isValidTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -185,9 +186,9 @@ export async function GET(request: NextRequest) {
         user_id:              row.id,
         business_name:        row.business_name,
         business_logo_url:    row.business_logo_url,
-        timezone:             row.timezone ?? "America/Tegucigalpa",
+        timezone:             row.timezone ?? DEFAULT_TIMEZONE,
         currency:             row.currency ?? "HNL",
-        locale:               row.locale   ?? "es-HN",
+        locale:               row.locale   ?? DEFAULT_LOCALE,
         onboarding_completed: row.onboarding_completed ?? false,
       },
       org: {
@@ -195,9 +196,9 @@ export async function GET(request: NextRequest) {
         name:        row.org_name,
         slug:        row.org_slug,
         logo_url:    row.org_logo_url,
-        timezone:    row.timezone ?? "America/Tegucigalpa",
+        timezone:    row.timezone ?? DEFAULT_TIMEZONE,
         currency:    row.currency ?? "HNL",
-        locale:      row.locale   ?? "es-HN",
+        locale:      row.locale   ?? DEFAULT_LOCALE,
         industry_id: row.industry_id ?? null,
       },
       role: {
@@ -239,9 +240,23 @@ export async function PATCH(request: NextRequest) {
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
   try {
-    const { userId } = auth.data;
+    const { userId, orgId, isOwner } = auth.data;
     const body = await request.json() as Record<string, unknown>;
     const has = (k: string) => k in body;
+
+    if (has("timezone")) {
+      if (!isValidTimeZone(body.timezone)) {
+        return createErrorResponse("Zona horaria inválida", 400);
+      }
+      if (!isOwner) {
+        return createErrorResponse("Solo el dueño puede cambiar la zona horaria", 403);
+      }
+      await sql`
+        UPDATE organizations
+        SET timezone = ${body.timezone}, updated_at = NOW()
+        WHERE id = ${orgId}
+      `;
+    }
 
     if (has("display_name")) {
       const val = typeof body.display_name === "string" ? body.display_name.trim() || null : null;
@@ -269,9 +284,9 @@ export async function PATCH(request: NextRequest) {
         SET
           business_name     = ${business_name     ?? null},
           business_logo_url = ${business_logo_url ?? null},
-          timezone          = ${timezone          ?? "America/Tegucigalpa"},
+          timezone          = ${timezone          ?? DEFAULT_TIMEZONE},
           currency          = ${currency          ?? "HNL"},
-          locale            = ${locale            ?? "es-HN"},
+          locale            = ${locale            ?? DEFAULT_LOCALE},
           updated_at        = NOW()
         WHERE user_id = ${userId}
       `;

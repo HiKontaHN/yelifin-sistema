@@ -44,6 +44,8 @@ import { PayCreditCardDialog } from "@/components/credit-cards/pay-credit-card-d
 import { EditCCTransactionDialog } from "@/components/credit-cards/edit-cc-transaction-dialog";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
 import { Fab } from "@/components/ui/fab";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -59,9 +61,10 @@ export default function CreditCardDetailPage({
   const cardId = Number(id);
   const { back } = useRouter();
 
-  const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+  const timezone = useTimezone();
+  const [currentYear, currentMonth] = todayInTimeZone(timezone).split("-").map(Number);
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [payOpen, setPayOpen] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [editingTxn, setEditingTxn] = useState<CreditCardTransaction | null>(null);
@@ -69,6 +72,11 @@ export default function CreditCardDetailPage({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
+
+  useEffect(() => {
+    setSelectedMonth(currentMonth);
+    setSelectedYear(currentYear);
+  }, [timezone, currentMonth, currentYear]);
 
   const {
     creditCard,
@@ -82,7 +90,6 @@ export default function CreditCardDetailPage({
   } = useCreditCardDetailView(cardId, {
     month: selectedMonth,
     year: selectedYear,
-    tz_offset: new Date().getTimezoneOffset(),
   });
   const loadingCard = isLoading;
   const loadingTxns = isLoading;
@@ -124,9 +131,6 @@ export default function CreditCardDetailPage({
       toast.error(e.message || "Error al eliminar");
     }
   };
-
-  const currentMonth = now.getMonth() + 1;
-  const currentYear  = now.getFullYear();
 
   const availableYears = [...new Set([
     ...periods.map((p) => p.year),
@@ -189,7 +193,7 @@ export default function CreditCardDetailPage({
     {
       id: "date", header: "Fecha", width: 130,
       className: "whitespace-nowrap text-muted-foreground",
-      cell: (txn) => new Date(txn.occurred_at).toLocaleDateString("es-HN", {
+      cell: (txn) => formatCalendarDate(txn.effective_date, {
         day: "numeric", month: "short", year: "numeric",
       }),
     },
@@ -328,7 +332,7 @@ export default function CreditCardDetailPage({
                 )}
                 {creditCard.cycle_start && (
                   <p className="text-xs text-muted-foreground">
-                    Desde {new Date(creditCard.cycle_start).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}
+                    Desde {formatCalendarDate(creditCard.cycle_start, { day: "numeric", month: "short" })}
                   </p>
                 )}
               </div>
@@ -576,7 +580,7 @@ function CreditCardTxnRow({
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-            {new Date(txn.occurred_at).toLocaleDateString("es-HN", {
+            {formatCalendarDate(txn.effective_date, {
               day: "numeric", month: "short", year: "numeric",
             })}
           </p>

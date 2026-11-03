@@ -16,6 +16,8 @@ import { Badge }    from "@/components/ui/badge";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
 import { Package, Boxes, DollarSign, AlertTriangle, ArrowLeftRight, Search, TrendingUp, TrendingDown } from "lucide-react";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const MOVE_LABEL: Record<string, string> = { IN: "Entrada", OUT: "Salida", ADJUST: "Ajuste" };
 const MOVE_COLOR: Record<string, string> = {
@@ -33,6 +35,7 @@ export default function InventoryReportPage() {
 }
 
 function InventoryReportPageInner() {
+  const timezone = useTimezone();
   const { format, symbol }                          = useCurrency();
   const { firebaseUser }                            = useAuth();
   const { summary, products, movements, velocity, turnover, isLoading } = useInventoryReport();
@@ -64,7 +67,7 @@ function InventoryReportPageInner() {
   const productRows = filtered.slice((productPage - 1) * productPageSize, productPage * productPageSize);
 
   const movementColumns: DataTableTimeSectionColumn<(typeof movements)[number]>[] = [
-    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (m) => <span suppressHydrationWarning>{new Date(m.created_at).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}</span> },
+    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (m) => <span suppressHydrationWarning>{formatInTZ(m.created_at, timezone, { day: "numeric", month: "short" })}</span> },
     { id: "type", header: "Tipo", width: "16%", cell: (m) => <Badge className={`${MOVE_COLOR[m.movement_type] ?? ""} border text-xs`}>{MOVE_LABEL[m.movement_type] ?? m.movement_type}</Badge> },
     { id: "product", header: "Producto", width: "30%", cell: (m) => <span className="block truncate font-medium" title={m.product_name}>{m.product_name}</span> },
     { id: "quantity", header: "Cantidad", width: "14%", align: "right", cell: (m) => <span className="font-medium">{m.quantity}</span> },
@@ -102,7 +105,7 @@ function InventoryReportPageInner() {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href     = url;
-      a.download = `Inventario_${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.download = `Inventario_${todayInTimeZone(timezone)}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

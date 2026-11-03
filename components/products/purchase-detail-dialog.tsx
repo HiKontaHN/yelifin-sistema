@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Package, ShoppingBag, Wallet, Truck, StickyNote, CalendarDays } from "lucide-react";
 import { usePurchase } from "@/hooks/swr/use-purchases";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = {
   purchaseId:   number | null;
@@ -21,7 +22,7 @@ export function PurchaseDetailDialog({ purchaseId, open, onOpenChange }: Props) 
   const { format } = useCurrency();
 
   const date = purchase
-    ? new Date(purchase.purchased_at).toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })
+    ? formatCalendarDate(purchase.purchase_date ?? purchase.purchased_at, { day: "numeric", month: "long", year: "numeric" })
     : null;
 
   const itemCount = purchase?.items.length ?? 0;

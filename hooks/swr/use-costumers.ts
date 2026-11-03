@@ -169,6 +169,7 @@ export type RecentSale = {
   id:             number;
   sale_number:    string;
   total:          number;
+  sale_date:      string;
   sold_at:        string;
   status:         string;
   discount:       number;

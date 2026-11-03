@@ -7,6 +7,7 @@ import { useProfitReport } from "@/hooks/swr/use-reports";
 import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN, fmtPct } from "@/lib/export";
+import { formatCalendarDate } from "@/lib/date-utils";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ReportShell, StatCard, ReportSection, ReportTableSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
@@ -37,7 +38,7 @@ function ProfitReportPageInner() {
 
   useEffect(() => { setProductPage(1); }, [from, to]);
 
-  const periodLabel = `${new Date(from + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })} — ${new Date(to + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}`;
+  const periodLabel = `${formatCalendarDate(from, { day: "numeric", month: "short", year: "numeric" })} — ${formatCalendarDate(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
   const productColumns: DataTableTimeSectionColumn<(typeof byProduct)[number]>[] = [
     { id: "product", header: "Producto", width: `${76 - (showCosts ? 14 : 0) - (showProfit ? 28 : 0)}%`, cell: (p) => <div className="min-w-0"><p className="truncate font-medium" title={p.product_name}>{p.product_name}</p>{p.sku && <p className="truncate text-xs text-muted-foreground">{p.sku}</p>}</div> },

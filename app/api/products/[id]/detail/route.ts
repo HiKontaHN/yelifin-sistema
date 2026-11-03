@@ -70,7 +70,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       WHERE product_id = ${productId}
         AND org_id     = ${orgId}
         AND variant_id IS NULL
-      ORDER BY received_at DESC
+      ORDER BY received_date DESC, received_at DESC
       LIMIT 1
     `;
 
@@ -107,6 +107,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         ib.qty_in,
         ib.qty_available,
         ib.unit_cost,
+        ib.received_date::text AS received_date,
         ib.received_at,
         ib.variant_id,
         pv.variant_name
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         AND pv.org_id = ${orgId}
       WHERE ib.product_id = ${productId}
         AND ib.org_id     = ${orgId}
-      ORDER BY ib.received_at DESC
+      ORDER BY ib.received_date DESC, ib.received_at DESC
       LIMIT 8
     `;
 
@@ -126,6 +127,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         ib.id,
         ib.qty_in,
         ib.unit_cost,
+        ib.received_date::text AS received_date,
         ib.received_at,
         ib.variant_id,
         pv.variant_name
@@ -136,7 +138,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       WHERE ib.product_id = ${productId}
         AND ib.org_id     = ${orgId}
         AND ib.unit_cost  > 0
-      ORDER BY ib.received_at ASC
+      ORDER BY ib.received_date ASC, ib.received_at ASC
       LIMIT 50
     `;
 
@@ -169,7 +171,7 @@ export async function GET(request: NextRequest, { params }: Params) {
           ELSE 0
         END                                                         AS avg_unit_cost,
         COUNT(DISTINCT si.sale_id)                                  AS sales_count,
-        MAX(s.sold_at)                                              AS last_sold_at
+        MAX(s.sale_date)::text                                      AS last_sold_at
       FROM sale_items si
       JOIN sales s
         ON  s.id     = si.sale_id
@@ -182,6 +184,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     // ── 7. Purchase history (last 20 for chart) ─────────────────────
     const purchaseHistory = await sql`
       SELECT
+        pb.purchase_date::text AS purchase_date,
         pb.purchased_at,
         COALESCE(s.name, pb.supplier_name) AS supplier_name,
         pbi.unit_cost,
@@ -201,7 +204,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         AND pv.org_id = ${orgId}
       WHERE pbi.product_id = ${productId}
         AND pbi.org_id     = ${orgId}
-      ORDER BY pb.purchased_at DESC
+      ORDER BY pb.purchase_date DESC, pb.id DESC
       LIMIT 20
     `;
 
@@ -291,6 +294,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         id:           Number(b.id),
         qty_in:       Number(b.qty_in),
         unit_cost:    Number(b.unit_cost),
+        received_date: b.received_date,
         received_at:  b.received_at,
         variant_id:   b.variant_id ?? null,
         variant_name: b.variant_name ?? null,
@@ -301,6 +305,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         id:           Number(h.id),
         qty_in:       1,
         unit_cost:    Number(h.cost),
+        received_date: null,
         received_at:  h.changed_at,
         variant_id:   null,
         variant_name: null,

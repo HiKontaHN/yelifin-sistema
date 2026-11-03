@@ -35,7 +35,7 @@ export type CreateSaleInput = {
   amount_paid?:    number;
 };
 
-export type ConfirmSaleInput = { action: 'confirm'; confirmed_at: string; amount_paid?: number };
+export type ConfirmSaleInput = { action: 'confirm'; confirmed_at?: string; confirmed_date?: string; amount_paid?: number };
 export type CancelSaleInput  = { action: 'cancel'; reason?: string };
 
 export type EditSaleInput = {
@@ -77,6 +77,7 @@ export type Sale = {
   amount_paid:    number;
   amount_due:     number;
   sold_at:        string;
+  sale_date:      string;
   notes:          string | null;
   items_count:    number;
   // null cuando el rol no tiene show_profit — el backend oculta la ganancia.
@@ -295,7 +296,7 @@ export function usePatchSale(id: number | null) {
     }
   };
 
-  const confirmSale = (amountPaid?: number) => patchSale({ action: 'confirm', confirmed_at: new Date().toISOString(), ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}) });
+  const confirmSale = (amountPaid?: number) => patchSale({ action: 'confirm', ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}) });
   const cancelSale  = (reason?: string) => patchSale({ action: 'cancel', reason });
   const editSale    = (data: Omit<EditSaleInput, 'action'>) =>
     patchSale({ action: 'edit', ...data });

@@ -25,12 +25,17 @@ import { EditEventDialog }     from "@/components/events/edit-event-dialog";
 import { DeleteEventDialog }   from "@/components/events/delete-event-dialog";
 import { AddExpenseDialog }    from "@/components/events/add-expense-dialog";
 import { Fab }                 from "@/components/ui/fab";
+import { todayInTimeZone, toCalendarDate } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+
+const calendarDateObject = (value: string) => new Date(`${toCalendarDate(value)}T12:00:00`);
 
 export default function EventsPage() {
   const { push, replace }              = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { events, isLoading, mutate } = useEvents();
+  const timezone = useTimezone();
   const { format }                    = useCurrency();
   const { show_profit: showProfit, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("EVENTS");
   const { can_edit: salesCanEdit }    = useModulePermissions("SALES");
@@ -66,8 +71,8 @@ export default function EventsPage() {
   const { monthsByYear, availableYears, latestYear, latestMonth } = useMemo(() => {
     const map = new Map<number, Set<number>>();
     for (const e of events) {
-      let cursor = startOfMonth(new Date(e.starts_at));
-      const last = startOfMonth(new Date(e.ends_at));
+      let cursor = startOfMonth(calendarDateObject(e.start_date ?? e.starts_at));
+      const last = startOfMonth(calendarDateObject(e.end_date ?? e.ends_at));
       while (cursor <= last) {
         const y = cursor.getFullYear();
         if (!map.has(y)) map.set(y, new Set());
@@ -85,7 +90,7 @@ export default function EventsPage() {
     return { monthsByYear: map, availableYears: years, latestYear, latestMonth };
   }, [events]);
 
-  const now              = new Date();
+  const now              = calendarDateObject(todayInTimeZone(timezone));
   const currentYear       = now.getFullYear();
   const currentMonthIdx   = now.getMonth();
   const currentMonthHasEvents = monthsByYear.get(currentYear)?.has(currentMonthIdx) ?? false;
@@ -114,8 +119,8 @@ export default function EventsPage() {
     const monthStart = startOfMonth(new Date(selectedYear, selectedMonth, 1));
     const monthEnd   = endOfMonth(monthStart);
     return events.filter((e) => {
-      const start = new Date(e.starts_at);
-      const end   = new Date(e.ends_at);
+      const start = calendarDateObject(e.start_date ?? e.starts_at);
+      const end   = calendarDateObject(e.end_date ?? e.ends_at);
       return start <= monthEnd && end >= monthStart;
     });
   }, [events, selectedYear, selectedMonth]);

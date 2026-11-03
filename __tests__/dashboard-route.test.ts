@@ -14,6 +14,8 @@ jest.mock("@/lib/auth", () => ({
       roleId: 1,
       roleName: "Owner",
       isOwner: true,
+      timezone: "America/Tegucigalpa",
+      locale: "es-HN",
     },
   })),
   isAuthSuccess: jest.fn(() => true),

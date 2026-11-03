@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSale } from "@/hooks/swr/use-sales";
 import { useMe } from "@/hooks/swr/use-me";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -54,19 +55,15 @@ export default function ReceiptPage({ params }: Props) {
 
   const businessName   = profile?.business_name || "Mi Negocio";
   const businessLogo   = profile?.business_logo_url ?? null;
-  const tz             = profile?.timezone ?? "America/Tegucigalpa";
   const taxRate        = Number(sale.tax_rate ?? 0);
   const taxAmount      = Number(sale.tax ?? 0);
   const shippingAmount = Number(sale.shipping_cost ?? 0);
   const discount       = Number(sale.discount ?? 0);
 
-  const dateFormatted = new Date(sale.sold_at).toLocaleDateString("es-HN", {
-    timeZone: tz,
+  const dateFormatted = formatCalendarDate(sale.sale_date ?? sale.sold_at, {
     day:      "2-digit",
     month:    "2-digit",
     year:     "numeric",
-    hour:     "2-digit",
-    minute:   "2-digit",
   });
 
   return (

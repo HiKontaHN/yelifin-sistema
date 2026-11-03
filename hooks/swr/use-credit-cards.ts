@@ -42,6 +42,7 @@ export type CreditCardTransaction = {
   account_transaction_id: number | null;
   account_name: string | null;
   category: string | null;
+  effective_date: string;
   occurred_at: string;
   created_at: string;
 };
@@ -68,6 +69,7 @@ export type PayCreditCardInput = {
   currency: string;
   exchange_rate?: number;
   occurred_at?: string;
+  effective_date?: string;
   description?: string;
   category?: string;
 };
@@ -113,7 +115,6 @@ export function useCreditCardsOverview(params?: {
   month?: number;
   year?: number;
   card_id?: number;
-  tz_offset?: number;
 }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -122,7 +123,6 @@ export function useCreditCardsOverview(params?: {
   if (params?.month) query.set('month', String(params.month));
   if (params?.year) query.set('year', String(params.year));
   if (params?.card_id) query.set('card_id', String(params.card_id));
-  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
   const queryString = query.toString();
   const url = `/api/credit-cards/view${queryString ? `?${queryString}` : ''}`;
 
@@ -148,7 +148,7 @@ export function useCreditCard(id: number | null) {
   const authFetch = useAuthFetch();
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser && id ? `${KEY}/${id}?tz_offset=${new Date().getTimezoneOffset()}` : null,
+    firebaseUser && id ? `${KEY}/${id}` : null,
     (url: string) => authFetch(url),
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   );
@@ -163,7 +163,7 @@ export function useCreditCard(id: number | null) {
 
 export function useCreditCardTransactions(
   id: number | null,
-  params?: { month?: number; year?: number; tz_offset?: number }
+  params?: { month?: number; year?: number }
 ) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -171,7 +171,6 @@ export function useCreditCardTransactions(
   const query = new URLSearchParams();
   if (params?.month)      query.set('month',     String(params.month));
   if (params?.year)       query.set('year',      String(params.year));
-  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
   const qs = query.toString();
 
   const { data, isLoading, error, mutate } = useSWR(
@@ -192,7 +191,7 @@ export function useCreditCardTransactions(
 /** Carga consolidada del detalle de tarjeta con una sola autenticación. */
 export function useCreditCardDetailView(
   id: number | null,
-  params?: { month?: number; year?: number; tz_offset?: number },
+  params?: { month?: number; year?: number },
 ) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -200,7 +199,6 @@ export function useCreditCardDetailView(
   const query = new URLSearchParams();
   if (params?.month) query.set('month', String(params.month));
   if (params?.year) query.set('year', String(params.year));
-  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
   const queryString = query.toString();
   const url = id
     ? `${KEY}/${id}/view${queryString ? `?${queryString}` : ''}`
@@ -290,7 +288,6 @@ export function useAllCreditCardTransactions(params?: {
   date?: string;
   card_id?: number;
   search?: string;
-  tz_offset?: number;
 }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -301,7 +298,6 @@ export function useAllCreditCardTransactions(params?: {
   if (params?.date)     query.set('date',      params.date);
   if (params?.card_id)  query.set('card_id',   String(params.card_id));
   if (params?.search)   query.set('search',    params.search);
-  if (params?.tz_offset !== undefined) query.set('tz_offset', String(params.tz_offset));
   const qs = query.toString();
 
   const { data, isLoading, error, mutate } = useSWR(
@@ -409,6 +405,7 @@ export function useUpdateCCTransaction() {
     description?: string | null;
     category?: string | null;
     occurred_at?: string;
+    effective_date?: string;
     amount?: number;
     currency?: string;
     exchange_rate?: number;

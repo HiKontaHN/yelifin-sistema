@@ -5,7 +5,7 @@ import {
   isAuthSuccess,
   verifyAuth,
 } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
 
   try {
-    const { orgId, roleId, isOwner } = auth.data;
+    const { orgId, roleId, isOwner, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
     const source = searchParams.get("source") ?? "all";
     const accountId = parseOptionalId(searchParams.get("account_id"));
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       canViewCards = permissions.get("CREDIT_CARDS") === true;
     }
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
     const limit = search ? 1000 : 500;
     const includeAccountMovements = source !== "credit_card";
     const includeCardMovements = source !== "account" && canViewCards;
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
           ? sql`
               SELECT
                 t.id, t.type, t.amount, t.category, t.description,
-                t.reference_type, t.reference_id, t.occurred_at,
+                t.reference_type, t.reference_id, t.effective_date::text AS effective_date, t.occurred_at,
                 t.created_at, t.deleted_at,
                 a.id AS account_id, a.name AS account_name, a.type AS account_type,
                 ta.id AS to_account_id, ta.name AS to_account_name
@@ -86,11 +86,11 @@ export async function GET(request: NextRequest) {
               JOIN accounts a ON a.id = t.account_id
               LEFT JOIN accounts ta ON ta.id = t.to_account_id
               WHERE t.org_id = ${orgId}
-                ${search ? sql`` : sql`AND t.occurred_at >= ${startISO}::timestamptz AND t.occurred_at < ${endISO}::timestamptz`}
+                ${search ? sql`` : sql`AND t.effective_date >= ${startDate}::date AND t.effective_date < ${endDate}::date`}
                 ${search ? sql`AND t.description ILIKE ${"%" + search + "%"}` : sql``}
                 ${accountId ? sql`AND (t.account_id = ${accountId} OR t.to_account_id = ${accountId})` : sql``}
                 ${type ? sql`AND t.type = ${type}` : sql``}
-              ORDER BY t.occurred_at DESC
+              ORDER BY t.effective_date DESC, t.id DESC
               LIMIT ${limit}
             `
           : Promise.resolve([]),
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
               FROM transactions t
               WHERE t.org_id = ${orgId}
                 AND t.deleted_at IS NULL
-                ${search ? sql`` : sql`AND t.occurred_at >= ${startISO}::timestamptz AND t.occurred_at < ${endISO}::timestamptz`}
+                ${search ? sql`` : sql`AND t.effective_date >= ${startDate}::date AND t.effective_date < ${endDate}::date`}
                 ${search ? sql`AND t.description ILIKE ${"%" + search + "%"}` : sql``}
                 ${accountId ? sql`AND (t.account_id = ${accountId} OR t.to_account_id = ${accountId})` : sql``}
             `
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
                 cct.type, cct.description, cct.amount, cct.currency,
                 cct.exchange_rate, cct.amount_local, cct.category,
                 cct.sale_id, cct.purchase_batch_id, cct.account_transaction_id,
-                cct.occurred_at, cct.created_at, s.sale_number,
+                cct.effective_date::text AS effective_date, cct.occurred_at, cct.created_at, s.sale_number,
                 a.name AS account_name
               FROM credit_card_transactions cct
               JOIN credit_cards cc ON cc.id = cct.credit_card_id
@@ -124,14 +124,14 @@ export async function GET(request: NextRequest) {
               LEFT JOIN transactions t ON t.id = cct.account_transaction_id
               LEFT JOIN accounts a ON a.id = t.account_id
               WHERE cct.org_id = ${orgId}
-                ${search ? sql`` : sql`AND cct.occurred_at >= ${startISO}::timestamptz AND cct.occurred_at < ${endISO}::timestamptz`}
+                ${search ? sql`` : sql`AND cct.effective_date >= ${startDate}::date AND cct.effective_date < ${endDate}::date`}
                 ${search ? sql`AND (
                   cct.description ILIKE ${"%" + search + "%"}
                   OR cct.category ILIKE ${"%" + search + "%"}
                   OR s.sale_number ILIKE ${"%" + search + "%"}
                 )` : sql``}
                 ${cardId ? sql`AND cct.credit_card_id = ${cardId}` : sql``}
-              ORDER BY cct.occurred_at DESC
+              ORDER BY cct.effective_date DESC, cct.id DESC
               LIMIT ${limit}
             `
           : Promise.resolve([]),
@@ -140,14 +140,14 @@ export async function GET(request: NextRequest) {
               SELECT DISTINCT year, month
               FROM (
                 SELECT
-                  EXTRACT(YEAR FROM occurred_at)::int AS year,
-                  EXTRACT(MONTH FROM occurred_at)::int AS month
+                  EXTRACT(YEAR FROM effective_date)::int AS year,
+                  EXTRACT(MONTH FROM effective_date)::int AS month
                 FROM transactions
                 WHERE org_id = ${orgId}
                 UNION ALL
                 SELECT
-                  EXTRACT(YEAR FROM occurred_at)::int AS year,
-                  EXTRACT(MONTH FROM occurred_at)::int AS month
+                  EXTRACT(YEAR FROM effective_date)::int AS year,
+                  EXTRACT(MONTH FROM effective_date)::int AS month
                 FROM credit_card_transactions
                 WHERE org_id = ${orgId}
               ) available_periods
@@ -155,8 +155,8 @@ export async function GET(request: NextRequest) {
             `
           : sql`
               SELECT DISTINCT
-                EXTRACT(YEAR FROM occurred_at)::int AS year,
-                EXTRACT(MONTH FROM occurred_at)::int AS month
+                EXTRACT(YEAR FROM effective_date)::int AS year,
+                EXTRACT(MONTH FROM effective_date)::int AS month
               FROM transactions
               WHERE org_id = ${orgId}
               ORDER BY year DESC, month DESC

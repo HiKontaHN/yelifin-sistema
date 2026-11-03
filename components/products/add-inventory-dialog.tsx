@@ -24,7 +24,8 @@ import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { Product } from "@/types";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 const TASA_DEFAULT = 27;
 
@@ -84,6 +85,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const { activeWarehouses, defaultWarehouse } = useWarehouses();
   const { format, symbol, currency: businessCurrency } = useCurrency();
   const { rate: suggestedRate, rateDate: suggestedRateDate } = useSuggestedExchangeRate();
+  const timezone = useTimezone();
 
   const [paymentMode, setPaymentMode] = useState<"account" | "credit_card">("account");
   const [creditCardId, setCreditCardId] = useState<number | null>(null);
@@ -145,10 +147,10 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
         currency: "USD",
         exchange_rate: TASA_DEFAULT,
         shipping: 0,
-        purchased_at: toLocalDateInput(new Date()),
+        purchased_at: todayInTimeZone(timezone),
       });
     }
-  }, [open, reset, defaultWarehouse]);
+  }, [open, reset, defaultWarehouse, timezone]);
 
   // ── Manejo de items ────────────────────────────────────────────────
 
@@ -195,9 +197,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
         shipping: data.shipping,
         notes: data.notes,
         status: isPending ? "PENDING" : "COMPLETED",
-        purchased_at: data.purchased_at
-          ? localDateToISO(data.purchased_at)
-          : new Date().toISOString(),
+        purchased_at: data.purchased_at || todayInTimeZone(timezone),
         items: items.map((item) => ({
           product_id: product.id,
           variant_id: item.variant_key === "base" ? undefined : Number(item.variant_key),
@@ -399,7 +399,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                 )}
                 {suggestedRate != null && (
                   <p className="text-xs text-muted-foreground">
-                    Sugerido (BCH{suggestedRateDate ? `, ${new Date(suggestedRateDate).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
+                    Sugerido (BCH{suggestedRateDate ? `, ${formatCalendarDate(suggestedRateDate, { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
                     {Number(exchangeRate) !== suggestedRate && (
                       <button
                         type="button"

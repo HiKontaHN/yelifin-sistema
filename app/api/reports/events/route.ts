@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const { orgId } = auth.data;
     const { searchParams } = new URL(request.url);
-    const def  = defaultYearRange();
+    const def  = defaultYearRange(auth.data.timezone);
     const from = searchParams.get("from") ?? def.from;
     const to   = searchParams.get("to")   ?? def.to;
 

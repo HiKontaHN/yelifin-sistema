@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
-import { computeEventStatus } from "@/lib/date-utils";
+import { computeEventStatus, isCalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -22,8 +22,10 @@ export async function GET(request: NextRequest) {
         e.public_id,
         e.name,
         e.location,
-        e.starts_at,
-        e.ends_at,
+        e.start_date::text AS start_date,
+        e.end_date::text AS end_date,
+        e.start_date::text AS starts_at,
+        e.end_date::text AS ends_at,
         e.fixed_cost,
         e.notes,
         e.created_at,
@@ -57,14 +59,12 @@ export async function GET(request: NextRequest) {
       ) t_agg ON true
 
       WHERE e.org_id = ${orgId}
-      ORDER BY e.starts_at DESC
+      ORDER BY e.start_date DESC, e.id DESC
     `;
 
     const now = new Date();
 
     const events = rows.map((e) => {
-      const start         = new Date(e.starts_at);
-      const end           = new Date(e.ends_at);
       const totalSales      = Number(e.total_sales);
       const totalTax        = Number(e.total_tax);
       const totalProfit     = Number(e.total_profit);
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       const totalCogs       = totalSales - totalTax - totalProfit;
       const totalInvestment = totalCogs + totalExpenses;
 
-      const status = computeEventStatus(start, end, now);
+      const status = computeEventStatus(e.start_date, e.end_date, now, auth.data.timezone);
 
       return {
         id:             e.id,
@@ -84,6 +84,8 @@ export async function GET(request: NextRequest) {
         location:       e.location,
         starts_at:      e.starts_at,
         ends_at:        e.ends_at,
+        start_date:     e.start_date,
+        end_date:       e.end_date,
         fixed_cost:     fixedCost,
         notes:          e.notes,
         created_at:     e.created_at,
@@ -117,30 +119,35 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId, orgId } = auth.data;
-    const { name, location, starts_at, ends_at, fixed_cost = 0, notes } = await request.json();
+    const { name, location, starts_at, ends_at, start_date, end_date, fixed_cost = 0, notes } = await request.json();
+    const startDate = start_date ?? (typeof starts_at === "string" ? starts_at.slice(0, 10) : null);
+    const endDate = end_date ?? (typeof ends_at === "string" ? ends_at.slice(0, 10) : null);
 
     if (!name?.trim())
       return createErrorResponse("El nombre es requerido", 400);
-    if (!starts_at)
+    if (!startDate || !isCalendarDate(startDate))
       return createErrorResponse("La fecha inicio es requerida", 400);
-    if (!ends_at)
+    if (!endDate || !isCalendarDate(endDate))
       return createErrorResponse("La fecha fin es requerida", 400);
-    if (new Date(starts_at) > new Date(ends_at))
+    if (startDate > endDate)
       return createErrorResponse("La fecha inicio debe ser antes que la fecha fin", 400);
 
     const [event] = await sql`
-      INSERT INTO events (org_id, created_by, name, location, starts_at, ends_at, fixed_cost, notes)
+      INSERT INTO events (org_id, created_by, name, location, start_date, end_date, starts_at, ends_at, fixed_cost, notes)
       VALUES (
         ${orgId},
         ${userId},
         ${name.trim()},
         ${location?.trim() || null},
-        ${starts_at},
-        ${ends_at},
+        ${startDate},
+        ${endDate},
+        ${startDate}::date,
+        ${endDate}::date,
         ${fixed_cost},
         ${notes?.trim() || null}
       )
-      RETURNING *
+      RETURNING *, start_date::text AS start_date, end_date::text AS end_date,
+        start_date::text AS starts_at, end_date::text AS ends_at
     `;
 
     return Response.json({ data: event }, { status: 201 });

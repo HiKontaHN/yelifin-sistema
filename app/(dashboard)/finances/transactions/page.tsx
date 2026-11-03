@@ -47,11 +47,12 @@ import {
 } from "@/components/shared/data-table-time-section";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
+import { formatCalendarDate, todayInTimeZone, toCalendarDate } from "@/lib/date-utils";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("es-HN", {
+  formatCalendarDate(d, {
     day: "numeric", month: "short", year: "numeric",
   });
 
@@ -180,13 +181,7 @@ export default function TransactionsPage() {
   const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
   const timezone = useTimezone();
-  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
-  }), [timezone]);
-  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
-    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
-  }), [timezone]);
-  const now = new Date();
+  const [currentYear, currentMonth] = todayInTimeZone(timezone).split("-").map(Number);
 
   // Filtros restaurados desde la URL — "volver" desde /sales/[id] (cuando
   // se hace clic en una transacción de tipo SALE) trae de vuelta esta
@@ -197,11 +192,11 @@ export default function TransactionsPage() {
   });
   const [selectedYear, setSelectedYear] = useState(() => {
     const v = Number(searchParams.get("year"));
-    return v > 0 ? v : now.getFullYear();
+    return v > 0 ? v : currentYear;
   });
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const v = Number(searchParams.get("month"));
-    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+    return v >= 1 && v <= 12 ? v : currentMonth;
   });
   const [specificDate, setSpecificDate] = useState(() => searchParams.get("date") ?? "");
   const [sourceFilter, setSourceFilter] = useState<string>(() => {
@@ -230,6 +225,11 @@ export default function TransactionsPage() {
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
   const [viewingPurchaseId, setViewingPurchaseId] = useState<number | null>(null);
   const [analyticsTab, setAnalyticsTab] = useState<"expense" | "income">("expense");
+
+  useEffect(() => {
+    if (!searchParams.has("month")) setSelectedMonth(currentMonth);
+    if (!searchParams.has("year")) setSelectedYear(currentYear);
+  }, [timezone, currentMonth, currentYear, searchParams]);
 
   const { deleteTransaction, isDeleting } = useDeleteTransaction();
 
@@ -270,9 +270,12 @@ export default function TransactionsPage() {
   const { format } = useCurrency();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("FINANCES");
 
-  const availableYears = [...new Set(periods.map((p) => p.year))].sort((a, b) => b - a);
-  const monthsForYear = (y: number) =>
-    periods.filter((p) => p.year === y).map((p) => p.month).sort((a, b) => b - a);
+  const availableYears = [...new Set([...periods.map((p) => p.year), currentYear])].sort((a, b) => b - a);
+  const monthsForYear = (y: number) => {
+    const months = periods.filter((p) => p.year === y).map((p) => p.month);
+    if (y === currentYear && !months.includes(currentMonth)) months.push(currentMonth);
+    return [...new Set(months)].sort((a, b) => b - a);
+  };
 
   // Al filtrar por tarjeta, los tiles se calculan de los movimientos de la
   // tarjeta (cargos/pagos), no de las transacciones de cuenta.
@@ -316,8 +319,8 @@ export default function TransactionsPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (filterMode !== "month") params.set("mode", filterMode);
-    if (selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
-    if (selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
+    if (selectedYear !== currentYear) params.set("year", String(selectedYear));
+    if (selectedMonth !== currentMonth) params.set("month", String(selectedMonth));
     if (specificDate) params.set("date", specificDate);
     if (sourceFilter !== "all") params.set("account_id", sourceFilter);
     if (typeFilter !== "all") params.set("type", typeFilter);
@@ -328,7 +331,8 @@ export default function TransactionsPage() {
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [
     filterMode, selectedYear, selectedMonth, specificDate,
-    sourceFilter, typeFilter, debouncedSearch, page, pageSize, pathname, replace,
+    sourceFilter, typeFilter, debouncedSearch, page, pageSize,
+    currentMonth, currentYear, pathname, replace,
   ]);
 
   // Sincroniza la pestaña del gráfico con el filtro de tipo
@@ -353,21 +357,23 @@ export default function TransactionsPage() {
       })
       .map((t) => ({ _src: "cc" as const, data: t }));
 
-    return [...accRows, ...ccRows].sort(
-      (a, b) =>
-        new Date(b.data.occurred_at).getTime() -
-        new Date(a.data.occurred_at).getTime()
-    );
+    return [...accRows, ...ccRows].sort((a, b) => {
+      const aDate = a.data.effective_date ?? toCalendarDate(a.data.occurred_at);
+      const bDate = b.data.effective_date ?? toCalendarDate(b.data.occurred_at);
+      return bDate.localeCompare(aDate) || Number(b.data.id) - Number(a.data.id);
+    });
   }, [transactions, ccTxs, typeFilter, isCardFilter, isAccountFilter]);
 
   // ── Paginación client-side de rows ─────────────────────────────────
   const totalRows = rows.length;
   const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
   const renderTransactionDate = (_key: string, groupedRows: readonly Row[]) => {
-    const parts = dateTitleFormatter.formatToParts(new Date(groupedRows[0].data.occurred_at));
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
-    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
-    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+    const row = groupedRows[0].data;
+    const value = row.effective_date ?? toCalendarDate(row.occurred_at);
+    const label = formatCalendarDate(value, {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+    return label.charAt(0).toLocaleUpperCase("es-HN") + label.slice(1);
   };
 
   const PIE_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#f97316", "#14b8a6"];
@@ -924,7 +930,7 @@ export default function TransactionsPage() {
         columns={transactionColumns}
         data={pagedRows}
         getRowKey={(row) => row._src === "account" ? `acc-${row.data.id}` : `cc-${row.data.id}`}
-        getGroupKey={(row) => dateKeyFormatter.format(new Date(row.data.occurred_at))}
+        getGroupKey={(row) => row.data.effective_date ?? toCalendarDate(row.data.occurred_at)}
         renderGroupHeader={renderTransactionDate}
         renderMobileRow={(row) => renderMobileCard(row)}
         onRowClick={(row) => row._src === "account" && handleTransactionClick(row.data)}

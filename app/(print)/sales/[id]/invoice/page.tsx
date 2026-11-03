@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSale } from "@/hooks/swr/use-sales";
 import { useMe } from "@/hooks/swr/use-me";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -57,10 +58,8 @@ export default function InvoicePage({ params }: Props) {
 
   const businessName = profile?.business_name || "Mi Negocio";
   const businessLogo = profile?.business_logo_url ?? null;
-  const tz           = profile?.timezone ?? "America/Tegucigalpa";
 
-  const dateFormatted = new Date(sale.sold_at).toLocaleDateString("es-HN", {
-    timeZone: tz,
+  const dateFormatted = formatCalendarDate(sale.sale_date ?? sale.sold_at, {
     day: "numeric",
     month: "long",
     year: "numeric",

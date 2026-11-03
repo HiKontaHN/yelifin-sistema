@@ -2,6 +2,8 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireAnySubitem } from "@/lib/auth";
+import { getCalendarBounds } from "@/lib/date-bounds";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -13,33 +15,10 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
-
-    const month = searchParams.get("month");
-    const year  = searchParams.get("year");
-    const now   = new Date();
-
-    let startISO: string;
-    let endISO:   string;
-
-    if (year && month) {
-      const y = Number(year), m = Number(month);
-      startISO = new Date(y, m - 1, 1).toISOString();
-      endISO   = new Date(y, m, 1).toISOString();
-    } else if (year && !month) {
-      const y = Number(year);
-      startISO = new Date(y, 0, 1).toISOString();
-      endISO   = new Date(y + 1, 0, 1).toISOString();
-    } else {
-      // Por defecto: mes actual
-      startISO = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      endISO   = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
-    }
-
-    // Hoy
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
+    const today = todayInTimeZone(timezone);
 
     // Cuentas con balance histórico al final del período
     const accounts = await sql`
@@ -60,7 +39,7 @@ export async function GET(request: NextRequest) {
             FROM transactions t
             WHERE t.org_id = ${orgId}
               AND t.deleted_at IS NULL
-              AND t.occurred_at >= ${endISO}::timestamptz
+              AND t.effective_date >= ${endDate}::date
               AND (t.account_id = a.id OR t.to_account_id = a.id)
           ), 
           0
@@ -78,8 +57,8 @@ export async function GET(request: NextRequest) {
       FROM transactions
       WHERE org_id = ${orgId}
         AND deleted_at IS NULL
-        AND occurred_at >= ${startISO}::timestamptz
-        AND occurred_at <  ${endISO}::timestamptz
+        AND effective_date >= ${startDate}::date
+        AND effective_date <  ${endDate}::date
     `;
 
     // Totales de hoy
@@ -91,22 +70,21 @@ export async function GET(request: NextRequest) {
       FROM transactions
       WHERE org_id = ${orgId}
         AND deleted_at IS NULL
-        AND occurred_at >= ${todayStart}::timestamptz
-        AND occurred_at <  ${todayEnd}::timestamptz
+        AND effective_date = ${today}::date
     `;
 
     // Flujo de efectivo — últimos 30 días del período
     const cashFlow = await sql`
       SELECT
-        DATE(occurred_at)::text AS date,
+        effective_date::text AS date,
         COALESCE(SUM(CASE WHEN type = 'INCOME'  THEN amount ELSE 0 END), 0) AS income,
         COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense
       FROM transactions
       WHERE org_id = ${orgId}
         AND deleted_at IS NULL
-        AND occurred_at >= ${startISO}::timestamptz
-        AND occurred_at <  ${endISO}::timestamptz
-      GROUP BY DATE(occurred_at)
+        AND effective_date >= ${startDate}::date
+        AND effective_date <  ${endDate}::date
+      GROUP BY effective_date
       ORDER BY date ASC
     `;
 
@@ -115,7 +93,7 @@ export async function GET(request: NextRequest) {
     const todayTransactions = await sql`
       SELECT
         t.id, t.type, t.amount, t.description, t.category,
-        t.reference_type, t.occurred_at,
+        t.reference_type, t.effective_date::text AS effective_date, t.occurred_at,
         a.name AS account_name,
         ta.name AS to_account_name
       FROM transactions t
@@ -123,9 +101,8 @@ export async function GET(request: NextRequest) {
       LEFT JOIN accounts ta ON ta.id = t.to_account_id
       WHERE t.org_id = ${orgId}
         AND t.deleted_at IS NULL
-        AND t.occurred_at >= ${todayStart}::timestamptz
-        AND t.occurred_at <  ${todayEnd}::timestamptz
-      ORDER BY t.occurred_at DESC
+        AND t.effective_date = ${today}::date
+      ORDER BY t.effective_date DESC, t.id DESC
       LIMIT 50
     `;
 

@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     const { orgId, roleName } = await ensureOrgExists(
       user.id,
       user.business_name || user.display_name || user.email,
-      user.timezone  || "America/Tegucigalpa",
+      user.timezone  || "UTC",
       user.currency  || "HNL",
       user.locale    || "es-HN"
     );

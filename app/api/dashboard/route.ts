@@ -1,22 +1,19 @@
 // app/api/dashboard/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, getOrgTimezone } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
+import { addCalendarDays, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
+import { calendarDateStartToUtc } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// ── Timezone-aware "today" (mismo patrón que app/api/sales/route.ts) ──────
-function tzOffsetMs(tz: string, at: Date): number {
-  const tzStr  = at.toLocaleString("en-US", { timeZone: tz });
-  const utcStr = at.toLocaleString("en-US", { timeZone: "UTC" });
-  return new Date(tzStr).getTime() - new Date(utcStr).getTime();
+function monthStart(year: number, month: number): CalendarDate {
+  return `${year}-${String(month).padStart(2, "0")}-01` as CalendarDate;
 }
 
-function startOfDayTZ(d: Date, tz: string): Date {
-  const ymd    = d.toLocaleDateString("sv", { timeZone: tz }); // "YYYY-MM-DD"
-  const offset = tzOffsetMs(tz, d);
-  const [y, m, day] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, day, 0, 0, 0, 0) - offset);
+function shiftMonth(year: number, month: number, amount: number): CalendarDate {
+  const index = year * 12 + (month - 1) + amount;
+  return monthStart(Math.floor(index / 12), (index % 12 + 12) % 12 + 1);
 }
 
 export async function GET(request: NextRequest) {
@@ -30,17 +27,18 @@ export async function GET(request: NextRequest) {
   const { showCosts, showProfit } = await getModulePermissions(auth.data, 'DASHBOARD');
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
 
-    const now = new Date();
+    const today = todayInTimeZone(timezone);
+    const [currentYear, currentMonth] = today.split("-").map(Number);
     const paramMonth  = searchParams.get("month");
     const paramYear   = searchParams.get("year");
     const isToday     = searchParams.get("period") === "today";
 
     const filterAll = !paramMonth && !paramYear && !isToday;
-    const filterYear = paramYear ? Number(paramYear) : now.getFullYear();
-    const filterMonth = paramMonth ? Number(paramMonth) : now.getMonth() + 1;
+    const filterYear = paramYear ? Number(paramYear) : currentYear;
+    const filterMonth = paramMonth ? Number(paramMonth) : currentMonth;
 
     let startISO: string;
     let endISO: string;
@@ -48,30 +46,29 @@ export async function GET(request: NextRequest) {
     let prevEndISO: string;
 
     if (isToday) {
-      const tz = await getOrgTimezone(orgId);
-      const todayStart = startOfDayTZ(now, tz);
-      const todayEnd    = new Date(todayStart.getTime() + 86_400_000);
-      const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
-      startISO = todayStart.toISOString();
-      endISO = todayEnd.toISOString();
-      prevStartISO = yesterdayStart.toISOString();
-      prevEndISO = todayStart.toISOString();
+      startISO = today;
+      endISO = addCalendarDays(today, 1);
+      prevStartISO = addCalendarDays(today, -1);
+      prevEndISO = today;
     } else if (filterAll) {
-      startISO = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      endISO = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
-      prevStartISO = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+      startISO = monthStart(currentYear, currentMonth);
+      endISO = shiftMonth(currentYear, currentMonth, 1);
+      prevStartISO = shiftMonth(currentYear, currentMonth, -1);
       prevEndISO = startISO;
     } else if (paramYear && !paramMonth) {
-      startISO = new Date(filterYear, 0, 1).toISOString();
-      endISO = new Date(filterYear + 1, 0, 1).toISOString();
-      prevStartISO = new Date(filterYear - 1, 0, 1).toISOString();
+      startISO = monthStart(filterYear, 1);
+      endISO = monthStart(filterYear + 1, 1);
+      prevStartISO = monthStart(filterYear - 1, 1);
       prevEndISO = startISO;
     } else {
-      startISO = new Date(filterYear, filterMonth - 1, 1).toISOString();
-      endISO = new Date(filterYear, filterMonth, 1).toISOString();
-      prevStartISO = new Date(filterYear, filterMonth - 2, 1).toISOString();
+      startISO = monthStart(filterYear, filterMonth);
+      endISO = shiftMonth(filterYear, filterMonth, 1);
+      prevStartISO = shiftMonth(filterYear, filterMonth, -1);
       prevEndISO = startISO;
     }
+
+    const startInstant = calendarDateStartToUtc(startISO, timezone).toISOString();
+    const endInstant = calendarDateStartToUtc(endISO, timezone).toISOString();
 
     // Las consultas del dashboard se agrupan por dominio para evitar viajes
     // repetidos a Neon. Los tres bloques son independientes y se ejecutan en
@@ -82,19 +79,19 @@ export async function GET(request: NextRequest) {
         WITH sales_metrics AS (
           SELECT
             COALESCE(SUM(total) FILTER (
-              WHERE sold_at >= ${startISO} AND sold_at < ${endISO}
+              WHERE sale_date >= ${startISO}::date AND sale_date < ${endISO}::date
             ), 0) AS revenue_this,
             COALESCE(SUM(total) FILTER (
-              WHERE sold_at >= ${prevStartISO} AND sold_at < ${prevEndISO}
+              WHERE sale_date >= ${prevStartISO}::date AND sale_date < ${prevEndISO}::date
             ), 0) AS revenue_last,
             COUNT(*) FILTER (
-              WHERE sold_at >= ${startISO} AND sold_at < ${endISO}
+              WHERE sale_date >= ${startISO}::date AND sale_date < ${endISO}::date
             )::int AS sales_count
           FROM sales
           WHERE org_id = ${orgId}
             AND status = 'COMPLETED'
-            AND sold_at >= ${prevStartISO}
-            AND sold_at < ${endISO}
+            AND sale_date >= ${prevStartISO}::date
+            AND sale_date < ${endISO}::date
         ),
         profit_metrics AS (
           SELECT
@@ -110,7 +107,7 @@ export async function GET(request: NextRequest) {
                   0
                 )
             ) FILTER (
-              WHERE s.sold_at >= ${startISO} AND s.sold_at < ${endISO}
+              WHERE s.sale_date >= ${startISO}::date AND s.sale_date < ${endISO}::date
             ), 0)
             - COALESCE((
                 SELECT SUM(ss.line_total)
@@ -119,7 +116,7 @@ export async function GET(request: NextRequest) {
                 WHERE ss.org_id = ${orgId}
                   AND ss.deleted_at IS NULL
                   AND s2.status = 'COMPLETED'
-                  AND s2.sold_at >= ${startISO} AND s2.sold_at < ${endISO}
+                  AND s2.sale_date >= ${startISO}::date AND s2.sale_date < ${endISO}::date
               ), 0) AS profit_this,
             COALESCE(SUM(
               si.line_total
@@ -133,7 +130,7 @@ export async function GET(request: NextRequest) {
                   0
                 )
             ) FILTER (
-              WHERE s.sold_at >= ${prevStartISO} AND s.sold_at < ${prevEndISO}
+              WHERE s.sale_date >= ${prevStartISO}::date AND s.sale_date < ${prevEndISO}::date
             ), 0)
             - COALESCE((
                 SELECT SUM(ss.line_total)
@@ -142,20 +139,20 @@ export async function GET(request: NextRequest) {
                 WHERE ss.org_id = ${orgId}
                   AND ss.deleted_at IS NULL
                   AND s2.status = 'COMPLETED'
-                  AND s2.sold_at >= ${prevStartISO} AND s2.sold_at < ${prevEndISO}
+                  AND s2.sale_date >= ${prevStartISO}::date AND s2.sale_date < ${prevEndISO}::date
               ), 0) AS profit_last
           FROM sales s
           JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
           WHERE s.org_id = ${orgId}
             AND s.status = 'COMPLETED'
-            AND s.sold_at >= ${prevStartISO}
-            AND s.sold_at < ${endISO}
+            AND s.sale_date >= ${prevStartISO}::date
+            AND s.sale_date < ${endISO}::date
         ),
         customer_metrics AS (
           SELECT
             COUNT(*)::int AS customers_total,
             COUNT(*) FILTER (
-              WHERE created_at >= ${startISO} AND created_at < ${endISO}
+              WHERE created_at >= ${startInstant}::timestamptz AND created_at < ${endInstant}::timestamptz
             )::int AS customers_new
           FROM customers
           WHERE org_id = ${orgId}
@@ -190,8 +187,8 @@ export async function GET(request: NextRequest) {
             ), '[]'::jsonb)
             FROM (
               SELECT DISTINCT
-                EXTRACT(YEAR FROM sold_at)::int AS year,
-                EXTRACT(MONTH FROM sold_at)::int AS month
+                EXTRACT(YEAR FROM sale_date)::int AS year,
+                EXTRACT(MONTH FROM sale_date)::int AS month
               FROM sales
               WHERE org_id = ${orgId}
             ) periods
@@ -203,13 +200,13 @@ export async function GET(request: NextRequest) {
       sql`
         WITH filtered_sales AS MATERIALIZED (
           SELECT
-            id, sale_number, customer_id, total, payment_method, sold_at,
+            id, sale_number, customer_id, total, payment_method, sale_date, sold_at,
             subtotal, discount, tax, org_id
           FROM sales
           WHERE org_id = ${orgId}
             AND status = 'COMPLETED'
-            AND sold_at >= ${startISO}
-            AND sold_at < ${endISO}
+            AND sale_date >= ${startISO}::date
+            AND sale_date < ${endISO}::date
         ),
         sales_with_profit AS MATERIALIZED (
           SELECT
@@ -218,6 +215,7 @@ export async function GET(request: NextRequest) {
             s.customer_id,
             s.total,
             s.payment_method,
+            s.sale_date,
             s.sold_at,
             COUNT(si.id)::int AS items_count,
             COALESCE(SUM(
@@ -243,7 +241,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
           GROUP BY
             s.id, s.sale_number, s.customer_id, s.total,
-            s.payment_method, s.sold_at
+            s.payment_method, s.sale_date, s.sold_at
         ),
         top_products AS (
           SELECT
@@ -282,11 +280,11 @@ export async function GET(request: NextRequest) {
             ), '[]'::jsonb)
             FROM (
               SELECT
-                DATE(sold_at)::text AS date,
+                sale_date::text AS date,
                 COALESCE(SUM(total), 0) AS revenue,
                 COALESCE(SUM(profit), 0) AS profit
               FROM sales_with_profit
-              GROUP BY DATE(sold_at)
+              GROUP BY sale_date
             ) daily
           ) AS sales_chart,
           (
@@ -324,17 +322,18 @@ export async function GET(request: NextRequest) {
                 'sale_number', recent.sale_number,
                 'total', recent.total,
                 'payment_method', recent.payment_method,
+                'sale_date', recent.sale_date,
                 'sold_at', recent.sold_at,
                 'customer_name', recent.customer_name,
                 'items_count', recent.items_count,
                 'profit', recent.profit
-              ) ORDER BY recent.sold_at DESC
+              ) ORDER BY recent.sale_date DESC, recent.id DESC
             ), '[]'::jsonb)
             FROM (
               SELECT swp.*, c.name AS customer_name
               FROM sales_with_profit swp
               LEFT JOIN customers c ON c.id = swp.customer_id
-              ORDER BY swp.sold_at DESC
+              ORDER BY swp.sale_date DESC, swp.id DESC
               LIMIT 5
             ) recent
           ) AS recent_sales
@@ -433,7 +432,7 @@ export async function GET(request: NextRequest) {
         })),
         recent_sales: recentSales.map((r: any) => ({
           id: Number(r.id), sale_number: String(r.sale_number), total: Number(r.total),
-          payment_method: r.payment_method ?? "OTHER", sold_at: String(r.sold_at),
+          payment_method: r.payment_method ?? "OTHER", sale_date: String(r.sale_date), sold_at: String(r.sold_at),
           customer_name: r.customer_name ?? null, items_count: Number(r.items_count), profit: showProfit ? Number(r.profit) : null,
         })),
         low_stock: lowStock.map((r: any) => ({

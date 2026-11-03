@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { addCalendarDays, isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -20,13 +21,15 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId } = auth.data;
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to   = searchParams.get("to");
 
-    const fromISO = from ? toISOOrNull(`${from}T00:00:00`) : null;
-    const toISO   = to   ? toISOOrNull(`${to}T23:59:59`)   : null;
+    if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) {
+      return createErrorResponse("Rango de fechas inválido", 400);
+    }
+    const toExclusive = to ? addCalendarDays(to, 1) : null;
 
     const purchases = await sql`
       SELECT
@@ -35,6 +38,7 @@ export async function GET(request: NextRequest) {
         sp.supplier_id,
         sp.account_id,
         a.name AS account_name,
+        sp.purchase_date::text AS purchase_date,
         sp.purchased_at,
         sp.created_at,
         COALESCE(SUM(spi.line_total), 0) AS total,
@@ -43,10 +47,10 @@ export async function GET(request: NextRequest) {
       LEFT JOIN supply_purchase_items spi ON spi.supply_purchase_id = sp.id
       LEFT JOIN accounts a ON a.id = sp.account_id
       WHERE sp.org_id = ${orgId}
-        AND (${fromISO}::timestamptz IS NULL OR sp.purchased_at >= ${fromISO}::timestamptz)
-        AND (${toISO}::timestamptz   IS NULL OR sp.purchased_at <= ${toISO}::timestamptz)
+        AND (${from}::date IS NULL OR sp.purchase_date >= ${from}::date)
+        AND (${toExclusive}::date IS NULL OR sp.purchase_date < ${toExclusive}::date)
       GROUP BY sp.id, a.name
-      ORDER BY sp.purchased_at DESC
+      ORDER BY sp.purchase_date DESC, sp.id DESC
     `;
 
     return Response.json({ data: purchases, total: purchases.length });
@@ -89,16 +93,17 @@ export async function POST(request: NextRequest) {
     const items = Array.isArray(body?.items) ? body.items : [];
     if (items.length === 0) return createErrorResponse("Se requiere al menos un item", 400);
 
-    let purchased_at: string | null = null;
+    let purchased_at: string = new Date().toISOString();
     const rawPurchasedAt = (body?.purchased_at ?? "").toString().trim();
-    if (!rawPurchasedAt) {
-      purchased_at = new Date().toISOString();
-    } else {
-      purchased_at =
-        rawPurchasedAt.length === 10 && rawPurchasedAt.includes("-")
-          ? toISOOrNull(`${rawPurchasedAt}T00:00:00`)
-          : toISOOrNull(rawPurchasedAt);
-      if (!purchased_at) return createErrorResponse("Fecha inválida", 400);
+    const legacyDatePrefix = rawPurchasedAt ? rawPurchasedAt.slice(0, 10) : null;
+    const purchaseDate = body?.purchase_date
+      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+      ?? todayInTimeZone(auth.data.timezone);
+    if (!isCalendarDate(purchaseDate)) return createErrorResponse("Fecha inválida", 400);
+    if (rawPurchasedAt && !isCalendarDate(rawPurchasedAt)) {
+      const normalized = toISOOrNull(rawPurchasedAt);
+      if (!normalized) return createErrorResponse("Fecha inválida", 400);
+      purchased_at = normalized;
     }
 
     const normalizedItems: { supply_id: number; quantity: number; unit_cost: number; line_total: number }[] = [];
@@ -120,8 +125,8 @@ export async function POST(request: NextRequest) {
     try {
       // 1. Crear supply_purchase con account_id
       const [purchase] = await sql`
-        INSERT INTO supply_purchases (org_id, created_by, supplier_id, account_id, purchased_at)
-        VALUES (${orgId}, ${userId}, ${supplier_id}, ${account_id}, ${purchased_at}::timestamptz)
+        INSERT INTO supply_purchases (org_id, created_by, supplier_id, account_id, purchase_date, purchased_at)
+        VALUES (${orgId}, ${userId}, ${supplier_id}, ${account_id}, ${purchaseDate}, ${purchased_at})
         RETURNING id
       `;
       const purchaseId = purchase.id as number;
@@ -157,11 +162,11 @@ export async function POST(request: NextRequest) {
       await sql`
         INSERT INTO transactions (
           org_id, created_by, account_id, type, amount,
-          description, reference_type, reference_id, occurred_at
+          description, reference_type, reference_id, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${account_id}, 'EXPENSE', ${total},
           ${'Compra de suministros #' + purchaseId}, 'SUPPLY_PURCHASE', ${purchaseId},
-          ${purchased_at}::timestamptz
+          ${purchaseDate}, ${purchased_at}
         )
       `;
 
@@ -186,4 +191,4 @@ export async function POST(request: NextRequest) {
     console.error(" POST /api/supply-purchases:", error);
     return createErrorResponse("Error al registrar compra de suministros", 500);
   }
-} 
+}

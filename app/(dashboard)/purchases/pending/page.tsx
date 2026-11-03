@@ -22,19 +22,12 @@ import { CancelPurchaseDialog } from "@/components/products/cancel-purchase-dial
 import { SummaryStats } from "@/components/shared/summary-stats";
 import { SearchBar } from "@/components/shared/search-bar";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
-import { useTimezone } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 const PAGE_SIZE = 10;
 
 export default function PendingPurchasesPage() {
   const { back, push } = useRouter();
-  const timezone = useTimezone();
-  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
-  }), [timezone]);
-  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
-    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
-  }), [timezone]);
   const { purchases, isLoading, mutate: mutatePurchases } = usePendingPurchases();
   const { mutate: mutateInventory }  = useInventory();
   const { accounts, mutate: mutateAccounts } = useAccounts();
@@ -69,7 +62,7 @@ export default function PendingPurchasesPage() {
     {
       id: "date", header: "Fecha", width: 110,
       className: "whitespace-nowrap text-sm text-muted-foreground",
-      cell: (purchase) => new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+      cell: (purchase) => formatCalendarDate(purchase.purchase_date ?? purchase.purchased_at, {
         day: "numeric", month: "short", year: "numeric",
       }),
     },
@@ -136,10 +129,10 @@ export default function PendingPurchasesPage() {
     }] : []),
   ];
   const renderPurchaseDate = (_key: string, rows: readonly PurchaseWithItems[]) => {
-    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].purchased_at));
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
-    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
-    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+    const value = formatCalendarDate(rows[0].purchase_date ?? rows[0].purchased_at, {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+    });
+    return value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
   };
 
   const stats = purchases.reduce(
@@ -231,7 +224,7 @@ export default function PendingPurchasesPage() {
             columns={columns}
             data={pagePurchases}
             getRowKey={(purchase) => purchase.id}
-            getGroupKey={(purchase) => dateKeyFormatter.format(new Date(purchase.purchased_at))}
+            getGroupKey={(purchase) => purchase.purchase_date ?? purchase.purchased_at.slice(0, 10)}
             renderGroupHeader={renderPurchaseDate}
             renderMobileRow={(purchase) => (
               <PurchaseCard
@@ -300,7 +293,7 @@ function PurchaseCard({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const date = new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+  const date = formatCalendarDate(purchase.purchase_date ?? purchase.purchased_at, {
     day: "numeric",
     month: "long",
     year: "numeric",

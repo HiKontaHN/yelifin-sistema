@@ -17,12 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useEditPurchaseItem, usePurchase } from "@/hooks/swr/use-purchases";
-
-function toDateTimeLocal(value: string) {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
+import { toCalendarDate } from "@/lib/date-utils";
 
 function EditPurchaseContent() {
   const params = useParams<{ id: string }>();
@@ -50,7 +45,7 @@ function EditPurchaseContent() {
     if (!purchase || itemId !== null) return;
     const requested = purchase.items.find((item) => item.id === requestedItemId);
     setItemId(requested?.id ?? purchase.items[0]?.id ?? null);
-    setPurchasedAt(toDateTimeLocal(purchase.purchased_at));
+    setPurchasedAt(purchase.purchase_date ?? toCalendarDate(purchase.purchased_at));
     setNotes(purchase.notes ?? "");
   }, [purchase, requestedItemId, itemId]);
 
@@ -72,7 +67,7 @@ function EditPurchaseContent() {
         item_id: selectedItem.id,
         quantity,
         unit_cost: showCosts ? unitCost : undefined,
-        purchased_at: new Date(purchasedAt).toISOString(),
+        purchase_date: purchasedAt,
         notes,
       });
       toast.success("Ingreso actualizado");
@@ -188,7 +183,7 @@ function EditPurchaseContent() {
 
             <div className="space-y-2">
               <Label htmlFor="purchased-at">Fecha del ingreso</Label>
-              <Input id="purchased-at" type="datetime-local" value={purchasedAt} onChange={(event) => setPurchasedAt(event.target.value)} required />
+              <Input id="purchased-at" type="date" value={purchasedAt} onChange={(event) => setPurchasedAt(event.target.value)} required />
             </div>
 
             <div className="space-y-2">

@@ -73,6 +73,7 @@
     "zod": "4.6.6"
   },
   "devDependencies": {
+    "@next/env": "16.4.1",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.19.17",

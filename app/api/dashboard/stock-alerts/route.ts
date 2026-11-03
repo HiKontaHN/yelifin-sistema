@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
+import { addCalendarDays, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -14,7 +15,10 @@ export async function GET(request: NextRequest) {
   const { showCosts } = await getModulePermissions(auth.data, 'DASHBOARD');
 
   try {
-    const { orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
+    const today = todayInTimeZone(timezone);
+    const last30Start = addCalendarDays(today, -29);
+    const last15Start = addCalendarDays(today, -14);
 
     // ── Top ventas en riesgo: productos más vendidos (30 días) cuyo stock
     //    se agotará en menos de 15 días al ritmo de venta actual ─────────
@@ -24,7 +28,8 @@ export async function GET(request: NextRequest) {
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id AND s.org_id = si.org_id
         WHERE si.org_id = ${orgId} AND s.status = 'COMPLETED'
-          AND s.sold_at >= NOW() - INTERVAL '30 days'
+          AND s.sale_date >= ${last30Start}::date
+          AND s.sale_date <= ${today}::date
         GROUP BY si.product_id
       ),
       stock AS (
@@ -58,7 +63,8 @@ export async function GET(request: NextRequest) {
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id AND s.org_id = si.org_id
         WHERE si.org_id = ${orgId} AND s.status = 'COMPLETED'
-          AND s.sold_at >= NOW() - INTERVAL '15 days'
+          AND s.sale_date >= ${last15Start}::date
+          AND s.sale_date <= ${today}::date
         GROUP BY si.product_id
       ),
       previous AS (
@@ -66,7 +72,7 @@ export async function GET(request: NextRequest) {
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id AND s.org_id = si.org_id
         WHERE si.org_id = ${orgId} AND s.status = 'COMPLETED'
-          AND s.sold_at >= NOW() - INTERVAL '30 days' AND s.sold_at < NOW() - INTERVAL '15 days'
+          AND s.sale_date >= ${last30Start}::date AND s.sale_date < ${last15Start}::date
         GROUP BY si.product_id
       ),
       stock AS (
@@ -119,7 +125,7 @@ export async function GET(request: NextRequest) {
         HAVING COALESCE(SUM(qty_available), 0) > 0
       ),
       last_sale AS (
-        SELECT si.product_id, MAX(s.sold_at) AS last_sale_at
+        SELECT si.product_id, MAX(s.sale_date) AS last_sale_at
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id AND s.org_id = si.org_id
         WHERE si.org_id = ${orgId} AND s.status = 'COMPLETED'
@@ -130,17 +136,17 @@ export async function GET(request: NextRequest) {
         st.stock, st.stock_value,
         ls.last_sale_at,
         CASE WHEN ls.last_sale_at IS NOT NULL
-             THEN EXTRACT(DAY FROM NOW() - ls.last_sale_at)::int
+             THEN (${today}::date - ls.last_sale_at)::int
              ELSE NULL END AS days_since_sale,
         CASE WHEN ls.last_sale_at IS NULL
-             THEN EXTRACT(DAY FROM NOW() - p.created_at)::int
+             THEN (${today}::date - p.created_at::date)::int
              ELSE NULL END AS days_since_created
       FROM products p
       JOIN stock st ON st.product_id = p.id
       LEFT JOIN last_sale ls ON ls.product_id = p.id
       WHERE p.org_id = ${orgId} AND p.is_active = TRUE AND p.is_service = FALSE
-        AND (ls.last_sale_at IS NULL OR ls.last_sale_at < NOW() - INTERVAL '30 days')
-      ORDER BY COALESCE(ls.last_sale_at, p.created_at) ASC
+        AND (ls.last_sale_at IS NULL OR ls.last_sale_at < ${last30Start}::date)
+      ORDER BY ls.last_sale_at ASC NULLS FIRST, p.created_at ASC
       LIMIT 8
     `;
 

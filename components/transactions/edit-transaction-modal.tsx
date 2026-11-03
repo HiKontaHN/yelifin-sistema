@@ -14,7 +14,7 @@ import {
 import { Loader2, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import { useUpdateTransaction, Transaction } from "@/hooks/swr/use-transactions";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { toLocalDateInput } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
 
@@ -42,7 +42,7 @@ function txFromTransaction(t: Transaction): FormState {
     amount:      String(t.amount),
     category:    t.category ?? "",
     description: t.description ?? "",
-    occurredAt:  toLocalDateInput(t.occurred_at),
+    occurredAt:  toLocalDateInput(t.effective_date ?? t.occurred_at),
   };
 }
 
@@ -94,7 +94,7 @@ export function EditTransactionModal({
         to_account_id: type === "TRANSFER" ? Number(toAccountId) : undefined,
         category:      category.trim() || null,
         description:   description.trim() || null,
-        occurred_at:   localDateToISO(occurredAt),
+        effective_date: occurredAt,
       });
 
       toast.success("Transacción actualizada");

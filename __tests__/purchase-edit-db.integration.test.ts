@@ -1,3 +1,7 @@
+import { loadEnvConfig } from "@next/env";
+
+loadEnvConfig(process.cwd());
+
 jest.mock("firebase-admin/app", () => ({
   initializeApp: jest.fn(),
   getApps: jest.fn(() => []),
@@ -92,6 +96,8 @@ describeDatabase("edición de ingresos — integración con la base de desarroll
         firebaseUid: marker,
         email: "integration@example.com",
         displayName: "Integration",
+        timezone: "America/Tegucigalpa",
+        locale: "es-HN",
         emailVerified: true,
         isActive: true,
         subscription: { status: "ACTIVE", planSlug: "pro" },

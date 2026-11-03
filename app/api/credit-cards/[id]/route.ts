@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { getCreditCardCycleStart } from "@/lib/credit-card-cycle";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -15,9 +16,8 @@ export async function GET(
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
 
     const [card] = await sql`
       SELECT
@@ -30,33 +30,8 @@ export async function GET(
 
     if (!card) return createErrorResponse("Tarjeta no encontrada", 404);
 
-    // Compute current billing-cycle start based on statement_closing_day.
-    // All date math is done in the user's local time (tz_offset, same convention
-    // as getUtcBounds): the statement closes at the END of the closing day, so
-    // the current cycle starts the day AFTER the most recent cut.
     const closingDay = card.statement_closing_day as number | null;
-    const offsetMs = Number(searchParams.get("tz_offset") ?? 0) * 60_000;
-    const localNow = new Date(Date.now() - offsetMs);
-    const y = localNow.getUTCFullYear();
-    const m = localNow.getUTCMonth();
-    const daysInMonth = (yy: number, mm: number) => new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
-
-    let cycleStartMs: number;
-    if (!closingDay) {
-      cycleStartMs = Date.UTC(y, m, 1) + offsetMs;
-    } else {
-      // Clamp so a closing day of 29-31 works on shorter months
-      const cutThisMonth = Math.min(closingDay, daysInMonth(y, m));
-      if (localNow.getUTCDate() > cutThisMonth) {
-        cycleStartMs = Date.UTC(y, m, cutThisMonth + 1) + offsetMs;
-      } else {
-        const py = m === 0 ? y - 1 : y;
-        const pm = m === 0 ? 11 : m - 1;
-        const cutPrevMonth = Math.min(closingDay, daysInMonth(py, pm));
-        cycleStartMs = Date.UTC(py, pm, cutPrevMonth + 1) + offsetMs;
-      }
-    }
-    const cycleStart = new Date(cycleStartMs);
+    const cycleStart = getCreditCardCycleStart(closingDay, timezone);
 
     // Local and USD are independent buckets (mirrors balance / balance_usd):
     // USD charges must NOT leak into the local figure via amount_local.
@@ -71,7 +46,7 @@ export async function GET(
       FROM credit_card_transactions
       WHERE credit_card_id = ${Number(id)}
         AND org_id       = ${orgId}
-        AND occurred_at >= ${cycleStart.toISOString()}::timestamptz
+        AND effective_date >= ${cycleStart}::date
     `;
 
     return Response.json({
@@ -79,7 +54,7 @@ export async function GET(
         ...card,
         statement_balance_local: Number(stmtTotals.statement_balance_local),
         statement_balance_usd:   Number(stmtTotals.statement_balance_usd),
-        cycle_start:             cycleStart.toISOString(),
+        cycle_start:             cycleStart,
       },
     });
   } catch (error) {

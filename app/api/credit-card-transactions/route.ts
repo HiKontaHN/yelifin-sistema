@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
 
     const cardId = searchParams.get("card_id");
     const search = searchParams.get("search")?.trim() || null;
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
     const limit = search ? 1000 : 500;
 
     const rows = await sql`
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         cct.sale_id,
         cct.purchase_batch_id,
         cct.account_transaction_id,
+        cct.effective_date::text AS effective_date,
         cct.occurred_at,
         cct.created_at,
         s.sale_number,
@@ -48,14 +49,14 @@ export async function GET(request: NextRequest) {
       LEFT JOIN transactions t ON t.id = cct.account_transaction_id
       LEFT JOIN accounts a ON a.id = t.account_id
       WHERE cct.org_id = ${orgId}
-        ${search ? sql`` : sql`AND cct.occurred_at >= ${startISO}::timestamptz AND cct.occurred_at < ${endISO}::timestamptz`}
+        ${search ? sql`` : sql`AND cct.effective_date >= ${startDate}::date AND cct.effective_date < ${endDate}::date`}
         ${search ? sql`AND (
           cct.description ILIKE ${"%" + search + "%"}
           OR cct.category ILIKE ${"%" + search + "%"}
           OR s.sale_number ILIKE ${"%" + search + "%"}
         )` : sql``}
         ${cardId ? sql`AND cct.credit_card_id = ${Number(cardId)}` : sql``}
-      ORDER BY cct.occurred_at DESC
+      ORDER BY cct.effective_date DESC, cct.id DESC
       LIMIT ${limit}
     `;
 

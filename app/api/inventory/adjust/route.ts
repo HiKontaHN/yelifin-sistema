@@ -5,6 +5,7 @@ import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { userId, orgId, timezone } = auth.data;
     const body              = await request.json();
 
     const { product_id, variant_id, type, quantity, notes, unit_cost, warehouse_id } = body;
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     const movementType = type === "in" ? "IN" : "OUT";
+    const receivedDate = todayInTimeZone(timezone);
 
     try {
       return await withTransaction(async (tx) => {
@@ -104,11 +106,11 @@ export async function POST(request: NextRequest) {
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id,
             purchase_batch_item_id,
-            qty_in, qty_available, unit_cost, received_at, warehouse_id
+            qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${product_id}, ${variantId},
             ${null},
-            ${quantity}, ${quantity}, ${unitCost}, NOW(), ${warehouseId}
+            ${quantity}, ${quantity}, ${unitCost}, ${receivedDate}, NOW(), ${warehouseId}
           )
           RETURNING id
         `;

@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
 
     const periods = await sql`
       SELECT DISTINCT
-        EXTRACT(YEAR  FROM sold_at)::int AS year,
-        EXTRACT(MONTH FROM sold_at)::int AS month
+        EXTRACT(YEAR  FROM sale_date)::int AS year,
+        EXTRACT(MONTH FROM sale_date)::int AS month
       FROM sales
       WHERE org_id = ${orgId}
       ORDER BY year DESC, month DESC

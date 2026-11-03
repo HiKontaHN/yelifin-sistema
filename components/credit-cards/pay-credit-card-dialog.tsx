@@ -20,6 +20,8 @@ import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
 import { Account } from "@/hooks/swr/use-accounts";
 import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
+import { todayInTimeZone } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 const schema = z.object({
   account_id:    z.coerce.number().min(1, "Selecciona una cuenta"),
@@ -47,11 +49,12 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
   const { payCreditCard, isPaying } = usePayCreditCard();
   const { currency: nativeCurrency, symbol, format } = useCurrency();
   const { categories } = useTransactionCategories("EXPENSE");
+  const timezone = useTimezone();
   const [selectedCurrency, setSelectedCurrency] = useState<string>(nativeCurrency);
   const [pickedCardId, setPickedCardId] = useState("");
   const card = cardProp ?? cards.find((c) => String(c.id) === pickedCardId) ?? null;
 
-  const todayLocal = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+  const todayLocal = todayInTimeZone(timezone);
 
   const { register, handleSubmit, reset, setValue, watch, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -102,7 +105,7 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
         amount:        data.amount,
         currency:      data.currency,
         exchange_rate: isUsd ? data.exchange_rate : undefined,
-        occurred_at:   new Date(`${data.occurred_at}T12:00:00`).toISOString(),
+        effective_date: data.occurred_at,
         category:      data.category?.trim() || undefined,
         description:   data.description?.trim() || undefined,
       });

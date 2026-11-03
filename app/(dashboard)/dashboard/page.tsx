@@ -25,6 +25,7 @@ import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { Fab } from "@/components/ui/fab";
 import { CreateTransactionModal } from "@/components/transactions/create-transaction-modal";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 import { MetricsGrid } from "@/components/dashboard/metrics-grid";
 import { SecondaryStats } from "@/components/dashboard/secondary-stats";
@@ -108,7 +109,7 @@ export default function DashboardPage() {
 
   const salesChart = (data?.sales_chart ?? []).map((d: any) => ({
     ...d,
-    label: new Date(d.date).toLocaleDateString("es-HN", {
+    label: formatCalendarDate(d.date, {
       month: "short",
       day: "numeric",
     }),

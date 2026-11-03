@@ -9,6 +9,7 @@ import {
   type AccountKind,
   type ImportEstado,
 } from "@/lib/import-labels";
+import { isCalendarDate, type CalendarDate } from "@/lib/date-utils";
 
 export { MAX_IMPORT_ROWS };
 
@@ -26,7 +27,7 @@ export type ImportRow = {
   precio: number | null;
   cantidad: number | null;
   costoUnitario: number | null;
-  fecha: string | null; // ISO
+  fecha: CalendarDate | null;
   estado: ImportEstado;
   cuentaRaw: string | null;
   cuentaRef: { kind: AccountKind | null; id: number | null; name: string } | null;
@@ -101,30 +102,39 @@ function cellToNumber(value: unknown): number | null {
   return parsed;
 }
 
-function cellToDate(value: unknown): { iso: string | null; invalid: boolean } {
+function utcCalendarDate(value: Date): CalendarDate {
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}` as CalendarDate;
+}
+
+function cellToDate(value: unknown): { iso: CalendarDate | null; invalid: boolean } {
   if (value === null || value === undefined || String(value).trim() === "")
     return { iso: null, invalid: false };
   if (value instanceof Date) {
     return isNaN(value.getTime())
       ? { iso: null, invalid: true }
-      : { iso: value.toISOString(), invalid: false };
+      : { iso: utcCalendarDate(value), invalid: false };
   }
   const text = String(value).trim();
   // dd/mm/yyyy o dd-mm-yyyy (formato local es-HN)
   const dmy = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (dmy) {
-    const date = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
-    return isNaN(date.getTime())
-      ? { iso: null, invalid: true }
-      : { iso: date.toISOString(), invalid: false };
+    const date = `${dmy[3]}-${String(Number(dmy[2])).padStart(2, "0")}-${String(Number(dmy[1])).padStart(2, "0")}`;
+    return isCalendarDate(date)
+      ? { iso: date, invalid: false }
+      : { iso: null, invalid: true };
   }
+  const prefix = text.slice(0, 10);
+  if (isCalendarDate(prefix)) return { iso: prefix, invalid: false };
   const parsed = new Date(text);
   return isNaN(parsed.getTime())
     ? { iso: null, invalid: true }
-    : { iso: parsed.toISOString(), invalid: false };
+    : { iso: utcCalendarDate(parsed), invalid: false };
 }
 
-export async function parseWorkbook(buffer: Buffer): Promise<{ rows: ImportRow[]; error: string | null }> {
+export async function parseWorkbook(
+  buffer: Buffer,
+  today?: CalendarDate,
+): Promise<{ rows: ImportRow[]; error: string | null }> {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer as any);
@@ -176,7 +186,7 @@ export async function parseWorkbook(buffer: Buffer): Promise<{ rows: ImportRow[]
 
     const { iso: fecha, invalid: fechaInvalida } = cellToDate(record.fecha);
     if (fechaInvalida) errors.push("La fecha no es válida (usar dd/mm/aaaa)");
-    if (fecha && new Date(fecha).getTime() > Date.now())
+    if (fecha && today && fecha > today)
       errors.push("La fecha no puede ser futura");
 
     const estadoRaw = cellToString(record.estado)?.toLowerCase() ?? "listo";

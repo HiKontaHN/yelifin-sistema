@@ -1,7 +1,7 @@
 ﻿// app/(dashboard)/inventory/movements/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,14 +21,14 @@ import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { Fab } from "@/components/ui/fab";
 import { SearchBar } from "@/components/shared/search-bar";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
-import { useTimezone } from "@/hooks/swr/use-timezone";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import {
   DateRangePicker,
   type DateRangeValue,
 } from "@/components/shared/date-range-picker";
 import { useDebounce } from "@/hooks/use-debounce";
-import { toLocalDateInput } from "@/lib/date-utils";
+import { addCalendarDays, formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -39,21 +39,19 @@ const formatUSD = (value: number | null | undefined) => {
   }).format(Number(value));
 };
 
-const formatDateOnly = (dateString: string) =>
-  new Date(dateString).toLocaleDateString("es-HN", {
-    day: "numeric", month: "short", year: "numeric",
-  });
-
-const currentMonthRange = (): DateRangeValue => {
-  const now = new Date();
+const currentMonthRange = (timezone: string): DateRangeValue => {
+  const [year, month] = todayInTimeZone(timezone).split("-").map(Number);
+  const nextMonthStart = month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, "0")}-01`;
   return {
-    from: toLocalDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
-    to: toLocalDateInput(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    from: `${year}-${String(month).padStart(2, "0")}-01`,
+    to: addCalendarDays(nextMonthStart, -1),
   };
 };
 
 const formatRangeDate = (value: string) =>
-  new Date(`${value}T12:00:00`).toLocaleDateString("es-HN", {
+  formatCalendarDate(value, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -363,15 +361,25 @@ export default function MovementsPage() {
   const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
     timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
   }), [timezone]);
+  const defaultRange = useMemo(() => currentMonthRange(timezone), [timezone]);
+  const previousDefaultRange = useRef(defaultRange);
 
   const [search,        setSearch]        = useState("");
-  const [dateRange,     setDateRange]     = useState<DateRangeValue>(currentMonthRange);
+  const [dateRange,     setDateRange]     = useState<DateRangeValue>(defaultRange);
   const [productId,     setProductId]     = useState<number | undefined>();
   const [typeFilter,    setTypeFilter]    = useState("all");
   const [page,          setPage]          = useState(1);
   const [pageSize,      setPageSize]      = useState(10);
 
   const debouncedSearch = useDebounce(search, 300);
+
+  useEffect(() => {
+    const previous = previousDefaultRange.current;
+    setDateRange((current) => current.from === previous.from && current.to === previous.to
+      ? defaultRange
+      : current);
+    previousDefaultRange.current = defaultRange;
+  }, [defaultRange]);
 
   useEffect(() => { setPage(1); }, [
     debouncedSearch, typeFilter, productId,
@@ -440,7 +448,6 @@ export default function MovementsPage() {
     return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
   };
 
-  const defaultRange = currentMonthRange();
   const hasFilters =
     search ||
     productId !== undefined ||
@@ -450,7 +457,7 @@ export default function MovementsPage() {
 
   const clearAll = () => {
     setSearch("");
-    setDateRange(currentMonthRange());
+    setDateRange(defaultRange);
     setProductId(undefined);
     setTypeFilter("all");
     setPage(1);
@@ -483,6 +490,7 @@ export default function MovementsPage() {
           <DateRangePicker
             value={dateRange}
             onChange={setDateRange}
+            today={todayInTimeZone(timezone)}
             className="sm:w-auto"
           />
 
@@ -538,7 +546,7 @@ export default function MovementsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{m.product_name}</p>
                     {m.variant_name && <div className="flex items-center gap-1"><Layers className="size-2.5 shrink-0 text-muted-foreground" /><span className="truncate text-xs text-muted-foreground">{m.variant_name}</span></div>}
-                    <p className="text-xs text-muted-foreground">{formatDateOnly(m.created_at)}</p>
+                    <p className="text-xs text-muted-foreground">{formatInTZ(m.created_at, timezone, { day: "numeric", month: "short", year: "numeric" })}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1"><TypeBadge m={m} /><span className="text-xs text-muted-foreground">{m.quantity} uds</span></div>
                 </div>

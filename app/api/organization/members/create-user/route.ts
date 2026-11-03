@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
         INSERT INTO user_profile (user_id, timezone, currency, locale, onboarding_completed)
         VALUES (
           ${user.id},
-          ${org.timezone ?? "America/Tegucigalpa"},
+          ${org.timezone ?? "UTC"},
           ${org.currency ?? "HNL"},
           ${org.locale   ?? "es-HN"},
           TRUE

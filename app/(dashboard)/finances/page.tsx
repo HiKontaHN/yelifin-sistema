@@ -35,6 +35,8 @@ import { CreateCreditCardDialog } from "@/components/credit-cards/create-credit-
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SummaryStats } from "@/components/shared/summary-stats";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -66,7 +68,8 @@ const REF_LABELS: Record<string, string> = {
 };
 
 export default function FinancesPage() {
-  const now = new Date();
+  const timezone = useTimezone();
+  const [currentYear, currentMonth] = todayInTimeZone(timezone).split("-").map(Number);
   const { push, replace } = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -76,11 +79,11 @@ export default function FinancesPage() {
   // mes/año que se estaban viendo.
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>(() => {
     const v = Number(searchParams.get("month"));
-    return v >= 1 && v <= 12 ? v : now.getMonth() + 1;
+    return v >= 1 && v <= 12 ? v : currentMonth;
   });
   const [selectedYear, setSelectedYear] = useState<number | undefined>(() => {
     const v = Number(searchParams.get("year"));
-    return v > 0 ? v : now.getFullYear();
+    return v > 0 ? v : currentYear;
   });
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
@@ -89,12 +92,17 @@ export default function FinancesPage() {
   const [deleteAccount, setDeleteAccount] = useState<Account | null>(null);
 
   useEffect(() => {
+    if (!searchParams.has("month")) setSelectedMonth(currentMonth);
+    if (!searchParams.has("year")) setSelectedYear(currentYear);
+  }, [timezone, currentMonth, currentYear, searchParams]);
+
+  useEffect(() => {
     const params = new URLSearchParams();
-    if (selectedMonth !== undefined && selectedMonth !== now.getMonth() + 1) params.set("month", String(selectedMonth));
-    if (selectedYear !== undefined && selectedYear !== now.getFullYear()) params.set("year", String(selectedYear));
+    if (selectedMonth !== undefined && selectedMonth !== currentMonth) params.set("month", String(selectedMonth));
+    if (selectedYear !== undefined && selectedYear !== currentYear) params.set("year", String(selectedYear));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [selectedMonth, selectedYear, pathname, replace]);
+  }, [selectedMonth, selectedYear, currentMonth, currentYear, pathname, replace]);
 
   const {
     summary,
@@ -106,7 +114,6 @@ export default function FinancesPage() {
   } = useFinancesView({
     month: selectedMonth,
     year: selectedYear,
-    tz_offset: new Date().getTimezoneOffset(),
   });
   const { format } = useCurrency();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("FINANCES");
@@ -115,8 +122,7 @@ export default function FinancesPage() {
   const monthsForYear = (y: number) => {
     const periodsMonths = periods.filter((p) => p.year === y).map((p) => p.month);
 
-    if (y === now.getFullYear()) {
-      const currentMonth = now.getMonth() + 1;
+    if (y === currentYear) {
       if (!periodsMonths.includes(currentMonth)) {
         periodsMonths.push(currentMonth);
       }
@@ -130,10 +136,10 @@ export default function FinancesPage() {
     ? `${MONTH_NAMES[selectedMonth]} ${selectedYear}`
     : selectedYear
       ? `Año ${selectedYear}`
-      : `${MONTH_NAMES[now.getMonth() + 1]} ${now.getFullYear()}`;
+      : `${MONTH_NAMES[currentMonth]} ${currentYear}`;
 
   const cashFlow = (summary?.cash_flow ?? []).map((d) => ({
-    date: new Date(d.date + "T00:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short" }),
+    date: formatCalendarDate(d.date, { day: "numeric", month: "short" }),
     income: Number(d.income),
     expense: Number(d.expense),
   }));
@@ -164,13 +170,13 @@ export default function FinancesPage() {
                 <SelectTrigger className="w-full"><SelectValue placeholder="Mes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todo el año</SelectItem>
-                  {(selectedYear ? monthsForYear(selectedYear) : monthsForYear(now.getFullYear())).map((m) => (
+                  {(selectedYear ? monthsForYear(selectedYear) : monthsForYear(currentYear)).map((m) => (
                     <SelectItem key={m} value={String(m)}>{MONTH_NAMES[m]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select
-                value={selectedYear ? String(selectedYear) : String(now.getFullYear())}
+                value={selectedYear ? String(selectedYear) : String(currentYear)}
                 onValueChange={(v) => {
                   const y = Number(v);
                   setSelectedYear(y);
@@ -181,7 +187,7 @@ export default function FinancesPage() {
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {availableYears.length === 0 && (
-                    <SelectItem value={String(now.getFullYear())}>{now.getFullYear()}</SelectItem>
+                    <SelectItem value={String(currentYear)}>{currentYear}</SelectItem>
                   )}
                   {availableYears.map((y) => (
                     <SelectItem key={y} value={String(y)}>{y}</SelectItem>

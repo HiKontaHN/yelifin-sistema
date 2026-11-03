@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
 import { defaultMonthRange, getSalesSummary, getSalesByDay, getSalesByProduct, getSalesDetail } from "@/lib/reports/queries";
+import { formatCalendarDate, formatInstant } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -22,8 +23,17 @@ function fmtHNL(v: number, symbol = "L") {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso + "T12:00:00").toLocaleDateString("es-HN", {
+  return formatCalendarDate(iso, {
     day: "2-digit", month: "short", year: "numeric",
+  });
+}
+
+function fmtGeneratedAt(timezone: string, includeTime = false) {
+  return formatInstant(new Date(), timezone, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...(includeTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   });
 }
 
@@ -206,6 +216,7 @@ function buildDashboardSheet(
   periodLabel: string,
   showCosts: boolean,
   showProfit: boolean,
+  timezone: string,
 ): Record<string, any> {
   const ws: Record<string, any> = {};
   let r = 1;
@@ -219,7 +230,7 @@ function buildDashboardSheet(
   merge(ws, 0, r - 1, 9, r - 1);
   r++;
 
-  setCell(ws, 0, r, cell(`Generado: ${new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" } as any)}`, { italic: true, sz: 9, fg: COLORS.textMid }));
+  setCell(ws, 0, r, cell(`Generado: ${fmtGeneratedAt(timezone, true)}`, { italic: true, sz: 9, fg: COLORS.textMid }));
   merge(ws, 0, r - 1, 9, r - 1);
   r++;
 
@@ -660,7 +671,8 @@ async function buildChartSheet(byDay: any[], byProduct: any[], symbol: string, s
 // ── Generar Excel en servidor ──────────────────────────────────────────
 async function generateExcel(
   summary: any, byDay: any[], byProduct: any[], detail: any[],
-  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean
+  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean,
+  timezone: string,
 ): Promise<Uint8Array> {
   const ExcelJS = (await import("exceljs")).default;
 
@@ -670,7 +682,7 @@ async function generateExcel(
   wb.title = "Reporte de Ventas — HiKonta";
   wb.creator = "HiKonta SaaS";
 
-  const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel, showCosts, showProfit);
+  const wsDashboard  = buildDashboardSheet(summary, byDay, symbol, from, to, periodLabel, showCosts, showProfit, timezone);
   const wsGrafico    = await buildChartSheet(byDay, byProduct, symbol, showProfit);
   const wsProductos  = buildProductsSheet(byProduct, symbol, showCosts, showProfit);
   const wsDetalle    = buildDetailSheet(detail, symbol, showProfit);
@@ -744,7 +756,8 @@ function appendExcelJsSheet(workbook: any, name: string, source: Record<string, 
 // ── Generar PDF en servidor ────────────────────────────────────────────
 async function generatePDF(
   summary: any, byDay: any[], byProduct: any[], detail: any[],
-  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean
+  symbol: string, from: string, to: string, showCosts: boolean, showProfit: boolean,
+  timezone: string,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -804,7 +817,7 @@ async function generatePDF(
     doc.setFontSize(7);
     doc.setTextColor(130, 130, 130);
     doc.text(
-      `Generado el ${new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })} · HiKonta SaaS`,
+      `Generado el ${fmtGeneratedAt(timezone)} · HiKonta SaaS`,
       MARGIN, pY
     );
     doc.text("Confidencial — solo para uso interno", PAGE_W - MARGIN, pY, { align: "right" });
@@ -1219,7 +1232,7 @@ export async function POST(request: NextRequest) {
   try {
     const { orgId } = auth.data;
     const body       = await request.json();
-    const def        = defaultMonthRange();
+    const def        = defaultMonthRange(auth.data.timezone);
     const from       = (body.from   ?? def.from)   as string;
     const to         = (body.to     ?? def.to)     as string;
     const format     = (body.format ?? "pdf")      as "xlsx" | "pdf";
@@ -1233,7 +1246,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (format === "pdf") {
-      const pdfBuf = await generatePDF(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit);
+      const pdfBuf = await generatePDF(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit, auth.data.timezone);
       return new Response(pdfBuf.buffer as ArrayBuffer, {
         headers: {
           "Content-Type":        "application/pdf",
@@ -1242,7 +1255,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const xlsBuf = await generateExcel(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit);
+    const xlsBuf = await generateExcel(summary, byDay, byProduct, detail, symbol, from, to, perms.showCosts, perms.showProfit, auth.data.timezone);
     return new Response(xlsBuf.buffer as ArrayBuffer, {
       headers: {
         "Content-Type":        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { useAccounts } from "@/hooks/swr/use-accounts";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { type: "receivable" | "payable"; id: number };
 const fetcher = async (url: string) => {
@@ -33,7 +34,7 @@ const termUnitLabels: Record<string, string> = { DAYS: "Días", WEEKS: "Semanas"
 const interestPeriodLabels: Record<string, string> = { NONE: "Sin interés", ANNUAL: "Anual", MONTHLY: "Mensual", WEEKLY: "Semanal" };
 const accountTypeLabels: Record<string, string> = { SUPPLIER_CREDIT: "Crédito de proveedor", BANK_LOAN: "Préstamo bancario", CREDIT_CARD: "Tarjeta de crédito", PERSONAL_LOAN: "Préstamo personal", OTHER: "Otro" };
 
-const date = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("es-HN") : "—";
+const date = (value: string | null | undefined) => value ? formatCalendarDate(value) : "—";
 
 export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   const router = useRouter();
@@ -53,7 +54,7 @@ export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   const Icon = isReceivable ? ArrowDownToLine : ArrowUpFromLine;
   const payments = useMemo(() => (data?.payments ?? []).filter((item: any) => `${item.notes ?? ""} ${item.account_name ?? ""} ${item.amount}`.toLowerCase().includes(search.toLowerCase())), [data?.payments, search]);
   const paymentColumns: DataTableTimeSectionColumn<any>[] = [
-    { id: "date", header: "Fecha", width: 130, cell: (item) => date(item.paid_at) },
+    { id: "date", header: "Fecha", width: 130, cell: (item) => date(item.payment_date ?? item.paid_at) },
     { id: "description", header: "Descripción", width: "clamp(12rem, 30vw, 24rem)", cell: (item) => <span className="block truncate" title={item.notes ?? undefined}>{item.notes || (isReceivable ? "Cobro" : "Pago")}</span> },
     { id: "account", header: "Cuenta", width: "clamp(10rem, 22vw, 18rem)", cell: (item) => item.account_name },
     { id: "amount", header: "Monto", width: 120, align: "right", className: "font-bold text-green-700", cell: (item) => format(Number(item.amount)) },

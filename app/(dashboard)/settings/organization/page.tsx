@@ -23,7 +23,7 @@ import {
   Building2, Upload, X, Loader2, Save, ImageIcon,
 } from "lucide-react";
 
-const TIMEZONES = [
+const FEATURED_TIMEZONES = [
   { value: "America/Tegucigalpa",             label: "Honduras (Tegucigalpa)" },
   { value: "America/Guatemala",               label: "Guatemala" },
   { value: "America/El_Salvador",             label: "El Salvador" },
@@ -42,6 +42,16 @@ const TIMEZONES = [
   { value: "Europe/Madrid",                   label: "España (Madrid)" },
   { value: "UTC",                             label: "UTC" },
 ];
+
+const featuredTimezoneLabels = new Map(FEATURED_TIMEZONES.map((item) => [item.value, item.label]));
+const supportedTimezones = (Intl as typeof Intl & {
+  supportedValuesOf?: (key: "timeZone") => string[];
+}).supportedValuesOf?.("timeZone") ?? [];
+const TIMEZONES = [...new Set([...FEATURED_TIMEZONES.map((item) => item.value), ...supportedTimezones])]
+  .map((value) => ({
+    value,
+    label: featuredTimezoneLabels.get(value) ?? value.replaceAll("_", " "),
+  }));
 
 const CURRENCIES = [
   { value: "HNL", label: "HNL — Lempira hondureño" },
@@ -84,7 +94,7 @@ function OrganizationSettingsContent() {
     if (org) {
       setOrgName(org.name ?? "");
       setLogoUrl(org.logo_url ?? null);
-      setTimezone(org.timezone ?? "America/Tegucigalpa");
+      setTimezone(org.timezone ?? "UTC");
       setCurrency(org.currency ?? "HNL");
       setIndustryId(org.industry_id ? String(org.industry_id) : "");
     }
@@ -248,14 +258,15 @@ function OrganizationSettingsContent() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="timezone">Zona horaria</Label>
-                <Select value={timezone} onValueChange={setTimezone} disabled={busy}>
-                  <SelectTrigger id="timezone" className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TIMEZONES.map((tz) => (
-                      <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={timezone}
+                  onValueChange={setTimezone}
+                  disabled={busy}
+                  placeholder="Selecciona una zona horaria"
+                  searchPlaceholder="Buscar zona horaria..."
+                  className="h-10 w-full"
+                  items={TIMEZONES}
+                />
               </div>
 
               <div className="space-y-1.5">

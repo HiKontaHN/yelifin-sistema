@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
 import { getInventoryProducts, getInventoryMovements, computeInventorySummary, getInventorySalesVelocity, computeInventoryVelocity } from "@/lib/reports/queries";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -11,8 +12,8 @@ function fmtHNL(v: number, symbol = "L") {
   return `${symbol} ${Number(v).toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("es-HN", { day: "2-digit", month: "short", year: "numeric" });
+function fmtDate(iso: string, timezone: string) {
+  return new Date(iso).toLocaleDateString("es-HN", { timeZone: timezone, day: "2-digit", month: "short", year: "numeric" });
 }
 
 const MOVE_LABEL: Record<string, string> = { IN: "Entrada", OUT: "Salida", ADJUST: "Ajuste" };
@@ -25,6 +26,7 @@ async function generatePDF(
   symbol: string,
   showCosts: boolean,
   showProfit: boolean,
+  timezone: string,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -46,7 +48,7 @@ async function generatePDF(
   const C_KPI_AMBER: [number, number, number] = [254, 243, 199];
   const C_KPI_RED  : [number, number, number] = [254, 226, 226];
 
-  const today = new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" });
+  const today = formatCalendarDate(todayInTimeZone(timezone), { day: "numeric", month: "long", year: "numeric" });
 
   const cleanHeadStyles = {
     fillColor:  false as unknown as [number, number, number],
@@ -234,7 +236,7 @@ async function generatePDF(
       startY: y,
       head:   [["Fecha", "Tipo", "Producto", "SKU", "Cantidad", "Referencia", "Notas"]],
       body:   movements.map(m => [
-        fmtDate(m.created_at),
+        fmtDate(m.created_at, timezone),
         MOVE_LABEL[m.movement_type] ?? m.movement_type,
         m.product_name,
         m.sku || "—",
@@ -370,7 +372,7 @@ export async function POST(request: NextRequest) {
   const perms = await getModulePermissions(auth.data, 'REPORTS', 'INVENTORY');
 
   try {
-    const { orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const body       = await request.json();
     const symbol     = (body.symbol ?? "L") as string;
 
@@ -383,8 +385,8 @@ export async function POST(request: NextRequest) {
     const summary  = computeInventorySummary(products, 5);
     const velocity = computeInventoryVelocity(products, velocityRows);
 
-    const pdfBuf = await generatePDF(summary, products, movements, velocity, symbol, perms.showCosts, perms.showProfit);
-    const today  = new Date().toISOString().slice(0, 10);
+    const pdfBuf = await generatePDF(summary, products, movements, velocity, symbol, perms.showCosts, perms.showProfit, timezone);
+    const today  = todayInTimeZone(timezone);
 
     return new Response(pdfBuf.buffer as ArrayBuffer, {
       headers: {

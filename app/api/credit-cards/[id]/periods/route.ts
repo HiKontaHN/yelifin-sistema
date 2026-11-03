@@ -25,8 +25,8 @@ export async function GET(
 
     const periods = await sql`
       SELECT DISTINCT
-        EXTRACT(YEAR  FROM occurred_at)::int AS year,
-        EXTRACT(MONTH FROM occurred_at)::int AS month
+        EXTRACT(YEAR  FROM effective_date)::int AS year,
+        EXTRACT(MONTH FROM effective_date)::int AS month
       FROM credit_card_transactions
       WHERE credit_card_id = ${Number(id)}
         AND org_id = ${orgId}

@@ -12,6 +12,8 @@ export interface Event {
   location:       string | null;
   starts_at:      string;
   ends_at:        string;
+  start_date:     string;
+  end_date:       string;
   fixed_cost:     number;
   notes:          string | null;
   status:         EventStatus;
@@ -44,6 +46,7 @@ export interface EventDetail extends Event {
     total:          number;
     payment_method: string;
     sold_at:        string;
+    sale_date:      string;
     customer_name:  string | null;
     account_name:   string | null;
     items_count:    number;
@@ -54,6 +57,7 @@ export interface EventDetail extends Event {
     description: string;
     amount:      number | null;
     occurred_at: string;
+    effective_date: string;
   }[];
 }
 
@@ -62,6 +66,8 @@ export interface CreateEventData {
   location?:  string;
   starts_at:  string;
   ends_at:    string;
+  start_date?: string;
+  end_date?: string;
   fixed_cost?: number;
   notes?:     string;
 }
