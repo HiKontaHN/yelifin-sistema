@@ -8,8 +8,10 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Calculator, Wallet } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calculator, CreditCard, Wallet } from "lucide-react";
 import { useAccounts } from "@/hooks/swr/use-accounts";
+import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { DEFAULT_TIMEZONE, formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
@@ -26,7 +28,9 @@ const CURRENCY_NAMES: Record<string, string> = {
 };
 
 export type PurchaseFormValue = {
+  payment_mode:  "account" | "credit_card";
   account_id:    number | null;
+  credit_card_id: number | null;
   currency:      "USD" | "HNL";
   exchange_rate: number;
   quantity:      number | string;
@@ -37,7 +41,9 @@ export type PurchaseFormValue = {
 };
 
 export const defaultPurchaseForm = (timezone = DEFAULT_TIMEZONE): PurchaseFormValue => ({
+  payment_mode:  "account",
   account_id:    null,
+  credit_card_id: null,
   currency:      "USD",
   exchange_rate: TASA_DEFAULT,
   quantity:      "1",
@@ -57,12 +63,20 @@ type CostMode = "unit" | "total";
 
 export function PurchaseForm({ value, onChange, disabled }: Props) {
   const { accounts }       = useAccounts();
+  const { creditCards }    = useCreditCards();
   const { format, symbol, currency: businessCurrency } = useCurrency();
   const [costMode, setCostMode] = useState<CostMode>("total");
+  const [paymentMode, setPaymentMode] = useState<PurchaseFormValue["payment_mode"]>(value.payment_mode);
   const { rate: suggestedRate, rateDate: suggestedRateDate } = useSuggestedExchangeRate();
 
   const set = (patch: Partial<PurchaseFormValue>) =>
     onChange({ ...value, ...patch });
+
+  const isCreditCardMode = paymentMode === "credit_card";
+
+  useEffect(() => {
+    setPaymentMode(value.payment_mode);
+  }, [value.payment_mode]);
 
   // Precarga la tasa sugerida (BCH) apenas carga — solo si el campo sigue
   // en su valor por defecto, para no pisar algo que el usuario ya escribió.
@@ -79,10 +93,21 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
   const rate     = Number(value.exchange_rate) || TASA_DEFAULT;
   const ship     = Number(value.shipping)      || 0;
   const isUSD    = value.currency === "USD";
+  const inputSymbol = isUSD ? "$" : symbol;
   const costHnl  = isUSD ? cost * rate : cost;
   const shipUnit = qty > 0 ? ship / qty : 0;
   const finalUnit = costHnl + shipUnit;
   const totalCost = finalUnit * qty;
+  const inputTotal = cost * qty + (isUSD ? ship / rate : ship);
+  const inputUnit = qty > 0 ? inputTotal / qty : cost;
+  const formatInputAmount = (amount: number) => isUSD
+    ? new Intl.NumberFormat("es-HN", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(amount)
+    : format(amount);
 
   const showSummary = qty > 0 && cost > 0;
 
@@ -96,22 +121,59 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
   };
 
   // Valor a mostrar en el input de total (en la moneda seleccionada)
-  const displayTotal = isUSD
-    ? cost * qty                      // total en USD
-    : (costHnl + shipUnit) * qty;     // total en HNL con envío
+  const displayTotal = inputTotal;
 
   return (
     <div className="space-y-4">
 
-      {/* Cuenta — ancho completo */}
-      <div className="space-y-1.5">
+      {/* Medio de pago */}
+      {creditCards.length > 0 && (
+        <div className="grid grid-cols-2 gap-1.5 rounded-xl border">
+          <button
+            type="button"
+            onClick={() => {
+              setPaymentMode("account");
+              set({ payment_mode: "account", account_id: null, credit_card_id: null });
+            }}
+            disabled={disabled}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all duration-200 ${
+              !isCreditCardMode
+                ? "rounded-xl bg-primary/15 text-primary"
+                : "text-muted-foreground hover:rounded-xl hover:bg-primary/15 hover:text-primary"
+            }`}
+          >
+            <Wallet className="size-3" /> Cuenta
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPaymentMode("credit_card");
+              set({ payment_mode: "credit_card", account_id: null, credit_card_id: value.credit_card_id ?? creditCards[0]?.id ?? null });
+            }}
+            disabled={disabled}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all duration-200 ${
+              isCreditCardMode
+                ? "rounded-xl bg-primary/15 text-primary"
+                : "text-muted-foreground hover:rounded-xl hover:bg-primary/15 hover:text-primary"
+            }`}
+          >
+            <CreditCard className="size-3" /> Tarjeta
+          </button>
+        </div>
+      )}
+
+      {/* Cuenta o tarjeta — ancho completo */}
+      {!isCreditCardMode ? <div className="space-y-1.5">
         <Label className="text-sm font-medium flex items-center gap-1.5">
           <Wallet className="size-3.5 text-muted-foreground" />
           Cuenta <span className="text-destructive text-xs">*</span>
         </Label>
         <Select
           value={value.account_id?.toString() ?? ""}
-          onValueChange={(v) => set({ account_id: Number(v) })}
+          onValueChange={(v) => {
+            setPaymentMode("account");
+            set({ payment_mode: "account", account_id: Number(v), credit_card_id: null });
+          }}
           disabled={disabled}
         >
           <SelectTrigger className="h-11 w-full">
@@ -132,7 +194,33 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </div> : (
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium flex items-center gap-1.5">
+            <CreditCard className="size-3.5 text-muted-foreground" />
+            Tarjeta de crédito <span className="text-destructive text-xs">*</span>
+          </Label>
+          <Select
+            value={value.credit_card_id?.toString() ?? ""}
+            onValueChange={(v) => {
+              setPaymentMode("credit_card");
+              set({ payment_mode: "credit_card", account_id: null, credit_card_id: Number(v) });
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-11 min-h-11 w-full">
+              <SelectValue placeholder="Selecciona una tarjeta" />
+            </SelectTrigger>
+            <SelectContent className="w-full">
+              {creditCards.map((card) => (
+                <SelectItem key={card.id} value={String(card.id)}>
+                  {card.name}{card.last_four ? ` ···· ${card.last_four}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <Separator />
 
@@ -162,7 +250,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             onValueChange={(v) => set({ currency: v as "USD" | "HNL" })}
             disabled={disabled}
           >
-            <SelectTrigger className="h-11 w-full">
+            <SelectTrigger className="h-11 min-h-11 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" className="w-[--radix-select-trigger-width] min-w-0">
@@ -185,7 +273,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
               step="0.01"
               value={value.exchange_rate}
               onChange={(e) => set({ exchange_rate: Number(e.target.value) || TASA_DEFAULT })}
-              className="h-11 text-base"
+              className="h-11 min-h-11 text-base"
               disabled={disabled}
             />
             {suggestedRate != null && (
@@ -210,31 +298,19 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium">
-            Costo ({symbol}) <span className="text-destructive text-xs">*</span>
+            Costo ({inputSymbol}) <span className="text-destructive text-xs">*</span>
           </Label>
-          {/* Toggle */}
-          <div className="flex items-center gap-3 border-b text-xs">
-            {(["unit", "total"] as CostMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                disabled={disabled}
-                onClick={() => setCostMode(mode)}
-                className={`border-b-2 border-transparent px-0.5 pb-1.5 font-medium transition-colors ${
-                  costMode === mode
-                    ? "border-foreground text-foreground font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {mode === "unit" ? "Por unidad" : "Total"}
-              </button>
-            ))}
-          </div>
+          <Tabs value={costMode} onValueChange={(mode) => setCostMode(mode as CostMode)}>
+            <TabsList className="max-w-full gap-1.5 overflow-x-auto rounded-xl border bg-card [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabsTrigger value="unit" disabled={disabled} className="rounded-xl border-0 px-2 py-1.5 text-xs font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Por unidad</TabsTrigger>
+              <TabsTrigger value="total" disabled={disabled} className="rounded-xl border-0 px-2 py-1.5 text-xs font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Total</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">
-            {symbol}
+            {inputSymbol}
           </span>
           {costMode === "unit" ? (
             <Input
@@ -265,8 +341,8 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
         {cost > 0 && qty > 0 && (
           <p className="text-xs text-muted-foreground text-right">
             {costMode === "unit"
-              ? <>Total ({qty} uds): <span className="font-medium text-foreground">{format(cost * qty)}</span></>
-              : <>Por unidad: <span className="font-medium text-foreground">{format(cost)}</span></>
+              ? <>Total ({qty} uds): <span className="font-medium text-foreground">{formatInputAmount(inputTotal)}</span></>
+              : <>Por unidad: <span className="font-medium text-foreground">{formatInputAmount(inputUnit)}</span></>
             }
           </p>
         )}

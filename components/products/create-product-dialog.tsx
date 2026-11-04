@@ -137,8 +137,13 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       const qty = Number(inventory.data.quantity);
       if (!qty || qty < 1) { toast.error("La cantidad debe ser al menos 1"); return; }
     }
-    if (!data.is_service && inventory?.mode === "purchase" && !inventory.data.account_id) {
-      toast.error("Selecciona una cuenta para la compra");
+    if (
+      !data.is_service &&
+      inventory?.mode === "purchase" &&
+      ((inventory.data.payment_mode === "account" && !inventory.data.account_id) ||
+        (inventory.data.payment_mode === "credit_card" && !inventory.data.credit_card_id))
+    ) {
+      toast.error("Selecciona una cuenta o tarjeta para la compra");
       return;
     }
     if (skuStatus === "taken") {
@@ -162,7 +167,9 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       if (!data.is_service && inventory?.mode === "purchase") {
         const d = inventory.data;
         await createPurchase({
-          account_id:    d.account_id!,
+          ...(d.payment_mode === "credit_card"
+            ? { credit_card_id: d.credit_card_id }
+            : { account_id: d.account_id! }),
           currency:      d.currency,
           exchange_rate: d.exchange_rate,
           shipping:      d.shipping,

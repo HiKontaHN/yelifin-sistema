@@ -11,8 +11,6 @@ const PROFILE_KEY = '/api/auth/me';
 async function fetchAuthContext(url: string): Promise<AuthContextResponse | null> {
   const response = await fetch(url, { cache: 'no-store' });
   if (response.status === 401) {
-    await fetch(SESSION_KEY, { method: 'DELETE' }).catch(() => undefined);
-
     const publicAuthPages = ['/', '/login', '/register', '/forgot-password'];
     if (typeof window !== 'undefined' && !publicAuthPages.includes(window.location.pathname)) {
       window.location.replace('/login');

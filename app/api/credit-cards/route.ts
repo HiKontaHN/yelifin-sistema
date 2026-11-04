@@ -1,15 +1,26 @@
 // app/api/credit-cards/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import {
+  verifyAuth,
+  createErrorResponse,
+  isAuthSuccess,
+  requireModule,
+  verifyAnyModuleAccess,
+  getModulePermissions,
+  nullifyKeysDeep,
+  type OrgModule,
+} from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
+
+const CREDIT_CARD_SELECTOR_MODULES: OrgModule[] = ["FINANCES", "INVENTORY"];
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
-  if (deny) return deny;
+  const canList = await verifyAnyModuleAccess(auth.data, CREDIT_CARD_SELECTOR_MODULES, "canView");
+  if (!canList) return createErrorResponse("Sin acceso a este módulo", 403);
 
   try {
     const { userId, orgId } = auth.data;
@@ -24,7 +35,14 @@ export async function GET(request: NextRequest) {
       ORDER BY name ASC
     `;
 
-    return Response.json({ data: cards, total: cards.length });
+    // Inventario necesita nombre/id para registrar compras con tarjeta, pero
+    // el saldo sigue siendo información exclusiva de Finanzas.
+    const finances = await getModulePermissions(auth.data, "FINANCES");
+    const payload = finances.canView
+      ? cards
+      : nullifyKeysDeep(cards, new Set(["balance", "balance_usd"]));
+
+    return Response.json({ data: payload, total: payload.length });
   } catch (error) {
     console.error("GET /api/credit-cards:", error);
     return createErrorResponse("Error al obtener tarjetas de crédito", 500);
