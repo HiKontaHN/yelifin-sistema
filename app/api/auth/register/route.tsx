@@ -112,10 +112,22 @@ export async function POST(req: NextRequest) {
     // Si existe y su firebase_uid sigue vivo en Firebase → 409.
     // Si existe pero su firebase_uid ya no existe en Firebase (registro
     // huérfano de un intento fallido), se re-vincula al nuevo uid en el
-    // paso 3 en lugar de borrar datos.
+    // paso 3 en lugar de borrar datos. Solo vale para filas que NUNCA tuvieron
+    // organización: una fila con negocio (o desactivada) es una baja, no un
+    // huérfano, y re-vincularla entregaría ese negocio a quien conozca el correo.
     const [existingUser] = await sql`
-      SELECT id, firebase_uid FROM users WHERE email = ${email} LIMIT 1
+      SELECT u.id, u.firebase_uid, u.is_active,
+             (EXISTS (SELECT 1 FROM organization_members om WHERE om.user_id = u.id)
+              OR EXISTS (SELECT 1 FROM organizations o WHERE o.owner_user_id = u.id)) AS had_org
+      FROM users u WHERE u.email = ${email} LIMIT 1
     `;
+
+    if (existingUser && (existingUser.had_org || existingUser.is_active === false)) {
+      return NextResponse.json(
+        { error: "Este correo ya está registrado" },
+        { status: 409 }
+      );
+    }
 
     if (existingUser?.firebase_uid) {
       try {
