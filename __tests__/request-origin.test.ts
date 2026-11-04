@@ -115,7 +115,7 @@ describe("CORS de desarrollo en la API", () => {
   });
 
   it("mantiene CORS incluso si la API responde por exceso de peticiones", async () => {
-    jest.mocked(rateLimit).mockReturnValue({ allowed: false, remaining: 0, retryAfterSec: 30 });
+    jest.mocked(rateLimit).mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 30 });
     const response = await proxy(makeRequest("/api/sales"));
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("30");
