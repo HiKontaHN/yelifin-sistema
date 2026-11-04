@@ -24,6 +24,8 @@ import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -41,8 +43,6 @@ type RowResult = {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const movementsFeature = await requireFeature(auth.data.orgId, "inventory.movements");
-  if (movementsFeature) return movementsFeature;
   const deny = await requireModule(auth.data, "INVENTORY", "canEdit");
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, "products.bulk_import");
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
     const canUseCreditCards = creditCardsFeature === null;
     const requestsCreditCard = rows.some((row) => row.cuentaRef?.kind === "credit_card");
-    if (requestsCreditCard && creditCardsFeature) return creditCardsFeature;
+    if (requestsCreditCard && creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
 
     const resolved = await resolveRows(rows, orgId, sql, canUseCreditCards);
 

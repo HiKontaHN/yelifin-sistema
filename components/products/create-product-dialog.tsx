@@ -53,7 +53,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   const { createProduct, isCreating }                      = useCreateProduct();
   const { createPurchase, isCreating: isCreatingPurchase } = useCreatePurchase();
   const { symbol, currency: businessCurrency }             = useCurrency();
-  const { canViewMovements }                               = useFeatures();
+  const { canCreateProducts }                              = useFeatures();
 
   const [imageFile,        setImageFile]        = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -435,7 +435,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
             )}
 
             {/* Inventario: solo si NO es servicio */}
-            {!isService && canViewMovements && (
+            {!isService && canCreateProducts && (
               <InventorySection
                 value={inventory}
                 onChange={setInventory}

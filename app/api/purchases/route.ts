@@ -7,6 +7,8 @@ import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function POST(request: NextRequest) {
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
     const isCreditCard = !already_paid && !!credit_card_id && !account_id;
     if (isCreditCard) {
       const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
-      if (creditCardsFeature) return creditCardsFeature;
+      if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
     }
 
     const wh = await resolveWarehouseId(sql, orgId, warehouse_id);

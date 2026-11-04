@@ -7,6 +7,8 @@ import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
 import { isCalendarDate } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 type Params = { params: Promise<{ id: string }> };
@@ -172,7 +174,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       `;
       if (cardFunding?.uses_credit_card) {
         const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
-        if (creditCardsFeature) return creditCardsFeature;
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
       }
 
       try {
@@ -695,7 +697,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       `;
       if (cardFunding?.uses_credit_card) {
         const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
-        if (creditCardsFeature) return creditCardsFeature;
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
       }
     }
 

@@ -1,4 +1,4 @@
--- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03 y 04 en producción,
+-- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03, 04 y 05 en producción,
 -- en ese orden, ANTES de desplegar el código que consume estas migraciones.
 --
 -- Plan Gratis usado como plan efectivo cuando una suscripción facturable
@@ -6,6 +6,8 @@
 -- Idempotente y preparado para ejecución manual en producción.
 -- ADVERTENCIA: reejecutar este archivo restaura los límites y features
 -- declarados abajo; por tanto, pisa ajustes manuales hechos al plan Gratis.
+
+BEGIN;
 
 INSERT INTO subscription_plans (
   name,
@@ -117,3 +119,5 @@ JOIN system_features f ON f.feature_key IN (
 WHERE p.slug = 'free'
 ON CONFLICT (plan_id, feature_id) DO UPDATE SET
   is_enabled = EXCLUDED.is_enabled;
+
+COMMIT;

@@ -601,7 +601,7 @@ export default function InventoryPage() {
   const { creditCards, mutate: mutateCreditCards } = useCreditCards();
   const { format } = useCurrency();
   const { show_costs: showCosts, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY");
-  const { canViewMovements, canBulkImport } = useFeatures();
+  const { canAdjustInventory, canBulkImport } = useFeatures();
 
   const findProduct = (productId: number): Product | null =>
     products.find((p) => p.id === productId) ?? null;
@@ -708,7 +708,7 @@ export default function InventoryPage() {
           onViewDetail={(id) => push(`/inventory/${id}`)}
           canEdit={canEdit}
           canDelete={canDelete}
-          canMoveInventory={canViewMovements}
+          canMoveInventory={canAdjustInventory}
         />
       ),
     },
@@ -738,7 +738,7 @@ export default function InventoryPage() {
             showCosts={showCosts}
             canEdit={canEdit}
             canDelete={canDelete}
-            canMoveInventory={canViewMovements}
+            canMoveInventory={canAdjustInventory}
             findVariant={findVariant}
             setAdjustVariant={setAdjustVariant}
             setEditVariant={setEditVariant}
@@ -938,7 +938,7 @@ export default function InventoryPage() {
                         <div className="flex shrink-0 items-center gap-1">
                           {getStockBadge(Number(item.stock), item.is_service)}
                           <div onClick={(e) => e.stopPropagation()}>
-                            <ProductActionsMenu item={item} findProduct={findProduct} setInventoryProduct={setInventoryProduct} setAdjustProduct={setAdjustProduct} setVariantProduct={setVariantProduct} setEditProduct={setEditProduct} setDeleteProduct={setDeleteProduct} onViewDetail={(id) => push(`/inventory/${id}`)} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canViewMovements} />
+                            <ProductActionsMenu item={item} findProduct={findProduct} setInventoryProduct={setInventoryProduct} setAdjustProduct={setAdjustProduct} setVariantProduct={setVariantProduct} setEditProduct={setEditProduct} setDeleteProduct={setDeleteProduct} onViewDetail={(id) => push(`/inventory/${id}`)} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canAdjustInventory} />
                           </div>
                         </div>
                       </div>
@@ -959,7 +959,7 @@ export default function InventoryPage() {
                     </button>
                     {isExpanded && <div className="mt-2 space-y-2">
                       {Number(item.base_stock) > 0 && <BaseCard item={item} format={format} showCosts={showCosts} onClick={() => push(`/inventory/${item.product_id}`)} />}
-                      {item.variants_stock.map((vs) => <VariantCard key={vs.variant_id} variantStock={vs} product={product} format={format} showCosts={showCosts} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canViewMovements} findVariant={findVariant} setAdjustVariant={setAdjustVariant} setEditVariant={setEditVariant} setDeleteVariantTarget={setDeleteVariantTarget} onClick={() => push(`/inventory/${item.product_id}`)} />)}
+                      {item.variants_stock.map((vs) => <VariantCard key={vs.variant_id} variantStock={vs} product={product} format={format} showCosts={showCosts} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canAdjustInventory} findVariant={findVariant} setAdjustVariant={setAdjustVariant} setEditVariant={setEditVariant} setDeleteVariantTarget={setDeleteVariantTarget} onClick={() => push(`/inventory/${item.product_id}`)} />)}
                     </div>}
                   </>}
                 </CardContent>
@@ -988,7 +988,7 @@ export default function InventoryPage() {
       {canEdit && (
         <Fab
           actions={[
-            ...(canBulkImport && canViewMovements
+            ...(canBulkImport
               ? [{ label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) }]
               : []),
             { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },

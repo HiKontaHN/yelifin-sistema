@@ -1,9 +1,13 @@
--- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03 y 04 en producción,
+-- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03, 04 y 05 en producción,
 -- en ese orden, ANTES de desplegar el código que consume estas migraciones.
 --
 -- Permiso de plan independiente para tarjetas de crédito.
 -- Idempotente: crea la feature si falta y sincroniza solo los planes que
 -- deben incluirla. Los planes ausentes se ignoran sin error.
+-- Decisión del dueño: free, trial y basico pierden TODO acceso a tarjetas
+-- (incluidas lecturas). No existe un plan 'finanzas' en migraciones ni seed.
+
+BEGIN;
 
 INSERT INTO system_features (feature_key, feature_name, category)
 VALUES ('finances.credit_cards', 'Tarjetas de crédito', 'FINANCES')
@@ -26,3 +30,5 @@ WHERE pf.plan_id = p.id
   AND pf.feature_id = f.id
   AND p.slug IN ('free', 'basico', 'trial')
   AND f.feature_key = 'finances.credit_cards';
+
+COMMIT;

@@ -60,8 +60,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const movementsFeature = await requireFeature(auth.data.orgId, "inventory.movements");
-  if (movementsFeature) return movementsFeature;
   const feature = await requireFeature(auth.data.orgId, "inventory.adjust");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'STOCK');

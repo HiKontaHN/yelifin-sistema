@@ -118,19 +118,28 @@ describe("features de movimientos y categorías personalizadas", () => {
     expect(sql).toContain("ON CONFLICT (plan_id, feature_id) DO UPDATE");
   });
 
-  it("protege todas las rutas directas que consultan o registran movimientos", () => {
-    const routes = [
+  it("inventory.movements bloquea solo el historial (GET), no las rutas que cargan stock", () => {
+    const gate = 'requireFeature(auth.data.orgId, "inventory.movements")';
+    const read = (route: string) => readFileSync(join(process.cwd(), route), "utf8");
+
+    for (const route of [
       "app/api/inventory/movements/route.ts",
       "app/api/inventory/movements/periods/route.ts",
+    ]) {
+      expect(read(route)).toContain(gate);
+    }
+
+    const transfers = read("app/api/organization/warehouses/transfers/route.ts");
+    const [getHandler, postHandler] = transfers.split("export async function POST");
+    expect(getHandler).toContain(gate);
+    expect(postHandler).not.toContain("inventory.movements");
+
+    for (const route of [
       "app/api/inventory/existing/route.ts",
       "app/api/inventory/adjust/route.ts",
       "app/api/inventory/import/route.ts",
-      "app/api/organization/warehouses/transfers/route.ts",
-    ];
-
-    for (const route of routes) {
-      expect(readFileSync(join(process.cwd(), route), "utf8"))
-        .toContain('requireFeature(auth.data.orgId, "inventory.movements")');
+    ]) {
+      expect(read(route)).not.toContain("inventory.movements");
     }
   });
 });

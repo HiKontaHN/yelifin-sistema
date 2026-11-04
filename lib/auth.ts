@@ -676,7 +676,7 @@ export async function ensureOrgExists(
     if (plan) {
       await tx`
         INSERT INTO org_subscriptions (org_id, plan_id, status, trial_start_date, trial_end_date)
-        VALUES (${ownedOrg.id}, ${plan.id}, 'TRIAL', NOW(), NOW() + INTERVAL '30 days')
+        VALUES (${ownedOrg.id}, ${plan.id}, 'TRIAL', NOW(), (NOW() AT TIME ZONE 'UTC') + INTERVAL '30 days')
         ON CONFLICT (org_id) DO NOTHING
       `;
     }

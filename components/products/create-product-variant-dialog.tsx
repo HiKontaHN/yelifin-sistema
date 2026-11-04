@@ -58,7 +58,7 @@ type Props = {
 export function CreateProductVariantDialog({
   open, onOpenChange, productId, productName, basePrice, baseSku, variantCount = 0, baseStock = 0, onSuccess,
 }: Props) {
-  const { canViewMovements } = useFeatures();
+  const { canCreateProducts } = useFeatures();
   const { createVariant, isCreating } = useCreateVariant(productId);
   const { symbol, format }            = useCurrency();
 
@@ -490,7 +490,7 @@ export function CreateProductVariantDialog({
             </div>
 
             {/* Inventario inicial */}
-            {canViewMovements && <div className="rounded-xl border overflow-hidden">
+            {canCreateProducts && <div className="rounded-xl border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setInventoryOpen((v) => !v)}

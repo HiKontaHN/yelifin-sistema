@@ -1,4 +1,4 @@
--- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03 y 04 en producción,
+-- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03, 04 y 05 en producción,
 -- en ese orden, ANTES de desplegar el código que consume estas migraciones.
 --
 -- Gracia de pago para suscripciones PAST_DUE y expiración calculada de TRIAL.

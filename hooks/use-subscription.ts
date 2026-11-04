@@ -20,7 +20,7 @@ export function useSubscription() {
   const isPastDue = status === 'PAST_DUE';
   const isActive = status === 'TRIAL' || status === 'ACTIVE' || isPastDue;
   const isExpired = status === 'EXPIRED' || status === 'CANCELLED';
-  const isTrial = status === 'TRIAL';
+  const isTrial = status === 'TRIAL' && !subscription?.is_trial_expired;
   const isPro = planSlug === 'pro';
   const isOriginal = planSlug === 'original';
 
