@@ -3,7 +3,7 @@
 // GET ?check=X  → disponibilidad del SKU X
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { nextVariantSkus, isVariantSkuAvailable, variantSkuBase } from "@/lib/sku";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -11,8 +11,10 @@ const sql = neon(process.env.DATABASE_URL!);
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "products.variants");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'PRODUCTS', 'canView');
   if (deny) return deny;
 

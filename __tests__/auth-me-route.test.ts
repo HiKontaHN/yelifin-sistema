@@ -107,6 +107,28 @@ describe("GET /api/auth/me", () => {
     expect(body.org.id).toBe(7);
   });
 
+  it("sigue respondiendo para una organización EXPIRED", async () => {
+    mockVerifySessionCookie.mockResolvedValue({
+      uid: "firebase-1",
+      email_verified: true,
+    });
+    mockGetUser.mockResolvedValue({
+      uid: "firebase-1",
+      email: "user@example.com",
+      displayName: "Usuario",
+      emailVerified: true,
+      disabled: false,
+    });
+    mockSql.mockResolvedValue([{ ...profileRow, subscription_status: "EXPIRED" }]);
+
+    const response = await GET(authenticatedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.subscription.status).toBe("EXPIRED");
+    expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
   it("rechaza una cookie inválida sin consultar Neon", async () => {
     mockVerifySessionCookie.mockRejectedValue(new Error("invalid cookie"));
 

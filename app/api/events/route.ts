@@ -1,15 +1,17 @@
 // app/api/events/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { computeEventStatus, isCalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 // ── GET /api/events ────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "events.manage");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'EVENTS', 'canView');
   if (deny) return deny;
 
@@ -112,8 +114,10 @@ export async function GET(request: NextRequest) {
 
 // ── POST /api/events ───────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "events.manage");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'EVENTS', 'canEdit');
   if (deny) return deny;
 

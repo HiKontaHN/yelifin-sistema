@@ -1,6 +1,6 @@
 // app/api/credit-cards/[id]/payment/route.ts
 import { NextRequest } from "next/server";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
@@ -8,8 +8,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;
 

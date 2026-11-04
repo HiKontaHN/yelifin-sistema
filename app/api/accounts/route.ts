@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import {
-  verifyAuth, createErrorResponse, isAuthSuccess, requireModule, verifyResourceLimit,
+  verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, verifyResourceLimit,
   verifyAnyModuleAccess, getModulePermissions, nullifyKeysDeep,
   type OrgModule,
 } from "@/lib/auth";
@@ -15,8 +15,10 @@ const sql = neon(process.env.DATABASE_URL!);
 const ACCOUNT_SELECTOR_MODULES: OrgModule[] = ["FINANCES", "SALES", "INVENTORY", "PRODUCTS", "EVENTS"];
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  if (feature) return feature;
 
   const canList = await verifyAnyModuleAccess(auth.data, ACCOUNT_SELECTOR_MODULES, "canView");
   if (!canList) return createErrorResponse("Sin acceso a este módulo", 403);
@@ -46,8 +48,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit');
   if (deny) return deny;
 
