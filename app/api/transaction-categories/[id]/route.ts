@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'ADMIN', 'canEdit', 'CATEGORIES');
   if (deny) return deny;
@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'ADMIN', 'canDelete', 'CATEGORIES');
   if (deny) return deny;

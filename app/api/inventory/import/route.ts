@@ -24,6 +24,8 @@ import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -67,7 +69,13 @@ export async function POST(request: NextRequest) {
     if (parseError) return createErrorResponse(parseError, 400);
 
     validateRows(rows);
-    const resolved = await resolveRows(rows, orgId, sql);
+    const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+    if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
+    const canUseCreditCards = creditCardsFeature === null;
+    const requestsCreditCard = rows.some((row) => row.cuentaRef?.kind === "credit_card");
+    if (requestsCreditCard && creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+
+    const resolved = await resolveRows(rows, orgId, sql, canUseCreditCards);
 
     // ── Dry run: preview del archivo completo, sin escribir ───────────
     if (dryRun) {
@@ -173,8 +181,8 @@ async function checkPlanLimits(
     const [plan] = await sql`
       SELECT sp.max_products,
         (SELECT COUNT(*) FROM products p WHERE p.org_id = ${orgId} AND p.is_active = TRUE)::int AS current_count
-      FROM org_subscriptions os
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      FROM org_effective_subscriptions os
+      JOIN subscription_plans sp ON sp.id = os.effective_plan_id
       WHERE os.org_id = ${orgId}
     `;
     if (
@@ -203,8 +211,8 @@ async function checkPlanLimits(
          WHERE t.org_id = ${orgId}
            AND t.effective_date >= ${monthStart}::date
            AND t.effective_date < ${nextMonthStart}::date)::int AS current_count
-      FROM org_subscriptions os
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      FROM org_effective_subscriptions os
+      JOIN subscription_plans sp ON sp.id = os.effective_plan_id
       WHERE os.org_id = ${orgId}
     `;
     if (

@@ -19,6 +19,7 @@ jest.mock("@/lib/auth", () => ({
     },
   })),
   isAuthSuccess: jest.fn(() => true),
+  requireFeature: jest.fn(async () => null),
   requireModule: jest.fn(async () => null),
   getModulePermissions: jest.fn(async () => ({ showCosts: true, showProfit: true })),
   getOrgTimezone: jest.fn(async () => "America/Tegucigalpa"),
@@ -47,18 +48,32 @@ describe("GET /api/dashboard", () => {
     const summary = deferred<Record<string, unknown>[]>();
     const analytics = deferred<Record<string, unknown>[]>();
     const inventory = deferred<Record<string, unknown>[]>();
+    const started = new Set<string>();
 
-    mockSql
-      .mockReturnValueOnce(summary.promise)
-      .mockReturnValueOnce(analytics.promise)
-      .mockReturnValueOnce(inventory.promise);
+    mockSql.mockImplementation((strings: TemplateStringsArray) => {
+      const query = strings.join(" ").replace(/\s+/g, " ").trim();
+      if (query.startsWith("(") || query === "NULL") return query;
+      if (query.includes("WITH sales_metrics AS")) {
+        started.add("summary");
+        return summary.promise;
+      }
+      if (query.includes("WITH filtered_sales AS")) {
+        started.add("analytics");
+        return analytics.promise;
+      }
+      if (query.includes("total_products")) {
+        started.add("inventory");
+        return inventory.promise;
+      }
+      throw new Error(`Consulta inesperada: ${query}`);
+    });
 
     const responsePromise = GET(new NextRequest("http://localhost/api/dashboard?month=10&year=2026"));
 
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     // Las tres promesas deben iniciarse antes de que se resuelva la primera.
-    expect(mockSql).toHaveBeenCalledTimes(3);
+    expect(started).toEqual(new Set(["summary", "analytics", "inventory"]));
 
     summary.resolve([{
       revenue_this: "1000",

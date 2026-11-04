@@ -6,6 +6,8 @@ import { getCalendarBounds } from "@/lib/date-bounds";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
@@ -118,6 +120,10 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("El monto debe ser mayor a 0", 400);
 
     const isCreditCardExpense = type === "EXPENSE" && !!credit_card_id;
+    if (isCreditCardExpense) {
+      const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+      if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+    }
     const sourceAccountId = account_id === undefined || account_id === null
       ? null
       : Number(account_id);

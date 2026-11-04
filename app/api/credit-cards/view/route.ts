@@ -15,7 +15,7 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
 
   const deny = await requireModule(auth.data, "FINANCES", "canView", "CREDIT_CARDS");

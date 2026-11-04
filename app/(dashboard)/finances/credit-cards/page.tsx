@@ -35,6 +35,7 @@ import { Fab } from "@/components/ui/fab";
 import { SummaryStats } from "@/components/shared/summary-stats";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { FeatureGate } from "@/components/shared/feature-gate";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -47,7 +48,7 @@ const formatDate = (date: string) => formatCalendarDate(date, {
   day: "numeric", month: "short", year: "numeric",
 });
 
-export default function CreditCardsPage() {
+function CreditCardsContent() {
   const timezone = useTimezone();
   const [currentYear, currentMonth] = todayInTimeZone(timezone).split("-").map(Number);
   const { push, replace } = useRouter();
@@ -579,5 +580,13 @@ export default function CreditCardsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function CreditCardsPage() {
+  return (
+    <FeatureGate feature="finances.credit_cards">
+      <CreditCardsContent />
+    </FeatureGate>
   );
 }

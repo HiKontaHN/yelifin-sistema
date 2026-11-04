@@ -12,7 +12,7 @@ export async function GET(
 ) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
   if (deny) return deny;
@@ -71,7 +71,7 @@ export async function PATCH(
 ) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;
@@ -124,7 +124,7 @@ export async function DELETE(
 ) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canDelete', 'CREDIT_CARDS');
   if (deny) return deny;

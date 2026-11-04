@@ -22,6 +22,7 @@ import { uploadProductImage } from "@/lib/product-image";
 import { ProductImageUpload } from "./product-image-upload";
 import { InventorySection, InventorySectionValue } from "./inventory-section";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useFeatures } from "@/hooks/use-features";
 
 const schema = z.object({
   name:        z.string().min(1, "El nombre es requerido"),
@@ -52,6 +53,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   const { createProduct, isCreating }                      = useCreateProduct();
   const { createPurchase, isCreating: isCreatingPurchase } = useCreatePurchase();
   const { symbol, currency: businessCurrency }             = useCurrency();
+  const { canCreateProducts }                              = useFeatures();
 
   const [imageFile,        setImageFile]        = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -433,7 +435,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
             )}
 
             {/* Inventario: solo si NO es servicio */}
-            {!isService && (
+            {!isService && canCreateProducts && (
               <InventorySection
                 value={inventory}
                 onChange={setInventory}

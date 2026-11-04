@@ -92,11 +92,14 @@ function useAuthFetch() {
 }
 
 export function useCreditCards() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, user } = useAuth();
   const authFetch = useAuthFetch();
+  const canUseCreditCards = !!user && Object.values(user.features ?? {})
+    .flat()
+    .some((feature) => feature.key === 'finances.credit_cards');
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser ? KEY : null,
+    firebaseUser && canUseCreditCards ? KEY : null,
     (url: string) => authFetch(url),
     { revalidateOnFocus: false, dedupingInterval: 5 * 60_000 }
   );

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useMe } from "@/hooks/swr/use-me";
 import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
 import {
   useWarehouses,
   useCreateWarehouse,
@@ -141,7 +142,8 @@ function RenameWarehouseDialog({ warehouse, onClose, onRenamed }: {
 
 function TransferStockCard({ warehouses }: { warehouses: { id: number; name: string }[] }) {
   const { createTransfer, isCreating } = useCreateWarehouseTransfer();
-  const { mutate: mutateTransfers } = useWarehouseTransfers();
+  const { canViewMovements } = useFeatures();
+  const { mutate: mutateTransfers } = useWarehouseTransfers(canViewMovements);
 
   const [fromId,    setFromId]    = useState("");
   const [toId,      setToId]      = useState("");
@@ -297,7 +299,8 @@ export default function WarehousesPage() {
   const { can_edit: canEditWarehouses, isLoading: permLoading } = useModulePermissions("ADMIN", "WAREHOUSES");
   const { warehouses, isLoading: whLoading, mutate } = useWarehouses();
   const { updateWarehouse } = useUpdateWarehouse();
-  const { transfers, isLoading: transfersLoading } = useWarehouseTransfers();
+  const { canViewMovements, canAdjustInventory } = useFeatures();
+  const { transfers, isLoading: transfersLoading } = useWarehouseTransfers(canViewMovements);
   const timezone = useTimezone();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -396,9 +399,9 @@ export default function WarehousesPage() {
           </CardContent>
         </Card>
 
-        <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-          <TransferStockCard warehouses={activeWarehouses} />
-          <Card>
+        {(canAdjustInventory || canViewMovements) && <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          {canAdjustInventory && <TransferStockCard warehouses={activeWarehouses} />}
+          {canViewMovements && <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</CardTitle></CardHeader>
             <CardContent className="divide-y divide-border p-0">
               {transfersLoading ? <div className="p-6"><Skeleton className="h-16 rounded-lg" /></div> : transfers.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin transferencias todavía.</div> : transfers.map((t) => (
@@ -409,8 +412,8 @@ export default function WarehousesPage() {
                 </div>
               ))}
             </CardContent>
-          </Card>
-        </main>
+          </Card>}
+        </main>}
       </div>
 
       <CreateWarehouseDialog

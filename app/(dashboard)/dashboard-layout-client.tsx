@@ -21,6 +21,8 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NavUserMenu } from "@/components/nav-user-menu";
 import { useDashboardWarmup } from "@/hooks/swr/use-dashboard";
+import { SubscriptionStatusBanner } from "@/components/subscription-status-banner";
+import { PaymentPendingAccess } from "@/components/payment-pending-access";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -77,11 +79,12 @@ export function DashboardLayoutClient({
   initialSidebarOpen: boolean;
 }) {
   const pathname = usePathname();
-  const { firebaseUser, loading } = useRequireAuth();
+  const { firebaseUser, user, loading, accessBlocked, accessBlockedMessage } = useRequireAuth();
   const { checking } = useOnboardingGuard();
   usePlanGuard();
   useDashboardWarmup(pathname === "/dashboard" && loading);
 
+  if (accessBlocked) return <PaymentPendingAccess message={accessBlockedMessage} />;
   if (loading || checking) return <LoadingScreen />;
   if (!firebaseUser) return null;
 
@@ -115,6 +118,7 @@ export function DashboardLayoutClient({
 
             {/* Tables cancel this scroll container's padding, not the navbar height. */}
             <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 [--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem] md:[&_h1]:hidden">
+              <SubscriptionStatusBanner subscription={user?.subscription} org={user?.org} />
               {children}
             </main>
           </SidebarInset>

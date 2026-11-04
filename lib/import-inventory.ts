@@ -260,7 +260,8 @@ export function validateRows(rows: ImportRow[]): void {
 export async function resolveRows(
   rows: ImportRow[],
   orgId: number,
-  sql: SqlClient
+  sql: SqlClient,
+  includeCreditCards = true,
 ): Promise<ResolvedRow[]> {
   const skus = [...new Set(rows.filter((r) => r.sku).map((r) => r.sku as string))];
 
@@ -296,7 +297,7 @@ export async function resolveRows(
         WHERE org_id = ${orgId} AND is_active = TRUE
       `
     : [];
-  const cards = hasAccountRefs
+  const cards = hasAccountRefs && includeCreditCards
     ? await sql`
         SELECT id, name FROM credit_cards
         WHERE org_id = ${orgId} AND is_active = TRUE

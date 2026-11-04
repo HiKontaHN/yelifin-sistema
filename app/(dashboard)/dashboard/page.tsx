@@ -35,6 +35,7 @@ import { TopProductsStock } from "@/components/dashboard/top-products-stock";
 import { ProductSalesToday } from "@/components/dashboard/product-sales-today";
 import { RecentSalesTable } from "@/components/dashboard/recent-sales-table";
 import { CreditCardDebtWidget } from "@/components/dashboard/credit-card-debt-widget";
+import { useFeatures } from "@/hooks/use-features";
 
 const MONTH_NAMES = [
   "",
@@ -67,6 +68,7 @@ export default function DashboardPage() {
   });
   const periods = data?.periods ?? [];
   const { show_profit: showProfit, show_costs: showCosts } = useModulePermissions("DASHBOARD");
+  const { canManageCreditCards } = useFeatures();
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort(
     (a, b) => b - a
@@ -225,11 +227,13 @@ export default function DashboardPage() {
       </div>
 
       <MetricsGrid metrics={m} isLoading={isLoading} showProfit={showProfit} />
-      <CreditCardDebtWidget
-        debtLocal={m?.credit_card_debt?.local ?? 0}
-        debtUsd={m?.credit_card_debt?.usd ?? 0}
-        isLoading={isLoading}
-      />
+      {canManageCreditCards && (
+        <CreditCardDebtWidget
+          debtLocal={m?.credit_card_debt?.local ?? 0}
+          debtUsd={m?.credit_card_debt?.usd ?? 0}
+          isLoading={isLoading}
+        />
+      )}
       <MobileSummary
         lowStock={data?.low_stock ?? []}
         recentSales={data?.recent_sales ?? []}

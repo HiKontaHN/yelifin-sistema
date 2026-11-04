@@ -43,9 +43,19 @@ export function SubscriptionCard({ title }: { title: string }) {
         {subscription ? (
           <div className="flex flex-wrap gap-x-10 gap-y-3">
             <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Plan actual</span>
-              <p className="font-medium">{subscription.plan?.name ?? "Sin plan"}</p>
+              <span className="text-xs text-muted-foreground">
+                {subscription.is_degraded ? "Plan contratado" : "Plan actual"}
+              </span>
+              <p className="font-medium">
+                {subscription.contracted_plan?.name ?? subscription.plan?.name ?? "Sin plan"}
+              </p>
             </div>
+            {subscription.is_degraded && (
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">Plan temporal</span>
+                <p className="font-medium">{subscription.plan?.name ?? "Gratis"}</p>
+              </div>
+            )}
             <div className="space-y-1">
               <span className="text-xs text-muted-foreground">Estado</span>
               <div>

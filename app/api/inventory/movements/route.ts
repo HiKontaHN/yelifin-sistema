@@ -1,7 +1,7 @@
 // app/api/inventory/movements/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getOrgTimezone } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getOrgTimezone } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -19,6 +19,8 @@ function monthKey(year: number, month: number): string {
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.movements");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'MOVEMENTS');
   if (deny) return deny;
 

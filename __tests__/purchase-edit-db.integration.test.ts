@@ -100,7 +100,10 @@ describeDatabase("edición de ingresos — integración con la base de desarroll
         locale: "es-HN",
         emailVerified: true,
         isActive: true,
-        subscription: { status: "ACTIVE", planSlug: "pro" },
+        subscription: {
+          status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
+          graceEndsAt: null, isInGrace: false, isDegraded: false, isTrialExpired: false,
+        },
       };
       const verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
         error: null,

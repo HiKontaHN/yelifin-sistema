@@ -7,6 +7,8 @@ import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
 import { isCalendarDate } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 type Params = { params: Promise<{ id: string }> };
@@ -162,6 +164,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         : null;
       if (purchasedAt && Number.isNaN(purchasedAt.getTime()))
         return createErrorResponse("La fecha de compra no es válida", 400);
+
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+      }
 
       try {
         return await withTransaction(async (tx) => {
@@ -673,6 +687,19 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       WHERE table_name = 'credit_card_transactions' AND column_name = 'purchase_batch_id'
     `;
     const hasCcLink = !!ccLinkColumn;
+    if (hasCcLink) {
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+      }
+    }
 
     try {
       return await withTransaction(async (tx) => {

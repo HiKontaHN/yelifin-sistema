@@ -96,7 +96,10 @@ function makeAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     displayName: "Test User",
     emailVerified: true,
     isActive: true,
-    subscription: { status: "ACTIVE", planSlug: "pro" },
+    subscription: {
+      status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
+      graceEndsAt: null, isInGrace: false, isDegraded: false, isTrialExpired: false,
+    },
     ...overrides,
     timezone: overrides.timezone ?? "America/Tegucigalpa",
     locale: overrides.locale ?? "es-HN",
