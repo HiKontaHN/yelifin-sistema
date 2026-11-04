@@ -57,6 +57,7 @@ ON CONFLICT (slug) DO UPDATE SET
 --   Ventas (100/mes)              -> sales.create + sales.view
 --   Cuentas financieras (2)       -> finances.accounts
 --   Transacciones                 -> finances.transactions
+--   Tarjetas de crédito           -> excluidas (finances.credit_cards)
 --   Reporte de ventas             -> reports.sales
 --
 -- Filas excluidas mediante ausencia de feature:
@@ -73,8 +74,6 @@ ON CONFLICT (slug) DO UPDATE SET
 --   Panel general, perfil y suscripción no usan requireFeature.
 --   Categorías predeterminadas no tienen feature propia; las categorías
 --   financieras se habilitan indirectamente con finances.transactions.
---   Tarjetas de crédito reutilizan finances.accounts y
---   finances.transactions, necesarias para las finanzas incluidas en Gratis.
 --   Las rutas de movimientos de inventario no llaman requireFeature; solo
 --   validan permisos del módulo. inventory.view sí es necesario para listar
 --   productos y bodegas, por lo que omitirlo no resolvería esa separación.

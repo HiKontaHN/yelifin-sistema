@@ -118,6 +118,10 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("El monto debe ser mayor a 0", 400);
 
     const isCreditCardExpense = type === "EXPENSE" && !!credit_card_id;
+    if (isCreditCardExpense) {
+      const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+      if (creditCardsFeature) return creditCardsFeature;
+    }
     const sourceAccountId = account_id === undefined || account_id === null
       ? null
       : Number(account_id);

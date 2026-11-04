@@ -67,7 +67,13 @@ export async function POST(request: NextRequest) {
     if (parseError) return createErrorResponse(parseError, 400);
 
     validateRows(rows);
-    const resolved = await resolveRows(rows, orgId, sql);
+    const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+    if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
+    const canUseCreditCards = creditCardsFeature === null;
+    const requestsCreditCard = rows.some((row) => row.cuentaRef?.kind === "credit_card");
+    if (requestsCreditCard && creditCardsFeature) return creditCardsFeature;
+
+    const resolved = await resolveRows(rows, orgId, sql, canUseCreditCards);
 
     // ── Dry run: preview del archivo completo, sin escribir ───────────
     if (dryRun) {

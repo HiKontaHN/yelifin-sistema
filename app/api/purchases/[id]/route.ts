@@ -163,6 +163,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       if (purchasedAt && Number.isNaN(purchasedAt.getTime()))
         return createErrorResponse("La fecha de compra no es válida", 400);
 
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature;
+      }
+
       try {
         return await withTransaction(async (tx) => {
           const [purchase] = await tx`
@@ -673,6 +685,19 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       WHERE table_name = 'credit_card_transactions' AND column_name = 'purchase_batch_id'
     `;
     const hasCcLink = !!ccLinkColumn;
+    if (hasCcLink) {
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature;
+      }
+    }
 
     try {
       return await withTransaction(async (tx) => {

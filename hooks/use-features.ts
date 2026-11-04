@@ -36,6 +36,7 @@ export function useFeatures() {
     canManageLoyalty:     hasFeature('customers.loyalty'),
     canManageAccounts:    hasFeature('finances.accounts'),
     canManageTransactions:hasFeature('finances.transactions'),
+    canManageCreditCards: hasFeature('finances.credit_cards'),
     canViewFinanceReports:hasFeature('finances.reports'),
     canManageEvents:      hasFeature('events.manage'),
     canManageEventInv:    hasFeature('events.inventory'),

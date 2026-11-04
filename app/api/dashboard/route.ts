@@ -1,7 +1,7 @@
 // app/api/dashboard/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getModulePermissions } from "@/lib/auth";
 import { addCalendarDays, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
 import { calendarDateStartToUtc } from "@/lib/date-bounds";
 
@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const deny = await requireModule(auth.data, 'DASHBOARD', 'canView');
   if (deny) return deny;
+  const creditCardsFeature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
+  const canUseCreditCards = creditCardsFeature === null;
 
   // Permisos atómicos del rol: si no puede ver costos/ganancias,
   // esos campos se envían en null (el cliente ya oculta las columnas)
@@ -170,16 +173,20 @@ export async function GET(request: NextRequest) {
             FROM accounts
             WHERE org_id = ${orgId} AND is_active = TRUE
           ) AS accounts_balance,
-          (
-            SELECT COALESCE(SUM(balance), 0)
-            FROM credit_cards
-            WHERE org_id = ${orgId} AND is_active = TRUE
-          ) AS credit_card_debt_local,
-          (
-            SELECT COALESCE(SUM(balance_usd), 0)
-            FROM credit_cards
-            WHERE org_id = ${orgId} AND is_active = TRUE
-          ) AS credit_card_debt_usd,
+          ${canUseCreditCards
+            ? sql`(
+                SELECT COALESCE(SUM(balance), 0)
+                FROM credit_cards
+                WHERE org_id = ${orgId} AND is_active = TRUE
+              )`
+            : sql`NULL`} AS credit_card_debt_local,
+          ${canUseCreditCards
+            ? sql`(
+                SELECT COALESCE(SUM(balance_usd), 0)
+                FROM credit_cards
+                WHERE org_id = ${orgId} AND is_active = TRUE
+              )`
+            : sql`NULL`} AS credit_card_debt_usd,
           (
             SELECT COALESCE(jsonb_agg(
               jsonb_build_object('year', periods.year, 'month', periods.month)

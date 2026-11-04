@@ -46,13 +46,14 @@ import { CreateTransactionModal } from "@/components/transactions/create-transac
 import { Fab } from "@/components/ui/fab";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { FeatureGate } from "@/components/shared/feature-gate";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
 
-export default function CreditCardDetailPage({
+function CreditCardDetailContent({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -518,6 +519,18 @@ export default function CreditCardDetailPage({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function CreditCardDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <FeatureGate feature="finances.credit_cards">
+      <CreditCardDetailContent params={params} />
+    </FeatureGate>
   );
 }
 

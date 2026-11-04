@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { createErrorResponse, isAuthSuccess, verifyAuth } from "@/lib/auth";
+import { createErrorResponse, isAuthSuccess, requireFeature, verifyAuth } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
 import { todayInTimeZone } from "@/lib/date-utils";
 
@@ -14,13 +14,16 @@ type PermissionRow = {
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const creditCardsFeature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
+  const planCanUseCards = creditCardsFeature === null;
 
   try {
     const { orgId, roleId, isOwner, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
 
     let canViewAccounts = true;
-    let canViewCards = true;
+    let canViewCards = planCanUseCards;
     if (!isOwner) {
       const permissionRows = await sql`
         SELECT subitem, can_view
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest) {
       const permissions = new Map(permissionRows.map((row) => [row.subitem, row.can_view]));
       const canViewTransactions = permissions.get("TRANSACTIONS") === true;
       canViewAccounts = permissions.get("ACCOUNTS") === true;
-      canViewCards = permissions.get("CREDIT_CARDS") === true;
+      canViewCards = planCanUseCards && permissions.get("CREDIT_CARDS") === true;
       if (!canViewAccounts && !canViewTransactions) {
         return createErrorResponse("Sin acceso a este módulo", 403);
       }
@@ -158,15 +161,17 @@ export async function GET(request: NextRequest) {
         WHERE a.org_id = ${orgId} AND a.is_active = TRUE
         ORDER BY a.created_at ASC
       `,
-      sql`
-        SELECT
-          id, public_id, name, last_four, credit_limit,
-          statement_closing_day, payment_due_day,
-          balance, balance_usd, is_active, created_at, updated_at
-        FROM credit_cards
-        WHERE org_id = ${orgId} AND is_active = TRUE
-        ORDER BY name ASC
-      `,
+      canViewCards
+        ? sql`
+            SELECT
+              id, public_id, name, last_four, credit_limit,
+              statement_closing_day, payment_due_day,
+              balance, balance_usd, is_active, created_at, updated_at
+            FROM credit_cards
+            WHERE org_id = ${orgId} AND is_active = TRUE
+            ORDER BY name ASC
+          `
+        : Promise.resolve([]),
     ]);
 
     const summary = summaryRows[0] ?? {};

@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless";
 import {
   createErrorResponse,
   isAuthSuccess,
+  requireFeature,
   verifyAuth,
 } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
@@ -23,6 +24,9 @@ function parseOptionalId(value: string | null) {
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const creditCardsFeature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (creditCardsFeature && creditCardsFeature.status >= 500) return creditCardsFeature;
+  const planCanUseCards = creditCardsFeature === null;
 
   try {
     const { orgId, roleId, isOwner, timezone } = auth.data;
@@ -44,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     let canViewAccounts = true;
-    let canViewCards = true;
+    let canViewCards = planCanUseCards;
 
     // Un solo acceso a permisos cubre toda la vista consolidada. El owner
     // conserva el bypass habitual y no genera esta consulta.
@@ -61,13 +65,17 @@ export async function GET(request: NextRequest) {
         return createErrorResponse("Sin acceso a este módulo", 403);
       }
       canViewAccounts = permissions.get("ACCOUNTS") === true;
-      canViewCards = permissions.get("CREDIT_CARDS") === true;
+      canViewCards = planCanUseCards && permissions.get("CREDIT_CARDS") === true;
     }
 
     const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
     const limit = search ? 1000 : 500;
     const includeAccountMovements = source !== "credit_card";
     const includeCardMovements = source !== "account" && canViewCards;
+
+    if ((source === "credit_card" || cardId !== null) && creditCardsFeature) {
+      return creditCardsFeature;
+    }
 
     // Todas las consultas independientes arrancan juntas. Así la pantalla
     // paga una sola ida HTTP y el tiempo total se acerca al de la consulta

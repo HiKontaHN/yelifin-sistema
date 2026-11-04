@@ -20,7 +20,7 @@ const CREDIT_CARD_SELECTOR_MODULES: OrgModule[] = ["FINANCES", "INVENTORY"];
 export async function GET(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
   const canList = await verifyAnyModuleAccess(auth.data, CREDIT_CARD_SELECTOR_MODULES, "canView");
   if (!canList) return createErrorResponse("Sin acceso a este módulo", 403);
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;

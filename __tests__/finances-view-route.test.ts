@@ -17,6 +17,7 @@ jest.mock("@/lib/auth", () => ({
     },
   })),
   isAuthSuccess: jest.fn(() => true),
+  requireFeature: jest.fn(async () => null),
   createErrorResponse: jest.fn((message: string, status: number) =>
     Response.json({ error: message }, { status }),
   ),

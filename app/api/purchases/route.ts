@@ -34,6 +34,10 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const isCreditCard = !already_paid && !!credit_card_id && !account_id;
+    if (isCreditCard) {
+      const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+      if (creditCardsFeature) return creditCardsFeature;
+    }
 
     const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
     if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
