@@ -22,10 +22,17 @@ export default function BillingSettingsPage() {
 
 function BillingSettingsContent() {
   const { push } = useRouter();
-  const { subscription, isTrial, hasActiveSubscription, isLoading } = useMe();
+  const { subscription, org, isTrial, isPastDue, hasActiveSubscription, isLoading } = useMe();
 
-  const planName = subscription?.plan?.name ?? "Sin plan";
+  const planName = subscription?.contracted_plan?.name ?? subscription?.plan?.name ?? "Sin plan";
   const status = subscription?.status ?? "SIN_SUSCRIPCIÓN";
+  const graceEndLabel = subscription?.grace_ends_at
+    ? new Intl.DateTimeFormat("es-HN", {
+        dateStyle: "long",
+        timeStyle: "short",
+        timeZone: org?.timezone ?? "America/Tegucigalpa",
+      }).format(new Date(subscription.grace_ends_at))
+    : null;
 
   const statusLabel = (() => {
     switch (status) {
@@ -65,6 +72,23 @@ function BillingSettingsContent() {
         </div>
       </div>
 
+      {!isLoading && isPastDue && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          {subscription?.is_degraded ? (
+            <>
+              El período de gracia terminó{graceEndLabel ? ` el ${graceEndLabel}` : ""}. Hasta que se
+              confirme el pago, solo el dueño puede ingresar y la organización usa temporalmente el plan Gratis.
+            </>
+          ) : (
+            <>
+              Tu pago está pendiente. Mantendrás las funciones del plan contratado hasta
+              {graceEndLabel ? ` el ${graceEndLabel}` : " que termine el período de gracia"}; después se
+              aplicará temporalmente el plan Gratis.
+            </>
+          )}
+        </div>
+      )}
+
       {/* Placeholder principal */}
       <Card>
         <CardHeader className="pb-2">
@@ -79,8 +103,13 @@ function BillingSettingsContent() {
                 Estado actual de tu suscripción
               </p>
               <p>
-                Plan: <span className="font-medium">{planName}</span>
+                Plan contratado: <span className="font-medium">{planName}</span>
               </p>
+              {subscription?.is_degraded && (
+                <p>
+                  Plan temporal: <span className="font-medium">{subscription.plan.name}</span>
+                </p>
+              )}
               <p>
                 Estado: <span className="font-medium">{statusLabel}</span>
               </p>

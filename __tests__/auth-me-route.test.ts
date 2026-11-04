@@ -52,6 +52,10 @@ const profileRow = {
   current_period_start: null,
   current_period_end: null,
   cancel_at_period_end: false,
+  past_due_since: null,
+  grace_ends_at: null,
+  is_in_grace: false,
+  is_degraded: false,
   plan_id: 4,
   plan_name: "Pro",
   plan_slug: "pro",
@@ -60,6 +64,11 @@ const profileRow = {
   max_products: null,
   max_sales_per_month: null,
   max_storage_mb: null,
+  contracted_plan_id: 4,
+  contracted_plan_name: "Pro",
+  contracted_plan_slug: "pro",
+  contracted_price_usd: 20,
+  contracted_billing_interval: "MONTHLY",
   plan_features: [],
   role_permissions: [],
 };
@@ -127,6 +136,66 @@ describe("GET /api/auth/me", () => {
     expect(response.status).toBe(200);
     expect(body.subscription.status).toBe("EXPIRED");
     expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
+  it("expone la fecha de gracia y conserva las features durante PAST_DUE", async () => {
+    mockVerifySessionCookie.mockResolvedValue({
+      uid: "firebase-1",
+      email_verified: true,
+    });
+    mockGetUser.mockResolvedValue({
+      uid: "firebase-1",
+      email: "user@example.com",
+      displayName: "Usuario",
+      emailVerified: true,
+      disabled: false,
+    });
+    mockSql.mockResolvedValue([{
+      ...profileRow,
+      subscription_status: "PAST_DUE",
+      past_due_since: "2026-11-03T16:00:00.000Z",
+      grace_ends_at: "2026-11-09T06:00:00.000Z",
+      is_in_grace: true,
+      plan_features: [{ key: "reports.sales", name: "Reporte de ventas", category: "REPORTS" }],
+    }]);
+
+    const response = await GET(authenticatedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.subscription).toMatchObject({
+      status: "PAST_DUE",
+      grace_ends_at: "2026-11-09T06:00:00.000Z",
+      is_in_grace: true,
+      is_degraded: false,
+    });
+    expect(body.features.REPORTS).toHaveLength(1);
+  });
+
+  it("bloquea a un miembro no dueño cuando la organización está degradada", async () => {
+    mockVerifySessionCookie.mockResolvedValue({
+      uid: "firebase-1",
+      email_verified: true,
+    });
+    mockGetUser.mockResolvedValue({
+      uid: "firebase-1",
+      disabled: false,
+    });
+    mockSql.mockResolvedValue([{
+      ...profileRow,
+      owner_user_id: 99,
+      role_is_owner: false,
+      subscription_status: "PAST_DUE",
+      plan_name: "Gratis",
+      plan_slug: "free",
+      is_degraded: true,
+    }]);
+
+    const response = await GET(authenticatedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error).toContain("limitado al dueño");
   });
 
   it("rechaza una cookie inválida sin consultar Neon", async () => {

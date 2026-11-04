@@ -46,6 +46,11 @@ export interface UserSubscription {
   id: number;
   status: SubscriptionStatus;
   plan: SubscriptionPlan;
+  contracted_plan: Omit<SubscriptionPlan, 'limits'>;
+  past_due_since: string | null;
+  grace_ends_at: string | null;
+  is_in_grace: boolean;
+  is_degraded: boolean;
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;

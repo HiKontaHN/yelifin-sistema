@@ -21,7 +21,10 @@ function request() {
   });
 }
 
-function authRow(status: "ACTIVE" | "EXPIRED") {
+function authRow(
+  status: "ACTIVE" | "PAST_DUE" | "EXPIRED",
+  overrides: Record<string, unknown> = {},
+) {
   return {
     user_id: 1,
     firebase_uid: "firebase-1",
@@ -37,6 +40,11 @@ function authRow(status: "ACTIVE" | "EXPIRED") {
     role_is_owner: true,
     subscription_status: status,
     plan_slug: "pro",
+    contracted_plan_slug: "pro",
+    grace_ends_at: null,
+    is_in_grace: false,
+    is_degraded: false,
+    ...overrides,
   };
 }
 
@@ -58,6 +66,106 @@ describe("subscription guard", () => {
     expect(result.status).toBe(200);
     expect(result.error).toBeNull();
     expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantiene el plan contratado mientras PAST_DUE está dentro de la gracia", async () => {
+    mockSql.mockResolvedValue([
+      authRow("PAST_DUE", {
+        plan_slug: "pro",
+        contracted_plan_slug: "pro",
+        grace_ends_at: "2026-11-09T06:00:00.000Z",
+        is_in_grace: true,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(200);
+    expect(result.data?.subscription).toMatchObject({
+      status: "PAST_DUE",
+      planSlug: "pro",
+      contractedPlanSlug: "pro",
+      isInGrace: true,
+      isDegraded: false,
+    });
+  });
+
+  it("usa Gratis después de la gracia para el dueño", async () => {
+    mockSql.mockResolvedValue([
+      authRow("PAST_DUE", {
+        plan_slug: "free",
+        contracted_plan_slug: "pro",
+        grace_ends_at: "2026-11-09T06:00:00.000Z",
+        is_degraded: true,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(200);
+    expect(result.data?.subscription).toMatchObject({
+      planSlug: "free",
+      contractedPlanSlug: "pro",
+      isDegraded: true,
+    });
+  });
+
+  it("restaura el plan contratado cuando se confirma el pago", async () => {
+    mockSql.mockResolvedValue([
+      authRow("ACTIVE", {
+        plan_slug: "pro",
+        contracted_plan_slug: "pro",
+        grace_ends_at: null,
+        is_degraded: false,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(200);
+    expect(result.data?.subscription).toMatchObject({
+      status: "ACTIVE",
+      planSlug: "pro",
+      graceEndsAt: null,
+      isDegraded: false,
+    });
+  });
+
+  it("bloquea con 403 a un miembro no dueño cuando la organización está degradada", async () => {
+    mockSql.mockResolvedValue([
+      authRow("PAST_DUE", {
+        owner_user_id: 99,
+        role_is_owner: false,
+        plan_slug: "free",
+        is_degraded: true,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(403);
+    expect(result.error).toContain("limitado al dueño");
+    expect(result.data).toBeNull();
+  });
+
+  it("no degrada un plan no facturable aunque esté PAST_DUE", async () => {
+    mockSql.mockResolvedValue([
+      authRow("PAST_DUE", {
+        plan_slug: "original",
+        contracted_plan_slug: "original",
+        is_in_grace: false,
+        is_degraded: false,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(200);
+    expect(result.data?.subscription).toMatchObject({
+      planSlug: "original",
+      contractedPlanSlug: "original",
+      isDegraded: false,
+    });
   });
 
   it("responde 403 en una ruta protegida para una organización EXPIRED", async () => {

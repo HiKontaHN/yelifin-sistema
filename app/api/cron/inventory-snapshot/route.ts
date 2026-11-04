@@ -43,9 +43,9 @@ export async function GET(request: NextRequest) {
   try {
     const orgs = await sql`
       SELECT os.org_id, (NOW() AT TIME ZONE o.timezone)::date::text AS local_today
-      FROM org_subscriptions os
+      FROM org_effective_subscriptions os
       JOIN organizations o ON o.id = os.org_id
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      JOIN subscription_plans sp ON sp.id = os.effective_plan_id
       WHERE sp.slug = ANY(${SNAPSHOT_ELIGIBLE_PLAN_SLUGS})
     `;
 

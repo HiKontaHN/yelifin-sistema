@@ -46,6 +46,10 @@ export type AuthUser = {
   subscription: {
     status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED";
     planSlug: string;
+    contractedPlanSlug: string;
+    graceEndsAt: string | null;
+    isInGrace: boolean;
+    isDegraded: boolean;
   };
 };
 
@@ -96,13 +100,18 @@ export async function verifyAuth(
         r.name                AS role_name,
         r.is_owner            AS role_is_owner,
         os.status             AS subscription_status,
-        sp.slug               AS plan_slug
+        effective.slug        AS plan_slug,
+        contracted.slug       AS contracted_plan_slug,
+        os.grace_ends_at,
+        os.is_in_grace,
+        os.is_degraded
       FROM users u
       JOIN organization_members om ON om.user_id   = u.id     AND om.is_active = TRUE
       JOIN organizations         o  ON o.id         = om.org_id AND o.is_active  = TRUE
       JOIN org_roles             r  ON r.id         = om.role_id
-      JOIN org_subscriptions     os ON os.org_id    = o.id
-      JOIN subscription_plans    sp ON sp.id        = os.plan_id
+      JOIN org_effective_subscriptions os ON os.org_id = o.id
+      JOIN subscription_plans effective ON effective.id = os.effective_plan_id
+      JOIN subscription_plans contracted ON contracted.id = os.contracted_plan_id
       WHERE u.firebase_uid = ${decodedToken.uid}
       ORDER BY om.joined_at ASC
       LIMIT 1
@@ -118,6 +127,15 @@ export async function verifyAuth(
 
     const isOwner =
       row.role_is_owner === true || row.owner_user_id === row.user_id;
+
+    if (row.is_degraded === true && !isOwner) {
+      return {
+        error: "El pago de la suscripción está pendiente y el acceso temporal está limitado al dueño de la organización",
+        status: 403,
+        data: null,
+        needsUpgrade: true,
+      };
+    }
 
     return {
       error: null,
@@ -138,6 +156,10 @@ export async function verifyAuth(
         subscription: {
           status: row.subscription_status,
           planSlug: row.plan_slug,
+          contractedPlanSlug: row.contracted_plan_slug,
+          graceEndsAt: row.grace_ends_at ?? null,
+          isInGrace: row.is_in_grace === true,
+          isDegraded: row.is_degraded === true,
         },
       },
     };
@@ -153,13 +175,29 @@ export async function verifySubscription(
   orgId: number
 ): Promise<
   | (AuthResult & { data: null })
-  | { error: null; status: 200; isActive: true; planSlug: string }
+  | {
+      error: null;
+      status: 200;
+      isActive: true;
+      planSlug: string;
+      contractedPlanSlug: string;
+      graceEndsAt: string | null;
+      isInGrace: boolean;
+      isDegraded: boolean;
+    }
 > {
   try {
     const [subscription] = await sql`
-      SELECT os.status, sp.slug AS plan_slug
-      FROM org_subscriptions os
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      SELECT
+        os.status,
+        effective.slug AS plan_slug,
+        contracted.slug AS contracted_plan_slug,
+        os.grace_ends_at,
+        os.is_in_grace,
+        os.is_degraded
+      FROM org_effective_subscriptions os
+      JOIN subscription_plans effective ON effective.id = os.effective_plan_id
+      JOIN subscription_plans contracted ON contracted.id = os.contracted_plan_id
       WHERE os.org_id = ${orgId}
     `;
 
@@ -167,7 +205,7 @@ export async function verifySubscription(
       return { error: "Suscripción no encontrada", status: 404, data: null };
     }
 
-    const validStatuses = ["TRIAL", "ACTIVE"];
+    const validStatuses = ["TRIAL", "ACTIVE", "PAST_DUE"];
     if (!validStatuses.includes(subscription.status)) {
       return {
         error: "Tu suscripción no está activa",
@@ -177,7 +215,16 @@ export async function verifySubscription(
       };
     }
 
-    return { error: null, status: 200, isActive: true, planSlug: subscription.plan_slug };
+    return {
+      error: null,
+      status: 200,
+      isActive: true,
+      planSlug: subscription.plan_slug,
+      contractedPlanSlug: subscription.contracted_plan_slug,
+      graceEndsAt: subscription.grace_ends_at ?? null,
+      isInGrace: subscription.is_in_grace === true,
+      isDegraded: subscription.is_degraded === true,
+    };
   } catch (error) {
     console.error("Error en verifySubscription:", error);
     return { error: "Error al verificar suscripción", status: 500, data: null };
@@ -195,13 +242,13 @@ export async function verifyFeatureAccess(orgId: number, featureKey: string) {
           SELECT 1
           FROM plan_features   pf
           JOIN system_features sf ON sf.id = pf.feature_id
-          WHERE pf.plan_id     = os.plan_id
+          WHERE pf.plan_id     = os.effective_plan_id
             AND sf.feature_key = ${featureKey}
             AND pf.is_enabled  = TRUE
             AND sf.is_active   = TRUE
         ) AS enabled
-      FROM org_subscriptions os
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      FROM org_effective_subscriptions os
+      JOIN subscription_plans sp ON sp.id = os.effective_plan_id
       WHERE os.org_id = ${orgId}
     `;
 
@@ -476,8 +523,8 @@ export async function verifyResourceLimit(
     const [plan] = await sql`
       SELECT sp.max_products, sp.max_sales_per_month, sp.max_transactions_per_month,
              sp.max_accounts, sp.max_supplies, sp.max_users, sp.max_warehouses
-      FROM org_subscriptions os
-      JOIN subscription_plans sp ON sp.id = os.plan_id
+      FROM org_effective_subscriptions os
+      JOIN subscription_plans sp ON sp.id = os.effective_plan_id
       WHERE os.org_id = ${orgId}
     `;
 
