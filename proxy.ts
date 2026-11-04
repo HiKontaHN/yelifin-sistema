@@ -105,14 +105,14 @@ export async function proxy(request: NextRequest) {
   // ── Rate limit global para toda la API ─────────────────────────────
   // Protección base anti-abuso/DoS por IP para /api/*. Endpoints sensibles
   // (login, register) aplican además su propio límite más estricto dentro
-  // del route handler. In-memory por instancia — ver lib/rate-limit.ts.
+  // del route handler. Almacén compartido (Upstash) o memoria — ver lib/rate-limit.ts.
   if (pathname.startsWith("/api")) {
     // Responder el preflight sin consumir el límite ni requerir una sesión.
     if (process.env.NODE_ENV === "development" && request.method === "OPTIONS") {
       return withDevelopmentCors(request, new NextResponse(null, { status: 204 }));
     }
 
-    const { allowed, retryAfterSec } = rateLimit(
+    const { allowed, retryAfterSec } = await rateLimit(
       `api:${getClientIP(request)}`,
       300,
       60 * 1000, // 300 solicitudes por minuto por IP

@@ -52,7 +52,7 @@ function makeRequest(
 beforeEach(() => {
   jest.clearAllMocks();
   setEnvironment("development");
-  jest.mocked(rateLimit).mockReturnValue({ allowed: true, remaining: 299, retryAfterSec: 0 });
+  jest.mocked(rateLimit).mockResolvedValue({ allowed: true, remaining: 299, retryAfterSec: 0 });
   jest.mocked(adminAuth.verifySessionCookie).mockResolvedValue({
     uid: "test-user",
     email_verified: true,

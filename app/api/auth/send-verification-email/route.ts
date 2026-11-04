@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   // 5 reenvíos por IP cada 10 minutos — el botón "Reenviar" en
   // /verify-email ya tiene su propio cooldown de 60s en el cliente, esto
   // es solo el límite duro contra abuso.
-  const { allowed, retryAfterSec } = rateLimit(
+  const { allowed, retryAfterSec } = await rateLimit(
     `send-verification-email:${getClientIP(request)}`,
     5,
     10 * 60 * 1000,

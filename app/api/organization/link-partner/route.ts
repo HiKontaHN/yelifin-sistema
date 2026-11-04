@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
   // Intentos de código por usuario — evita fuerza bruta contra códigos de
   // otros partners (mismo criterio que login/reset-password).
-  const { allowed, retryAfterSec } = rateLimit(`link-partner:${getClientIP(request)}`, 10, 15 * 60 * 1000);
+  const { allowed, retryAfterSec } = await rateLimit(`link-partner:${getClientIP(request)}`, 10, 15 * 60 * 1000);
   if (!allowed) {
     return Response.json(
       { error: "Demasiados intentos. Esperá unos minutos." },

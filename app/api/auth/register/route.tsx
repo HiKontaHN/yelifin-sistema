@@ -19,7 +19,7 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export async function POST(req: NextRequest) {
   // 3 registros por IP cada hora
-  const { allowed, retryAfterSec } = rateLimit(
+  const { allowed, retryAfterSec } = await rateLimit(
     `register:${getClientIP(req)}`,
     3,
     60 * 60 * 1000,
