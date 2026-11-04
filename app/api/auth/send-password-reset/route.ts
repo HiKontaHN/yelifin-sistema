@@ -9,6 +9,7 @@
 // app/(auth)/auth/action/page.tsx — ver la nota en
 // send-verification-email/route.ts sobre por qué (Console de Firebase
 // rechazando el Action URL personalizado con EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED).
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { createErrorResponse } from "@/lib/auth";
@@ -22,7 +23,7 @@ const GENERIC_RESPONSE = {
 
 export async function POST(request: NextRequest) {
   // 5 solicitudes por IP cada 10 minutos.
-  const { allowed, retryAfterSec } = rateLimit(
+  const { allowed, retryAfterSec } = await rateLimit(
     `send-password-reset:${getClientIP(request)}`,
     5,
     10 * 60 * 1000,
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const email = (body?.email ?? "").toString().trim().toLowerCase();
     if (!email) return createErrorResponse("Correo inválido", 400);
+
+    // 3 solicitudes por correo cada hora, aunque cambie la IP. Respuesta
+    // genérica para no revelar nada (el límite aplica exista o no la cuenta).
+    const emailKey = createHash("sha256").update(email).digest("hex");
+    const byEmail = await rateLimit(`send-password-reset-email:${emailKey}`, 3, 60 * 60 * 1000);
+    if (!byEmail.allowed) return Response.json(GENERIC_RESPONSE);
 
     try {
       const actionLink = await adminAuth.generatePasswordResetLink(email);

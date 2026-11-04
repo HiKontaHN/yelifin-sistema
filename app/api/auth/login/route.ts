@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5 intentos por IP cada 15 minutos
-  const { allowed, remaining, retryAfterSec } = rateLimit(
+  const { allowed, remaining, retryAfterSec } = await rateLimit(
     `login:${getClientIP(req)}`,
     5,
     15 * 60 * 1000,

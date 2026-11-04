@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const { userId } = auth.data;
 
     // 20 subidas por usuario cada hora — evita abuso de storage/egress.
-    const { allowed, retryAfterSec } = rateLimit(`upload:${userId}`, 20, 60 * 60 * 1000);
+    const { allowed, retryAfterSec } = await rateLimit(`upload:${userId}`, 20, 60 * 60 * 1000);
     if (!allowed) {
       return createErrorResponse(
         "Demasiadas subidas. Intenta de nuevo más tarde.",
