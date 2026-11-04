@@ -15,6 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { ageOnCalendarDate, isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const BIRTH_MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -24,7 +25,9 @@ const BIRTH_DAYS = Array.from({ length: 31 }, (_, index) => ({
   value: String(index + 1),
   label: String(index + 1),
 }));
-const MAX_BIRTH_YEAR = new Date().getUTCFullYear() - 18;
+// Incluye un año adicional para cubrir el cambio de año en UTC; la
+// validación exacta por día sigue rechazando a cualquier menor de edad.
+const MAX_BIRTH_YEAR = new Date().getUTCFullYear() - 17;
 const BIRTH_YEARS = Array.from({ length: 100 }, (_, index) => {
   const year = String(MAX_BIRTH_YEAR - index);
   return { value: year, label: year };
@@ -38,16 +41,15 @@ function dateOfBirthFromParts(month: string, day: string, year: string) {
   const normalizedMonth = month.padStart(2, "0");
   const normalizedDay = day.padStart(2, "0");
   const dateOfBirth = `${year}-${normalizedMonth}-${normalizedDay}`;
-  const parsed = new Date(`${dateOfBirth}T00:00:00Z`);
+  return isCalendarDate(dateOfBirth) ? dateOfBirth : null;
+}
 
-  if (
-    Number.isNaN(parsed.getTime()) ||
-    parsed.toISOString().slice(0, 10) !== dateOfBirth
-  ) {
-    return null;
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
   }
-
-  return dateOfBirth;
 }
 
 const registerSchema = z
@@ -81,15 +83,7 @@ const registerSchema = z
       const dateOfBirth = dateOfBirthFromParts(data.birth_month, data.birth_day, data.birth_year);
       if (!dateOfBirth) return false;
 
-      const birthDate = new Date(`${dateOfBirth}T00:00:00Z`);
-      const today = new Date();
-      let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
-      const birthdayPending =
-        today.getUTCMonth() < birthDate.getUTCMonth() ||
-        (today.getUTCMonth() === birthDate.getUTCMonth() &&
-          today.getUTCDate() < birthDate.getUTCDate());
-      if (birthdayPending) age -= 1;
-      return age >= 18;
+      return ageOnCalendarDate(dateOfBirth, todayInTimeZone(browserTimeZone())) >= 18;
     },
     {
       message: "Debes tener al menos 18 años para crear una cuenta",
@@ -131,6 +125,8 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
           display_name: data.name,
           business_name: data.business_name,
           date_of_birth: dateOfBirth,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          locale: navigator.language,
           ...(partnerCode && { partner_code: partnerCode }),
         }),
       });

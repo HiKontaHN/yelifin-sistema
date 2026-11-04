@@ -7,6 +7,7 @@ import { useEventsReport } from "@/hooks/swr/use-reports";
 import { useCurrency }     from "@/hooks/swr/use-currency";
 import { useAuth }         from "@/hooks/use-auth";
 import { fmtN } from "@/lib/export";
+import { formatCalendarDate } from "@/lib/date-utils";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ReportShell, StatCard, ReportSection, ReportTableSection, ReportEmptyState, useDateRange } from "@/components/reports/report-shell";
 import { FeatureGate } from "@/components/shared/feature-gate";
@@ -48,7 +49,7 @@ function EventsReportPageInner() {
 
   useEffect(() => { setEventPage(1); }, [from, to]);
 
-  const periodLabel = `${new Date(from + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })} — ${new Date(to + "T12:00:00").toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}`;
+  const periodLabel = `${formatCalendarDate(from, { day: "numeric", month: "short", year: "numeric" })} — ${formatCalendarDate(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
   // ── Exportación via servidor ──────────────────────────────────────
   const handlePDFExport = async () => {
@@ -91,7 +92,7 @@ function EventsReportPageInner() {
 
   const eventColumns: DataTableTimeSectionColumn<(typeof events)[number]>[] = [
     { id: "event", header: "Evento", width: showProfit ? "25%" : "41%", cell: (event) => <div className="min-w-0"><p className="truncate font-medium" title={event.name}>{event.name}</p>{event.location && <p className="truncate text-xs text-muted-foreground">{event.location}</p>}</div> },
-    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (event) => <span suppressHydrationWarning>{new Date(event.starts_at).toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" })}</span> },
+    { id: "date", header: "Fecha", width: "16%", className: "whitespace-nowrap text-muted-foreground", cell: (event) => <span>{formatCalendarDate(event.starts_at, { day: "numeric", month: "short", year: "numeric" })}</span> },
     { id: "sales", header: "Ventas", width: "10%", align: "right", cell: (event) => event.sales_count },
     { id: "revenue", header: "Ingresos", width: "15%", align: "right", cell: (event) => <span className="font-medium">{format(event.total_revenue)}</span> },
     ...(showProfit ? [

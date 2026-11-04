@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
+import { addCalendarDays, isCalendarDate, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 const FEATURE = "finances.receivables_payables";
@@ -11,20 +12,20 @@ const TERM_UNITS = ["DAYS", "WEEKS", "MONTHS"] as const;
 const INTEREST_PERIODS = ["NONE", "ANNUAL", "MONTHLY", "WEEKLY"] as const;
 const ACCOUNT_TYPES = ["SUPPLIER_CREDIT", "BANK_LOAN", "CREDIT_CARD", "PERSONAL_LOAN", "OTHER"] as const;
 
-function addDays(date: Date, days: number) {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result.toISOString().slice(0, 10);
+function daysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-function firstAutoPaymentDate(day: number) {
-  const today = new Date();
-  const current = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 12));
-  const candidate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), Math.min(day, 28), 12));
-  if (candidate < current) candidate.setUTCMonth(candidate.getUTCMonth() + 1);
-  const lastDay = new Date(Date.UTC(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, 0)).getUTCDate();
-  candidate.setUTCDate(Math.min(day, lastDay));
-  return candidate.toISOString().slice(0, 10);
+function firstAutoPaymentDate(day: number, timezone: string): CalendarDate {
+  const today = todayInTimeZone(timezone);
+  let [year, month] = today.split("-").map(Number);
+  const build = () => `${year}-${String(month).padStart(2, "0")}-${String(Math.min(day, daysInMonth(year, month))).padStart(2, "0")}` as CalendarDate;
+  let candidate = build();
+  if (candidate < today) {
+    if (month === 12) { year += 1; month = 1; } else { month += 1; }
+    candidate = build();
+  }
+  return candidate;
 }
 
 function calculatePlan(amount: number, frequency: string, termUnit: string, termCount: number, rate: number, interestPeriod: string, manualInstallment = 0) {
@@ -57,7 +58,11 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get("search")?.trim() || null;
   try {
     const data = await sql`
-      SELECT ap.*, e.name AS entity_name, e.entity_type,
+      SELECT ap.*,
+        ap.start_date::text AS start_date,
+        ap.due_date::text AS due_date,
+        ap.auto_payment_next_date::text AS auto_payment_next_date,
+        e.name AS entity_name, e.entity_type,
         COALESCE(SUM(app.amount), 0) AS paid_amount
       FROM accounts_payable ap
       JOIN financial_entities e ON e.id = ap.entity_id
@@ -108,12 +113,14 @@ export async function POST(request: NextRequest) {
       const [autoAccount] = await sql`SELECT id FROM accounts WHERE id = ${autoPaymentAccountId} AND org_id = ${checked.auth.data.orgId} AND is_active = TRUE`;
       if (!autoAccount) return createErrorResponse("Cuenta para abonos automáticos no encontrada", 404);
     }
-    const startDate = String(body.start_date ?? new Date().toISOString().slice(0, 10));
+    const startDate = String(body.start_date ?? todayInTimeZone(checked.auth.data.timezone));
+    if (!isCalendarDate(startDate)) return createErrorResponse("Fecha inicial inválida", 400);
     const plan = calculatePlan(amount, frequency, termUnit, termCount, interestRate, interestPeriod, manualInstallment);
     if (manualInstallment > 0 && plan.totalPayable < amount) {
       return createErrorResponse("La cuota manual no puede generar un total menor al monto original", 400);
     }
-    const dueDate = body.due_date ?? addDays(new Date(`${startDate}T12:00:00`), plan.durationDays);
+    const dueDate = body.due_date ?? addCalendarDays(startDate, plan.durationDays);
+    if (!isCalendarDate(dueDate)) return createErrorResponse("Fecha de vencimiento inválida", 400);
     const row = await withTransaction(async (tx) => {
       const [payable] = await tx`
         INSERT INTO accounts_payable (
@@ -128,15 +135,15 @@ export async function POST(request: NextRequest) {
           ${body.currency ?? "HNL"}, ${interestRate || null}, ${startDate}, ${dueDate}, ${body.notes ?? null}, ${checked.auth.data.userId},
           ${frequency}, ${termUnit}, ${termCount}, ${interestPeriod}, ${plan.totalInterest},
           ${plan.totalPayable}, ${plan.periods}, ${plan.installmentAmount}, ${amount},
-          ${autoPaymentEnabled}, ${autoPaymentAccountId}, ${autoPaymentDay}, ${autoPaymentEnabled && autoPaymentDay ? firstAutoPaymentDate(autoPaymentDay) : null}
-        ) RETURNING *
+          ${autoPaymentEnabled}, ${autoPaymentAccountId}, ${autoPaymentDay}, ${autoPaymentEnabled && autoPaymentDay ? firstAutoPaymentDate(autoPaymentDay, checked.auth.data.timezone) : null}
+        ) RETURNING *, start_date::text AS start_date, due_date::text AS due_date, auto_payment_next_date::text AS auto_payment_next_date
       `;
       for (let index = 1; index <= plan.periods; index += 1) {
         const stepDays = frequency === "WEEKLY" ? index * 7 : frequency === "BIWEEKLY" ? index * 14 : frequency === "MONTHLY" ? index * 30 : plan.durationDays;
         const installmentAmount = plan.installmentAmount;
         await tx`
           INSERT INTO accounts_payable_installments (payable_id, installment_number, due_date, amount)
-          VALUES (${payable.id}, ${index}, ${addDays(new Date(`${startDate}T12:00:00`), Math.min(stepDays, plan.durationDays))}, ${Math.round(installmentAmount * 100) / 100})
+          VALUES (${payable.id}, ${index}, ${addCalendarDays(startDate, Math.min(stepDays, plan.durationDays))}, ${Math.round(installmentAmount * 100) / 100})
         `;
       }
       return payable;

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Building2, Handshake, Loader2, Mail, Phone, UserRound } from "lucide-react";
 
 import { useMe } from "@/hooks/swr/use-me";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import {
   useLinkPartner,
   useOrganizationPartner,
@@ -23,6 +24,7 @@ import { Switch } from "@/components/ui/switch";
 
 export function PartnerLinkCard() {
   const { isOwner } = useMe();
+  const timezone = useTimezone();
   const { partner, isLoading } = useOrganizationPartner(isOwner);
   const { linkPartner, isLinking } = useLinkPartner();
   const { updateFinancialSharing, isUpdating } = useUpdatePartnerFinancialSharing();
@@ -78,7 +80,7 @@ export function PartnerLinkCard() {
                 <div>
                   <p className="font-semibold">{partner.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    Vinculado desde {new Intl.DateTimeFormat("es-HN", { dateStyle: "long" }).format(new Date(partner.linked_at))}
+                    Vinculado desde {formatInTZ(partner.linked_at, timezone, { dateStyle: "long" })}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

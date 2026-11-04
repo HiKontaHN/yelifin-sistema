@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Calculator, Wallet } from "lucide-react";
 import { useAccounts } from "@/hooks/swr/use-accounts";
-import { toLocalDateInput } from "@/lib/date-utils";
+import { DEFAULT_TIMEZONE, formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 
@@ -36,14 +36,14 @@ export type PurchaseFormValue = {
   notes:         string;
 };
 
-export const defaultPurchaseForm = (): PurchaseFormValue => ({
+export const defaultPurchaseForm = (timezone = DEFAULT_TIMEZONE): PurchaseFormValue => ({
   account_id:    null,
   currency:      "USD",
   exchange_rate: TASA_DEFAULT,
   quantity:      "1",
   unit_cost:     0,
   shipping:      0,
-  purchased_at:  toLocalDateInput(new Date()),
+  purchased_at:  todayInTimeZone(timezone),
   notes:         "",
 });
 
@@ -190,7 +190,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             />
             {suggestedRate != null && (
               <p className="text-xs text-muted-foreground">
-                Sugerido (BCH{suggestedRateDate ? `, ${new Date(suggestedRateDate).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
+                Sugerido (BCH{suggestedRateDate ? `, ${formatCalendarDate(suggestedRateDate, { day: "numeric", month: "short" })}` : ""}): {suggestedRate}
                 {value.exchange_rate !== suggestedRate && (
                   <button
                     type="button"

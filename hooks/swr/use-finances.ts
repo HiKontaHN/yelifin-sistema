@@ -27,6 +27,7 @@ export type TodayTransaction = {
   category: string | null;
   reference_type: string | null;
   occurred_at: string;
+  effective_date: string;
   account_name: string;
   to_account_name: string | null;
 };
@@ -80,7 +81,6 @@ export function useFinances(filters?: { month?: number; year?: number }) {
 export function useFinancesView(filters?: {
   month?: number;
   year?: number;
-  tz_offset?: number;
 }) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
@@ -88,7 +88,6 @@ export function useFinancesView(filters?: {
   const params = new URLSearchParams();
   if (filters?.month) params.set("month", String(filters.month));
   if (filters?.year) params.set("year", String(filters.year));
-  if (filters?.tz_offset !== undefined) params.set("tz_offset", String(filters.tz_offset));
   const query = params.toString();
   const url = `/api/finances/view${query ? `?${query}` : ""}`;
 

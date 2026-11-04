@@ -30,6 +30,8 @@ type DateRangePickerProps = {
   value: DateRangeValue;
   onChange: (range: DateRangeValue) => void;
   presets?: DateRangePreset[];
+  /** Calendar day to use as "today" (YYYY-MM-DD), normally from the organization timezone. */
+  today?: string;
   minDate?: Date;
   maxDate?: Date;
   disabled?: boolean;
@@ -112,12 +114,16 @@ export function DateRangePicker({
   value,
   onChange,
   presets = DEFAULT_DATE_RANGE_PRESETS,
+  today: todayValue,
   minDate,
   maxDate,
   disabled,
   className,
 }: DateRangePickerProps) {
-  const today = useMemo(() => cloneDate(new Date()), []);
+  const today = useMemo(
+    () => parseLocalDate(todayValue ?? "") ?? cloneDate(new Date()),
+    [todayValue],
+  );
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange>(() => toPickerRange(value));
 

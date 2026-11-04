@@ -3,7 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate } from "@/lib/date-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +24,8 @@ type Props = { recentSales: any[]; isLoading: boolean; showProfit?: boolean };
 export function RecentSalesTable({ recentSales, isLoading, showProfit = true }: Props) {
   const { push } = useRouter();
   const { format: formatCurrency } = useCurrency();
-  const tz = useTimezone();
   const formatDateFull = (d: string) =>
-    formatInTZ(d, tz, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    formatCalendarDate(d, { month: "short", day: "numeric", year: "numeric" });
 
   return (
     <Card className="hidden lg:block">
@@ -74,7 +73,7 @@ export function RecentSalesTable({ recentSales, isLoading, showProfit = true }: 
                         <PayIcon className="size-3" />{pay.label}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{formatDateFull(sale.sold_at)}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{formatDateFull(sale.sale_date ?? sale.sold_at)}</TableCell>
                     <TableCell className="text-right font-medium">{formatCurrency(Number(sale.total))}</TableCell>
                     {showProfit && (
                       <TableCell className="text-right text-green-600 font-medium">{formatCurrency(Number(sale.profit))}</TableCell>

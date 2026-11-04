@@ -5,6 +5,7 @@ import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModul
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
+import { isCalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         CASE WHEN COUNT(DISTINCT pb.exchange_rate)       = 1 THEN MAX(pb.exchange_rate) ELSE NULL END AS exchange_rate,
         CASE WHEN COUNT(DISTINCT pb.is_paid)             = 1 THEN BOOL_AND(pb.is_paid) ELSE NULL END AS is_paid,
         CASE WHEN COUNT(DISTINCT pb.warehouse_id)        = 1 THEN MAX(pb.warehouse_id) ELSE NULL END AS warehouse_id,
+        MIN(pb.purchase_date)::text AS purchase_date,
         MIN(pb.purchased_at) AS purchased_at,
         MAX(pb.notes)        AS notes,
         MAX(pb.currency)     AS currency,
@@ -147,7 +149,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
         return createErrorResponse("El costo unitario no es válido", 400);
 
-      const purchasedAt = body.purchased_at
+      const requestedPurchaseDate = body.purchase_date
+        ?? (typeof body.purchased_at === "string" ? body.purchased_at.slice(0, 10) : null);
+      if (requestedPurchaseDate && !isCalendarDate(requestedPurchaseDate))
+        return createErrorResponse("La fecha de compra no es válida", 400);
+      const purchasedAt = typeof body.purchased_at === "string" && !isCalendarDate(body.purchased_at)
         ? new Date(body.purchased_at)
         : null;
       if (purchasedAt && Number.isNaN(purchasedAt.getTime()))
@@ -156,7 +162,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       try {
         return await withTransaction(async (tx) => {
           const [purchase] = await tx`
-            SELECT * FROM purchase_batches
+            SELECT *, purchase_date::text AS purchase_date FROM purchase_batches
             WHERE id = ${purchaseId} AND org_id = ${orgId}
             FOR UPDATE
           `;
@@ -222,6 +228,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             item.consumed = Number(item.qty_in) - Number(item.qty_available);
           }
           const nextPurchasedAt = purchasedAt?.toISOString() ?? purchase.purchased_at;
+          const nextPurchaseDate = requestedPurchaseDate ?? purchase.purchase_date;
           const nextNotes = body.notes !== undefined
             ? (typeof body.notes === "string" ? body.notes.trim() || null : null)
             : purchase.notes;
@@ -241,6 +248,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               SET qty_in = ${item.next_quantity},
                   qty_available = ${item.next_quantity - item.consumed},
                   unit_cost = ${item.next_unit_cost},
+                  received_date = ${nextPurchaseDate},
                   received_at = ${nextPurchasedAt},
                   updated_by = ${userId}
               WHERE id = ${item.inventory_batch_id} AND org_id = ${orgId}
@@ -265,7 +273,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await tx`
             UPDATE purchase_batches
             SET subtotal = ${totalLocal}, total = ${totalLocal},
-                purchased_at = ${nextPurchasedAt}, notes = ${nextNotes},
+                purchase_date = ${nextPurchaseDate}, purchased_at = ${nextPurchasedAt}, notes = ${nextNotes},
                 updated_by = ${userId}
             WHERE id = ${purchaseId} AND org_id = ${orgId}
           `;
@@ -291,14 +299,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             `;
             await tx`
               UPDATE transactions
-              SET amount = ${desiredAmount}, occurred_at = ${nextPurchasedAt},
+              SET amount = ${desiredAmount}, effective_date = ${nextPurchaseDate}, occurred_at = ${nextPurchasedAt},
                   updated_by = ${userId}
               WHERE id = ${purchaseTx.id} AND org_id = ${orgId}
             `;
           }
           await tx`
             UPDATE transactions
-            SET occurred_at = ${nextPurchasedAt}, updated_by = ${userId}
+            SET effective_date = ${nextPurchaseDate}, occurred_at = ${nextPurchasedAt}, updated_by = ${userId}
             WHERE org_id = ${orgId} AND reference_type = 'PURCHASE_SHIPPING'
               AND reference_id = ${purchaseId}
           `;
@@ -332,7 +340,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               UPDATE credit_card_transactions
               SET amount = ${totalInCurrency},
                   amount_local = ${purchase.shipping_account_id && shipping > 0 ? productsLocal : totalLocal},
-                  occurred_at = ${nextPurchasedAt}, updated_by = ${userId}
+                  effective_date = ${nextPurchaseDate}, occurred_at = ${nextPurchasedAt}, updated_by = ${userId}
               WHERE id = ${cardTx.id} AND org_id = ${orgId}
             `;
           }
@@ -406,7 +414,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     // ── Validar que la compra existe y está PENDING ─────────────────
     const [purchase] = await sql`
-      SELECT id, account_id, shipping_account_id, status, shipping, subtotal, total, purchased_at, notes, warehouse_id
+      SELECT id, account_id, shipping_account_id, status, shipping, subtotal, total,
+        purchase_date::text AS purchase_date, purchased_at, notes, warehouse_id
       FROM purchase_batches
       WHERE id = ${purchaseId} AND org_id = ${orgId}
     `;
@@ -515,10 +524,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             await tx`
               INSERT INTO transactions (
                 org_id, created_by, account_id, type, amount,
-                description, category, reference_type, reference_id, occurred_at
+                description, category, reference_type, reference_id, effective_date, occurred_at
               ) VALUES (
                 ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingFinal},
-                'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
+                'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${purchase.purchase_date}, ${occurredAt}
               )
             `;
             await tx`
@@ -555,10 +564,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await tx`
             INSERT INTO transactions (
               org_id, created_by, account_id, type, amount,
-              description, category, reference_type, reference_id, occurred_at
+              description, category, reference_type, reference_id, effective_date, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingFinal},
-              'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${occurredAt}
+              'Pago de envío', ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseId}, ${purchase.purchase_date}, ${occurredAt}
             )
           `;
           await tx`
@@ -574,10 +583,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         await tx`
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-            qty_in, qty_available, unit_cost, received_at, warehouse_id
+            qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${item.product_id}, ${item.variant_id}, ${item.id},
-            ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}, ${purchase.warehouse_id}
+            ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${purchase.purchase_date}, ${occurredAt}, ${purchase.warehouse_id}
           )
         `;
 

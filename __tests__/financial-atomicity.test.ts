@@ -40,6 +40,8 @@ function makeAuthUser(): AuthUser {
     firebaseUid: "financial-atomicity-test",
     email: "test@example.com",
     displayName: "Test",
+    timezone: "America/Tegucigalpa",
+    locale: "es-HN",
     emailVerified: true,
     isActive: true,
     subscription: { status: "ACTIVE", planSlug: "pro" },

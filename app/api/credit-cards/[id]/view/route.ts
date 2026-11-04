@@ -7,37 +7,10 @@ import {
   requireModule,
   verifyAuth,
 } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
+import { getCreditCardCycleStart } from "@/lib/credit-card-cycle";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-function getCycleStart(closingDay: number | null, timezoneOffset: number) {
-  const offsetMs = timezoneOffset * 60_000;
-  const localNow = new Date(Date.now() - offsetMs);
-  const year = localNow.getUTCFullYear();
-  const month = localNow.getUTCMonth();
-  const daysInMonth = (y: number, m: number) =>
-    new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-
-  if (!closingDay) {
-    return new Date(Date.UTC(year, month, 1) + offsetMs);
-  }
-
-  const cutThisMonth = Math.min(closingDay, daysInMonth(year, month));
-  if (localNow.getUTCDate() > cutThisMonth) {
-    return new Date(Date.UTC(year, month, cutThisMonth + 1) + offsetMs);
-  }
-
-  const previousYear = month === 0 ? year - 1 : year;
-  const previousMonth = month === 0 ? 11 : month - 1;
-  const cutPreviousMonth = Math.min(
-    closingDay,
-    daysInMonth(previousYear, previousMonth),
-  );
-  return new Date(
-    Date.UTC(previousYear, previousMonth, cutPreviousMonth + 1) + offsetMs,
-  );
-}
 
 export async function GET(
   request: NextRequest,
@@ -50,7 +23,7 @@ export async function GET(
   if (deny) return deny;
 
   try {
-    const { orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { id } = await params;
     const cardId = Number(id);
     if (!Number.isSafeInteger(cardId) || cardId <= 0) {
@@ -58,11 +31,7 @@ export async function GET(
     }
 
     const { searchParams } = new URL(request.url);
-    const timezoneOffset = Number(searchParams.get("tz_offset") ?? 0);
-    if (!Number.isFinite(timezoneOffset)) {
-      return createErrorResponse("Zona horaria inválida", 400);
-    }
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
 
     const [card] = await sql`
       SELECT
@@ -74,9 +43,9 @@ export async function GET(
     `;
     if (!card) return createErrorResponse("Tarjeta no encontrada", 404);
 
-    const cycleStart = getCycleStart(
+    const cycleStart = getCreditCardCycleStart(
       card.statement_closing_day as number | null,
-      timezoneOffset,
+      timezone,
     );
 
     const [
@@ -99,13 +68,14 @@ export async function GET(
         FROM credit_card_transactions
         WHERE credit_card_id = ${cardId}
           AND org_id = ${orgId}
-          AND occurred_at >= ${cycleStart.toISOString()}::timestamptz
+          AND effective_date >= ${cycleStart}::date
       `,
       sql`
         SELECT
           cct.id, cct.type, cct.description, cct.amount, cct.currency,
           cct.exchange_rate, cct.amount_local, cct.category,
           cct.sale_id, cct.purchase_batch_id, cct.account_transaction_id,
+          cct.effective_date::text AS effective_date,
           cct.occurred_at, cct.created_at, s.sale_number,
           a.name AS account_name
         FROM credit_card_transactions cct
@@ -114,9 +84,9 @@ export async function GET(
         LEFT JOIN accounts a ON a.id = t.account_id
         WHERE cct.credit_card_id = ${cardId}
           AND cct.org_id = ${orgId}
-          AND cct.occurred_at >= ${startISO}::timestamptz
-          AND cct.occurred_at < ${endISO}::timestamptz
-        ORDER BY cct.occurred_at DESC
+          AND cct.effective_date >= ${startDate}::date
+          AND cct.effective_date < ${endDate}::date
+        ORDER BY cct.effective_date DESC, cct.id DESC
         LIMIT 500
       `,
       sql`
@@ -129,13 +99,13 @@ export async function GET(
         FROM credit_card_transactions
         WHERE credit_card_id = ${cardId}
           AND org_id = ${orgId}
-          AND occurred_at >= ${startISO}::timestamptz
-          AND occurred_at < ${endISO}::timestamptz
+          AND effective_date >= ${startDate}::date
+          AND effective_date < ${endDate}::date
       `,
       sql`
         SELECT DISTINCT
-          EXTRACT(YEAR FROM occurred_at)::int AS year,
-          EXTRACT(MONTH FROM occurred_at)::int AS month
+          EXTRACT(YEAR FROM effective_date)::int AS year,
+          EXTRACT(MONTH FROM effective_date)::int AS month
         FROM credit_card_transactions
         WHERE credit_card_id = ${cardId} AND org_id = ${orgId}
         ORDER BY year DESC, month DESC
@@ -170,7 +140,7 @@ export async function GET(
           ...card,
           statement_balance_local: Number(statement.statement_balance_local ?? 0),
           statement_balance_usd: Number(statement.statement_balance_usd ?? 0),
-          cycle_start: cycleStart.toISOString(),
+          cycle_start: cycleStart,
         },
         transactions,
         periods,

@@ -15,7 +15,7 @@ import {
 import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { CreditCardTransaction, useUpdateCCTransaction } from "@/hooks/swr/use-credit-cards";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { toLocalDateInput } from "@/lib/date-utils";
 import { TransactionCategory } from "@/hooks/swr/use-transaction-categories";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
@@ -77,7 +77,7 @@ export function EditCCTransactionDialog({
       reset({
         description:   txn.description ?? "",
         category:      txn.category ?? "",
-        occurred_at:   toLocalDateInput(txn.occurred_at),
+        occurred_at:   toLocalDateInput(txn.effective_date ?? txn.occurred_at),
         amount:        Number(txn.amount),
         currency:      txn.currency,
         exchange_rate: txn.exchange_rate ? Number(txn.exchange_rate) : undefined,
@@ -93,7 +93,7 @@ export function EditCCTransactionDialog({
       await updateTransaction(txn.id, {
         description:   data.description?.trim() || null,
         category:      data.category || null,
-        occurred_at:   localDateToISO(data.occurred_at),
+        effective_date: data.occurred_at,
         amount:        data.amount,
         currency:      data.currency,
         exchange_rate: data.currency === "USD" ? data.exchange_rate : undefined,

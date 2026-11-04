@@ -7,7 +7,7 @@ import {
   requireModule,
   verifyAuth,
 } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
     const cardIdValue = searchParams.get("card_id");
     const cardId = cardIdValue === null ? null : Number(cardIdValue);
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return createErrorResponse("Identificador de tarjeta inválido", 400);
     }
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
     const [creditCards, accounts, periods, transactions, accountPermissions] =
       await Promise.all([
         sql`
@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
         `,
         sql`
           SELECT DISTINCT
-            EXTRACT(YEAR FROM occurred_at)::int AS year,
-            EXTRACT(MONTH FROM occurred_at)::int AS month
+            EXTRACT(YEAR FROM effective_date)::int AS year,
+            EXTRACT(MONTH FROM effective_date)::int AS month
           FROM credit_card_transactions
           WHERE org_id = ${orgId}
           ORDER BY year DESC, month DESC
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
             cct.type, cct.description, cct.amount, cct.currency,
             cct.exchange_rate, cct.amount_local, cct.category,
             cct.sale_id, cct.purchase_batch_id, cct.account_transaction_id,
+            cct.effective_date::text AS effective_date,
             cct.occurred_at, cct.created_at, s.sale_number,
             a.name AS account_name
           FROM credit_card_transactions cct
@@ -67,10 +68,10 @@ export async function GET(request: NextRequest) {
           LEFT JOIN transactions t ON t.id = cct.account_transaction_id
           LEFT JOIN accounts a ON a.id = t.account_id
           WHERE cct.org_id = ${orgId}
-            AND cct.occurred_at >= ${startISO}::timestamptz
-            AND cct.occurred_at < ${endISO}::timestamptz
+            AND cct.effective_date >= ${startDate}::date
+            AND cct.effective_date < ${endDate}::date
             AND (${cardId}::bigint IS NULL OR cct.credit_card_id = ${cardId})
-          ORDER BY cct.occurred_at DESC
+          ORDER BY cct.effective_date DESC, cct.id DESC
           LIMIT 500
         `,
         getModulePermissions(auth.data, "FINANCES", "ACCOUNTS"),

@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 export async function POST(
   request: NextRequest,
@@ -23,6 +24,7 @@ export async function POST(
       currency,
       exchange_rate,
       occurred_at,
+      effective_date,
       description,
       category,
     } = await request.json();
@@ -50,7 +52,15 @@ export async function POST(
     // Cálculo del amount_local (referencial en moneda nativa)
     const amountLocal = isUsd ? amountNum * rateNum : amountNum;
 
-    const occurredAtVal = occurred_at ?? new Date().toISOString();
+    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : null;
+    const effectiveDate = effective_date
+      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+      ?? todayInTimeZone(auth.data.timezone);
+    if (!isCalendarDate(effectiveDate))
+      return createErrorResponse("Fecha inválida", 400);
+    const occurredAtVal = typeof occurred_at === "string" && !isCalendarDate(occurred_at)
+      ? occurred_at
+      : new Date().toISOString();
     const desc = description?.trim() || "Pago de tarjeta de crédito";
 
     const result = await withTransaction(async (tx) => {
@@ -81,10 +91,10 @@ export async function POST(
       const [txn] = await tx`
         INSERT INTO transactions (
           org_id, created_by, type, account_id, amount,
-          category, description, reference_type, credit_card_id, occurred_at
+          category, description, reference_type, credit_card_id, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, 'EXPENSE', ${accountId}, ${localDeduction},
-          ${category?.trim() || null}, ${desc}, 'CREDIT_CARD_PAYMENT', ${cardId}, ${occurredAtVal}
+          ${category?.trim() || null}, ${desc}, 'CREDIT_CARD_PAYMENT', ${cardId}, ${effectiveDate}, ${occurredAtVal}
         )
         RETURNING id
       `;
@@ -99,11 +109,11 @@ export async function POST(
         INSERT INTO credit_card_transactions (
           org_id, created_by, credit_card_id, type, description,
           amount, currency, exchange_rate, amount_local,
-          account_transaction_id, category, occurred_at
+          account_transaction_id, category, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${cardId}, 'PAYMENT', ${desc},
           ${amountNum}, ${currency}, ${isUsd ? rateNum : null},
-          ${amountLocal}, ${txn.id}, ${category?.trim() || null}, ${occurredAtVal}
+          ${amountLocal}, ${txn.id}, ${category?.trim() || null}, ${effectiveDate}, ${occurredAtVal}
         )
         RETURNING id
       `;

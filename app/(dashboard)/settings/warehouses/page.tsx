@@ -4,10 +4,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-
 import { useMe } from "@/hooks/swr/use-me";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import {
   useWarehouses,
@@ -300,6 +298,7 @@ export default function WarehousesPage() {
   const { warehouses, isLoading: whLoading, mutate } = useWarehouses();
   const { updateWarehouse } = useUpdateWarehouse();
   const { transfers, isLoading: transfersLoading } = useWarehouseTransfers();
+  const timezone = useTimezone();
 
   const [showCreate, setShowCreate] = useState(false);
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
@@ -404,7 +403,7 @@ export default function WarehousesPage() {
             <CardContent className="divide-y divide-border p-0">
               {transfersLoading ? <div className="p-6"><Skeleton className="h-16 rounded-lg" /></div> : transfers.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin transferencias todavía.</div> : transfers.map((t) => (
                 <div key={t.id} className="space-y-1 px-6 py-3">
-                  <div className="flex items-center justify-between gap-2 text-sm"><span className="font-medium">{t.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {t.to_warehouse_name}</span><span className="shrink-0 text-xs text-muted-foreground">{format(new Date(t.created_at), "d MMM yyyy, HH:mm", { locale: es })}</span></div>
+                  <div className="flex items-center justify-between gap-2 text-sm"><span className="font-medium">{t.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {t.to_warehouse_name}</span><span className="shrink-0 text-xs text-muted-foreground">{formatInTZ(t.created_at, timezone, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
                   {t.items.map((item, i) => <p key={i} className="text-xs text-muted-foreground">{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}
                   {t.notes && <p className="text-xs italic text-muted-foreground">"{t.notes}"</p>}
                 </div>

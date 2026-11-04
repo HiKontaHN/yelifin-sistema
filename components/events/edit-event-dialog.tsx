@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { toLocalDateInput } from "@/lib/date-utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -53,8 +53,8 @@ export function EditEventDialog({ event, open, onOpenChange, onSuccess }: Props)
       reset({
         name:       event.name,
         location:   event.location ?? "",
-        starts_at:  toLocalDateInput(event.starts_at),
-        ends_at:    toLocalDateInput(event.ends_at),
+        starts_at:  toLocalDateInput(event.start_date ?? event.starts_at),
+        ends_at:    toLocalDateInput(event.end_date ?? event.ends_at),
         fixed_cost: event.fixed_cost,
         notes:      event.notes ?? "",
       });
@@ -69,8 +69,10 @@ export function EditEventDialog({ event, open, onOpenChange, onSuccess }: Props)
       await updateEvent(event.id, {
         name:       data.name,
         location:   data.location   || undefined,
-        starts_at:  localDateToISO(data.starts_at),
-        ends_at:    localDateToISO(data.ends_at),
+        start_date: data.starts_at,
+        end_date:   data.ends_at,
+        starts_at:  data.starts_at,
+        ends_at:    data.ends_at,
         fixed_cost: data.fixed_cost || 0,
         notes:      data.notes      || undefined,
       });

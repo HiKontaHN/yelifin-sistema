@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useConfirmPurchaseArrival, Purchase } from "@/hooks/swr/use-purchases";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Account = { id: number; name: string; balance: number | null };
 
@@ -78,7 +79,7 @@ export function ConfirmPurchaseArrivalDialog({
     }
   };
 
-  const purchasedDate = new Date(purchase.purchased_at).toLocaleDateString("es-HN", {
+  const purchasedDate = formatCalendarDate(purchase.purchase_date ?? purchase.purchased_at, {
     day: "numeric", month: "short", year: "numeric",
   });
 

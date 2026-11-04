@@ -4,6 +4,7 @@
 "use client";
 
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 export function SuggestedRateHint({
   value,
@@ -19,7 +20,7 @@ export function SuggestedRateHint({
 
   return (
     <p className="text-xs text-muted-foreground">
-      Sugerido (BCH{rateDate ? `, ${new Date(rateDate).toLocaleDateString("es-HN", { day: "numeric", month: "short" })}` : ""}): {rate}
+      Sugerido (BCH{rateDate ? `, ${formatCalendarDate(rateDate, { day: "numeric", month: "short" })}` : ""}): {rate}
       {value !== rate && (
         <button
           type="button"

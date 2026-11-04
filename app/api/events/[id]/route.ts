@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
-import { computeEventStatus } from "@/lib/date-utils";
+import { computeEventStatus, isCalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -22,7 +22,10 @@ export async function GET(
 
     // ── Evento base ────────────────────────────────────────────────────
     const [event] = await sql`
-      SELECT id, public_id, name, location, starts_at, ends_at, fixed_cost, notes, created_at
+      SELECT id, public_id, name, location,
+        start_date::text AS start_date, end_date::text AS end_date,
+        start_date::text AS starts_at, end_date::text AS ends_at,
+        fixed_cost, notes, created_at
       FROM events
       WHERE id = ${eventId} AND org_id = ${orgId}
     `;
@@ -41,6 +44,7 @@ export async function GET(
         s.shipping_cost,
         s.total,
         s.payment_method,
+        s.sale_date::text AS sale_date,
         s.sold_at,
         c.name AS customer_name,
         a.name AS account_name,
@@ -53,18 +57,18 @@ export async function GET(
       LEFT JOIN sale_items si ON si.sale_id = s.id AND si.org_id = s.org_id
       WHERE s.event_id = ${eventId} AND s.org_id = ${orgId} AND s.status != 'CANCELLED'
       GROUP BY s.id, c.name, a.name
-      ORDER BY s.sold_at ASC
+      ORDER BY s.sale_date ASC, s.id ASC
     `;
 
     // ── Gastos del evento (transacciones EXPENSE) ──────────────────────
     const expenses = await sql`
-      SELECT id, description, amount, occurred_at
+      SELECT id, description, amount, effective_date::text AS effective_date, occurred_at
       FROM transactions
       WHERE reference_type = 'EVENT'
         AND reference_id   = ${eventId}
         AND type           = 'EXPENSE'
         AND org_id         = ${orgId}
-      ORDER BY occurred_at ASC
+      ORDER BY effective_date ASC, id ASC
     `;
 
     // ── Totales ────────────────────────────────────────────────────────
@@ -85,9 +89,7 @@ export async function GET(
     }
 
     const now    = new Date();
-    const start  = new Date(event.starts_at);
-    const end    = new Date(event.ends_at);
-    const status = computeEventStatus(start, end, now);
+    const status = computeEventStatus(event.start_date, event.end_date, now, auth.data.timezone);
 
     const payload = {
       data: {
@@ -97,6 +99,8 @@ export async function GET(
         location:    event.location,
         starts_at:   event.starts_at,
         ends_at:     event.ends_at,
+        start_date:  event.start_date,
+        end_date:    event.end_date,
         fixed_cost:  fixedCost,
         notes:       event.notes,
         created_at:  event.created_at,
@@ -122,6 +126,7 @@ export async function GET(
           total:          Number(s.total),
           payment_method: s.payment_method ?? "OTHER",
           sold_at:        String(s.sold_at),
+          sale_date:      String(s.sale_date),
           customer_name:  s.customer_name ?? null,
           account_name:   s.account_name ?? null,
           items_count:    Number(s.items_count),
@@ -132,6 +137,7 @@ export async function GET(
           description: String(e.description),
           amount:      Number(e.amount),
           occurred_at: String(e.occurred_at),
+          effective_date: String(e.effective_date),
         })),
       },
     };
@@ -165,12 +171,16 @@ export async function PUT(
     const eventId    = Number(id);
 
     const body = await request.json();
-    const { name, location, starts_at, ends_at, fixed_cost, notes } = body;
+    const { name, location, starts_at, ends_at, start_date, end_date, fixed_cost, notes } = body;
+    const startDate = start_date ?? (typeof starts_at === "string" ? starts_at.slice(0, 10) : undefined);
+    const endDate = end_date ?? (typeof ends_at === "string" ? ends_at.slice(0, 10) : undefined);
 
     // Validaciones
     if (name !== undefined && !String(name).trim())
       return createErrorResponse("El nombre no puede estar vacío", 400);
-    if (starts_at && ends_at && new Date(starts_at) > new Date(ends_at))
+    if ((startDate !== undefined && !isCalendarDate(startDate)) || (endDate !== undefined && !isCalendarDate(endDate)))
+      return createErrorResponse("Fecha inválida", 400);
+    if (startDate && endDate && startDate > endDate)
       return createErrorResponse("La fecha inicio debe ser antes o igual que la fecha fin", 400);
 
     // Verificar que el evento pertenece a la organización
@@ -187,13 +197,16 @@ export async function PUT(
       UPDATE events SET
         name       = COALESCE(${name?.trim() ?? null},  name),
         location   = COALESCE(${locationVal  ?? null},  location),
-        starts_at  = COALESCE(${starts_at    ?? null},  starts_at),
-        ends_at    = COALESCE(${ends_at      ?? null},  ends_at),
+        start_date = COALESCE(${startDate ?? null}, start_date),
+        end_date   = COALESCE(${endDate ?? null}, end_date),
+        starts_at  = COALESCE(${startDate ?? null}::date, starts_at),
+        ends_at    = COALESCE(${endDate ?? null}::date, ends_at),
         fixed_cost = COALESCE(${fixed_cost   ?? null},  fixed_cost),
         notes      = COALESCE(${notesVal     ?? null},  notes),
         updated_by = ${userId}
       WHERE id = ${eventId} AND org_id = ${orgId}
-      RETURNING *
+      RETURNING *, start_date::text AS start_date, end_date::text AS end_date,
+        start_date::text AS starts_at, end_date::text AS ends_at
     `;
 
     return Response.json({ data: updated });

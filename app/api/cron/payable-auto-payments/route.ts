@@ -1,21 +1,21 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { withTransaction } from "@/lib/db-transaction";
+import { addCalendarDays, type CalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 export const maxDuration = 60;
 
 function nextDate(value: string, frequency: string, day?: number | null) {
   if (frequency === "ONCE") return null;
-  const date = new Date(`${value}T12:00:00Z`);
   if (frequency === "MONTHLY" && day) {
-    date.setUTCMonth(date.getUTCMonth() + 1, 1);
-    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-    date.setUTCDate(Math.min(day, lastDay));
-    return date.toISOString().slice(0, 10);
+    const [year, month] = value.split("-").map(Number);
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const lastDay = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+    return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}` as CalendarDate;
   }
-  date.setUTCDate(date.getUTCDate() + (frequency === "WEEKLY" ? 7 : frequency === "BIWEEKLY" ? 14 : 30));
-  return date.toISOString().slice(0, 10);
+  return addCalendarDays(value, frequency === "WEEKLY" ? 7 : frequency === "BIWEEKLY" ? 14 : 30);
 }
 
 export async function GET(request: NextRequest) {
@@ -25,13 +25,14 @@ export async function GET(request: NextRequest) {
   }
   try {
     const due = await sql`
-      SELECT id
-      FROM accounts_payable
-      WHERE auto_payment_enabled = TRUE
-        AND auto_payment_next_date IS NOT NULL
-        AND auto_payment_next_date <= CURRENT_DATE
-        AND status NOT IN ('PAID', 'CANCELLED')
-      ORDER BY auto_payment_next_date, id
+      SELECT ap.id
+      FROM accounts_payable ap
+      JOIN organizations o ON o.id = ap.org_id
+      WHERE ap.auto_payment_enabled = TRUE
+        AND ap.auto_payment_next_date IS NOT NULL
+        AND ap.auto_payment_next_date <= (NOW() AT TIME ZONE o.timezone)::date
+        AND ap.status NOT IN ('PAID', 'CANCELLED')
+      ORDER BY ap.auto_payment_next_date, ap.id
       LIMIT 100
     `;
     let processed = 0;
@@ -39,10 +40,13 @@ export async function GET(request: NextRequest) {
     for (const item of due) {
       const result = await withTransaction(async (tx) => {
         const [payable] = await tx`
-          SELECT id, outstanding_amount, installment_amount, payment_frequency, auto_payment_day,
-            auto_payment_account_id, auto_payment_next_date
-          FROM accounts_payable
-          WHERE id = ${item.id} AND auto_payment_enabled = TRUE
+          SELECT ap.id, ap.outstanding_amount, ap.installment_amount, ap.payment_frequency, ap.auto_payment_day,
+            ap.auto_payment_account_id, ap.auto_payment_next_date::text AS auto_payment_next_date,
+            (NOW() AT TIME ZONE o.timezone)::date::text AS local_today
+          FROM accounts_payable ap
+          JOIN organizations o ON o.id = ap.org_id
+          WHERE ap.id = ${item.id} AND ap.auto_payment_enabled = TRUE
+            AND ap.auto_payment_next_date <= (NOW() AT TIME ZONE o.timezone)::date
           FOR UPDATE
         `;
         if (!payable) return "skipped" as const;
@@ -58,9 +62,9 @@ export async function GET(request: NextRequest) {
         }
         const now = new Date().toISOString();
         const [transaction] = await tx`
-          INSERT INTO transactions (org_id, created_by, type, account_id, amount, category, description, reference_type, reference_id, occurred_at)
+          INSERT INTO transactions (org_id, created_by, type, account_id, amount, category, description, reference_type, reference_id, effective_date, occurred_at)
           SELECT ap.org_id, ap.created_by, 'EXPENSE', ${account.id}, ${amount}, 'Pagos de deudas',
-            'Abono automático de cuenta por pagar', 'PAYABLE_PAYMENT', ap.id, ${now}
+            'Abono automático de cuenta por pagar', 'PAYABLE_PAYMENT', ap.id, ${payable.local_today}, ${now}
           FROM accounts_payable ap
           WHERE ap.id = ${payable.id}
           RETURNING id

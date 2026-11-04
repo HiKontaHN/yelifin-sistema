@@ -1,7 +1,7 @@
 ﻿// components/events/add-expense-dialog.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +11,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Receipt } from "lucide-react";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { todayInTimeZone } from "@/lib/date-utils";
 import { toast } from "sonner";
 import { Event } from "@/hooks/swr/use-events";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useAuth } from "@/hooks/use-auth";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 const EXPENSE_CATEGORIES = [
   "Stand / Espacio",
@@ -40,18 +41,24 @@ export function AddExpenseDialog({ event, open, onOpenChange, onSuccess }: Props
   const { firebaseUser } = useAuth();
   const { accounts }     = useAccounts();
   const { symbol }       = useCurrency();
+  const timezone         = useTimezone();
+  const today            = todayInTimeZone(timezone);
 
   const [accountId,   setAccountId]   = useState("");
   const [amount,      setAmount]      = useState("");
   const [category,    setCategory]    = useState("");
   const [description, setDescription] = useState("");
-  const [occurredAt,  setOccurredAt]  = useState(toLocalDateInput(new Date()));
+  const [occurredAt,  setOccurredAt]  = useState<string>(today);
   const [isLoading,   setIsLoading]   = useState(false);
 
   const resetForm = () => {
     setAccountId(""); setAmount(""); setCategory("");
-    setDescription(""); setOccurredAt(toLocalDateInput(new Date()));
+    setDescription(""); setOccurredAt(today);
   };
+
+  useEffect(() => {
+    if (open) setOccurredAt(today);
+  }, [open, today]);
 
   const handleClose = () => { resetForm(); onOpenChange(false); };
 
@@ -73,7 +80,7 @@ export function AddExpenseDialog({ event, open, onOpenChange, onSuccess }: Props
           description:    description || undefined,
           reference_type: "EVENT",
           reference_id:   event.id,
-          occurred_at:    localDateToISO(occurredAt),
+          effective_date: occurredAt,
         }),
       });
       if (!res.ok) {

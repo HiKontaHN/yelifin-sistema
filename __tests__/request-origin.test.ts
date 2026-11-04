@@ -8,6 +8,8 @@ jest.mock("@/lib/firebase-admin", () => ({
 const mockSql = jest.fn();
 jest.mock("@neondatabase/serverless", () => ({
   neon: jest.fn(() => mockSql),
+  neonConfig: {},
+  Pool: jest.fn(),
 }));
 
 jest.mock("@/lib/rate-limit", () => ({

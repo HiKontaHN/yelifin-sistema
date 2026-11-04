@@ -19,6 +19,8 @@ import { SummaryStats } from "@/components/shared/summary-stats";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -37,6 +39,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const timezone = useTimezone();
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const [viewMode, setViewMode] = useState<ViewMode>("accounts");
   const [message, setMessage] = useState("");
@@ -62,7 +65,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const [autoPaymentEnabled, setAutoPaymentEnabled] = useState(false);
   const [autoPaymentAccount, setAutoPaymentAccount] = useState("");
   const [autoPaymentDay, setAutoPaymentDay] = useState("");
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState<string>(() => todayInTimeZone(timezone));
 
   const receivables = useSWR<{ data: any[] }>("/api/accounts-receivable", fetcher);
   const payables = useSWR<{ data: any[] }>("/api/accounts-payable", fetcher);
@@ -114,7 +117,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     setAutoPaymentEnabled(false);
     setAutoPaymentAccount("");
     setAutoPaymentDay("");
-    setStartDate(new Date().toISOString().slice(0, 10));
+    setStartDate(todayInTimeZone(timezone));
   };
 
   const newAccountType = searchParams.get("new");

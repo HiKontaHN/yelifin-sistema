@@ -40,6 +40,7 @@ import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 import { SummaryStats } from "@/components/shared/summary-stats";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -160,7 +161,7 @@ export default function SaleDetailPage({ params }: Props) {
               )}
             </div>
             <p className="text-muted-foreground text-sm">
-              {formatInTZ(sale.sold_at, tz, {
+              {formatCalendarDate(sale.sale_date ?? sale.sold_at, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",

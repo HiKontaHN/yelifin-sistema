@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
-import { getUtcBounds } from "@/lib/date-bounds";
+import { getCalendarBounds } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -16,11 +16,11 @@ export async function GET(
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { id } = await params;
     const { searchParams } = new URL(request.url);
 
-    const { startISO, endISO } = getUtcBounds(searchParams);
+    const { startDate, endDate } = getCalendarBounds(searchParams, timezone);
 
     const [card] = await sql`
       SELECT id FROM credit_cards WHERE id = ${Number(id)} AND org_id = ${orgId}
@@ -40,6 +40,7 @@ export async function GET(
         cct.sale_id,
         cct.purchase_batch_id,
         cct.account_transaction_id,
+        cct.effective_date::text AS effective_date,
         cct.occurred_at,
         cct.created_at,
         s.sale_number,
@@ -50,9 +51,9 @@ export async function GET(
       LEFT JOIN accounts a ON a.id = t.account_id
       WHERE cct.credit_card_id = ${Number(id)}
         AND cct.org_id = ${orgId}
-        AND cct.occurred_at >= ${startISO}::timestamptz
-        AND cct.occurred_at <  ${endISO}::timestamptz
-      ORDER BY cct.occurred_at DESC
+        AND cct.effective_date >= ${startDate}::date
+        AND cct.effective_date <  ${endDate}::date
+      ORDER BY cct.effective_date DESC, cct.id DESC
       LIMIT 500
     `;
 
@@ -66,8 +67,8 @@ export async function GET(
       FROM credit_card_transactions
       WHERE credit_card_id = ${Number(id)}
         AND org_id = ${orgId}
-        AND occurred_at >= ${startISO}::timestamptz
-        AND occurred_at <  ${endISO}::timestamptz
+        AND effective_date >= ${startDate}::date
+        AND effective_date <  ${endDate}::date
     `;
 
     return Response.json({

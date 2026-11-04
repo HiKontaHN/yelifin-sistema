@@ -42,8 +42,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const orgs = await sql`
-      SELECT os.org_id
+      SELECT os.org_id, (NOW() AT TIME ZONE o.timezone)::date::text AS local_today
       FROM org_subscriptions os
+      JOIN organizations o ON o.id = os.org_id
       JOIN subscription_plans sp ON sp.id = os.plan_id
       WHERE sp.slug = ANY(${SNAPSHOT_ELIGIBLE_PLAN_SLUGS})
     `;
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Secuencial a propósito: mantiene la carga sobre Neon acotada y
     // predecible en vez de disparar hasta 100 queries concurrentes.
     let processed = 0;
-    for (const { org_id } of orgs) {
+    for (const { org_id, local_today } of orgs) {
       const [agg] = await sql`
         SELECT
           COALESCE(SUM(ib.qty_available), 0)::int                 AS total_stock,
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
 
       await sql`
         INSERT INTO inventory_snapshots (org_id, snapshot_date, total_stock, total_stock_value)
-        VALUES (${org_id}, CURRENT_DATE, ${agg.total_stock}, ${agg.total_stock_value})
+        VALUES (${org_id}, ${local_today}, ${agg.total_stock}, ${agg.total_stock_value})
         ON CONFLICT (org_id, snapshot_date)
         DO UPDATE SET total_stock = EXCLUDED.total_stock, total_stock_value = EXCLUDED.total_stock_value
       `;

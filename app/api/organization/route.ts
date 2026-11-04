@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import { isValidTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -48,6 +49,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     const industryId = "industry_id" in body ? body.industry_id : undefined;
+    if (updates.timezone !== undefined && !isValidTimeZone(updates.timezone)) {
+      return createErrorResponse("Zona horaria inválida", 400);
+    }
     if (industryId !== undefined && industryId !== null) {
       const [industry] = await sql`SELECT id FROM industries WHERE id = ${industryId} AND is_active = TRUE`;
       if (!industry) return createErrorResponse("Industria inválida", 400);

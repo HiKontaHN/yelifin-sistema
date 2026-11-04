@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SummaryStats } from "@/components/shared/summary-stats";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { type: "receivable" | "payable"; ownerId: string };
 
@@ -19,7 +20,7 @@ const fetcher = async (url: string) => {
 };
 
 const date = (value: string | null | undefined) => value
-  ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("es-HN")
+  ? formatCalendarDate(value)
   : "Sin vencimiento";
 
 function StatusBadge({ status }: { status: string }) {

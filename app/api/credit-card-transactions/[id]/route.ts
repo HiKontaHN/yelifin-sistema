@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate } from "@/lib/date-utils";
 
 export async function PATCH(
   request: NextRequest,
@@ -16,7 +17,9 @@ export async function PATCH(
     const { id } = await params;
     const txId = Number(id);
     const body = await request.json();
-    const { description, category, occurred_at, amount, currency, exchange_rate } = body;
+    const { description, category, occurred_at, effective_date, amount, currency, exchange_rate } = body;
+    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : undefined;
+    const requestedDate = effective_date ?? legacyDatePrefix;
 
     if (!Number.isSafeInteger(txId) || txId <= 0)
       return createErrorResponse("Transacción no encontrada", 404);
@@ -24,13 +27,15 @@ export async function PATCH(
       return createErrorResponse("El monto debe ser mayor a 0", 400);
     if (exchange_rate !== undefined && (!Number.isFinite(Number(exchange_rate)) || Number(exchange_rate) <= 0))
       return createErrorResponse("La tasa de cambio debe ser mayor a 0", 400);
+    if (requestedDate !== undefined && !isCalendarDate(requestedDate))
+      return createErrorResponse("Fecha inválida", 400);
 
     const result = await withTransaction(async (tx) => {
       const [existing] = await tx`
         SELECT
           id, type, amount, currency, exchange_rate, amount_local,
           sale_id, purchase_batch_id, credit_card_id,
-          description, category, occurred_at
+          description, category, effective_date::text AS effective_date, occurred_at
         FROM credit_card_transactions
         WHERE id = ${txId} AND org_id = ${orgId}
         FOR UPDATE
@@ -97,6 +102,7 @@ export async function PATCH(
         UPDATE credit_card_transactions SET
           description   = ${descriptionValue},
           category      = ${categoryValue},
+          effective_date = ${requestedDate ?? existing.effective_date},
           occurred_at   = ${occurred_at ?? existing.occurred_at},
           amount        = ${newAmount},
           currency      = ${newCurrency},
@@ -104,7 +110,7 @@ export async function PATCH(
           amount_local  = ${newAmountLocal},
           updated_by    = ${userId}
         WHERE id = ${txId} AND org_id = ${orgId}
-        RETURNING *
+        RETURNING *, effective_date::text AS effective_date
       `;
 
       return { ok: true as const, data: updated };

@@ -4,10 +4,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-
 import { useMe } from "@/hooks/swr/use-me";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import {
   useOrgMembers,
@@ -319,6 +317,7 @@ export default function MembersPage() {
   const { can_edit: canEditTeam, can_delete: canDeleteTeam, isLoading: permLoading } = useModulePermissions("ADMIN", "TEAM");
   const { members, isLoading: membersLoading, mutate } = useOrgMembers();
   const { removeMember, isRemoving } = useRemoveOrgMember();
+  const timezone = useTimezone();
 
   const [showAdd,    setShowAdd]    = useState(false);
   const [editMember, setEditMember] = useState<OrgMember | null>(null);
@@ -408,7 +407,7 @@ export default function MembersPage() {
                 </Badge>
                 {m.joined_at && (
                   <span className="text-xs text-muted-foreground hidden md:inline">
-                    {format(new Date(m.joined_at), "d MMM yyyy", { locale: es })}
+                    {formatInTZ(m.joined_at, timezone, { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 )}
 

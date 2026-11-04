@@ -21,18 +21,14 @@ import { EditEventDialog }   from "@/components/events/edit-event-dialog";
 import { AddExpenseDialog }  from "@/components/events/add-expense-dialog";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { PaginationControls } from "@/components/shared/pagination-controls";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 const SALES_PAGE_SIZE = 8;
 
 // ── Utils ──────────────────────────────────────────────────────────────
 const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("es-HN", {
+  formatCalendarDate(d, {
     day: "numeric", month: "short", year: "numeric",
-  });
-
-const formatDateTime = (d: string) =>
-  new Date(d).toLocaleString("es-HN", {
-    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   });
 
 const STATUS_CONFIG = {
@@ -108,7 +104,7 @@ export default function EventDetailPage({ params }: Props) {
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Calendar className="size-3.5" />
-              {formatDate(event.starts_at)} – {formatDate(event.ends_at)}
+              {formatDate(event.start_date)} – {formatDate(event.end_date)}
             </span>
             {event.location && (
               <span className="flex items-center gap-1.5">
@@ -244,7 +240,7 @@ export default function EventDetailPage({ params }: Props) {
               <div key={expense.id} className="flex items-center gap-3 p-2.5 rounded-lg border bg-red-50/50 dark:bg-red-950/20">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{expense.description}</p>
-                  <p className="text-xs text-muted-foreground">{formatDateTime(expense.occurred_at)}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(expense.effective_date ?? expense.occurred_at)}</p>
                 </div>
                 <p className="text-sm font-semibold text-red-600 shrink-0">
                   -{format(expense.amount ?? 0)}
@@ -295,7 +291,7 @@ export default function EventDetailPage({ params }: Props) {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {sale.customer_name ?? "Consumidor Final"} · {formatDate(sale.sold_at)}
+                        {sale.customer_name ?? "Consumidor Final"} · {formatDate(sale.sale_date ?? sale.sold_at)}
                       </p>
                     </div>
                     <div className="text-right shrink-0">

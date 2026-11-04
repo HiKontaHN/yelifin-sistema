@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -58,9 +59,17 @@ export async function POST(request: NextRequest) {
     }
 
     const unitCost   = Number(unit_cost) || 0;
-    const receivedAt = purchased_at
-      ? new Date(purchased_at).toISOString()
-      : new Date().toISOString();
+    const legacyDatePrefix = typeof purchased_at === "string" ? purchased_at.slice(0, 10) : null;
+    const receivedDate = legacyDatePrefix && isCalendarDate(legacyDatePrefix)
+      ? legacyDatePrefix
+      : todayInTimeZone(auth.data.timezone);
+    let receivedAt = new Date().toISOString();
+    if (typeof purchased_at === "string" && !isCalendarDate(purchased_at)) {
+      const parsedPurchasedAt = new Date(purchased_at);
+      if (Number.isNaN(parsedPurchasedAt.getTime()))
+        return createErrorResponse("La fecha de compra no es válida", 400);
+      receivedAt = parsedPurchasedAt.toISOString();
+    }
     const finalNotes = notes?.trim() || "Inventario inicial";
 
     // ── Transacción atómica ────────────────────────────────────────
@@ -69,11 +78,11 @@ export async function POST(request: NextRequest) {
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id,
           purchase_batch_item_id,
-          qty_in, qty_available, unit_cost, received_at, warehouse_id
+          qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${product_id}, ${variantId},
           ${null},
-          ${quantity}, ${quantity}, ${unitCost}, ${receivedAt}, ${warehouseId}
+          ${quantity}, ${quantity}, ${unitCost}, ${receivedDate}, ${receivedAt}, ${warehouseId}
         )
         RETURNING id
       `;

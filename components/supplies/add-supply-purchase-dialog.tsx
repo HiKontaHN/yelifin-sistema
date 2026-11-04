@@ -17,8 +17,9 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, ShoppingBag, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateSupplyPurchase, Supply } from "@/hooks/swr/use-supplies";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { todayInTimeZone } from "@/lib/date-utils";
 import { useAccounts } from "@/hooks/swr/use-accounts";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("es-HN", {
@@ -42,13 +43,12 @@ export function AddSupplyPurchaseDialog({
 }: Props) {
   const { createSupplyPurchase, isCreating } = useCreateSupplyPurchase();
   const { accounts } = useAccounts();
+  const timezone = useTimezone();
 
   const [accountId, setAccountId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
-  const [purchasedAt, setPurchasedAt] = useState(
-    toLocalDateInput(new Date())
-  );
+  const [purchasedAt, setPurchasedAt] = useState<string>(() => todayInTimeZone(timezone));
 
   const qty = Number(quantity) || 0;
   const cost = Number(unitCost) || 0;
@@ -59,9 +59,9 @@ export function AddSupplyPurchaseDialog({
       setAccountId("");
       setQuantity("1");
       setUnitCost(supply.unit_cost > 0 ? String(supply.unit_cost) : "");
-      setPurchasedAt(toLocalDateInput(new Date()));
+      setPurchasedAt(todayInTimeZone(timezone));
     }
-  }, [open, supply]);
+  }, [open, supply, timezone]);
 
   const handleClose = () => {
     onOpenChange(false);
@@ -76,7 +76,7 @@ export function AddSupplyPurchaseDialog({
     try {
       await createSupplyPurchase({
         account_id: Number(accountId),
-        purchased_at: localDateToISO(purchasedAt),
+        purchase_date: purchasedAt,
         items: [{ supply_id: supply.id, quantity: qty, unit_cost: cost }],
       });
 

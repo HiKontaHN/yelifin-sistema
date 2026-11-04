@@ -42,6 +42,7 @@ import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 import { SummaryStats } from "@/components/shared/summary-stats";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ type BatchRow = {
   qty_in: number;
   qty_available: number;
   unit_cost: number | null; // null sin show_costs
+  received_date: string;
   received_at: string;
   variant_id: number | null;
   variant_name: string | null;
@@ -82,6 +84,7 @@ type MovementRow = {
 };
 
 type PurchaseHistoryRow = {
+  purchase_date: string;
   purchased_at: string;
   supplier_name: string | null;
   unit_cost: number | null;     // null sin show_costs
@@ -95,6 +98,7 @@ type CostHistoryRow = {
   id: number;
   qty_in: number;
   unit_cost: number;
+  received_date: string | null;
   received_at: string;
   variant_id: number | null;
   variant_name: string | null;
@@ -244,13 +248,12 @@ function PurchasePriceChart({
   format: (n: number) => string;
   tz: string;
 }) {
-  const shortDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("es-HN", {
-      day: "numeric", month: "short", timeZone: tz,
-    });
+  const shortDate = (row: CostHistoryRow) => row.received_date
+    ? formatCalendarDate(row.received_date, { day: "numeric", month: "short" })
+    : formatInTZ(row.received_at, tz, { day: "numeric", month: "short" });
 
   const chartData = data.map((b) => ({
-    label:   shortDate(b.received_at),
+    label:   shortDate(b),
     costo:   b.unit_cost,
     qty:     b.qty_in,
     variant: b.variant_name ?? null,
@@ -565,7 +568,7 @@ export default function ProductDetailPage({ params }: Props) {
                   value: product.sales_stats.sales_count,
                   inlineNote: `${product.sales_stats.total_units_sold} uds.`,
                   detail: product.sales_stats.last_sold_at
-                    ? `Última: ${formatInTZ(product.sales_stats.last_sold_at, tz, dateOpts)}`
+                    ? `Última: ${formatCalendarDate(product.sales_stats.last_sold_at, dateOpts)}`
                     : undefined,
                 },
                 {
@@ -646,7 +649,7 @@ export default function ProductDetailPage({ params }: Props) {
                     {product.batches.map((b) => (
                       <TableRow key={b.id}>
                         <TableCell className="text-sm">
-                          {formatInTZ(b.received_at, tz, dateOpts)}
+                          {formatCalendarDate(b.received_date ?? b.received_at, dateOpts)}
                         </TableCell>
                         {hasVariants && (
                           <TableCell className="text-sm text-muted-foreground">
@@ -737,7 +740,7 @@ export default function ProductDetailPage({ params }: Props) {
                 {product.purchase_history.map((ph, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-sm">
-                      {formatInTZ(ph.purchased_at, tz, dateOpts)}
+                      {formatCalendarDate(ph.purchase_date ?? ph.purchased_at, dateOpts)}
                     </TableCell>
                     <TableCell className="text-sm">
                       {ph.supplier_name ?? <span className="text-muted-foreground">—</span>}

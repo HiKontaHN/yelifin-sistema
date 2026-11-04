@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions } from "@/lib/auth";
 import { defaultYearRange, getEventRows } from "@/lib/reports/queries";
+import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -12,7 +13,7 @@ function fmtHNL(v: number, symbol = "L") {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso + "T12:00:00").toLocaleDateString("es-HN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatCalendarDate(iso, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -29,6 +30,7 @@ async function generatePDF(
   to: string,
   showCosts: boolean,
   showProfit: boolean,
+  timezone: string,
 ): Promise<Uint8Array> {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -54,7 +56,7 @@ async function generatePDF(
   const C_BAR_EXP  : [number, number, number] = [252, 165, 165];
 
   const periodLabel = `${fmtDate(from)} — ${fmtDate(to)}`;
-  const today = new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" });
+  const today = formatCalendarDate(todayInTimeZone(timezone), { day: "numeric", month: "long", year: "numeric" });
 
   const cleanHeadStyles = {
     fillColor:  false as unknown as [number, number, number],
@@ -298,7 +300,7 @@ export async function POST(request: NextRequest) {
   try {
     const { orgId } = auth.data;
     const body       = await request.json();
-    const def        = defaultYearRange();
+    const def        = defaultYearRange(auth.data.timezone);
     const from       = (body.from   ?? def.from)  as string;
     const to         = (body.to     ?? def.to)    as string;
     const symbol     = (body.symbol ?? "L")       as string;
@@ -321,7 +323,7 @@ export async function POST(request: NextRequest) {
       total_sales:    totalSales,
     };
 
-    const pdfBuf = await generatePDF(summary, events, symbol, from, to, perms.showCosts, perms.showProfit);
+    const pdfBuf = await generatePDF(summary, events, symbol, from, to, perms.showCosts, perms.showProfit, auth.data.timezone);
 
     return new Response(pdfBuf.buffer as ArrayBuffer, {
       headers: {

@@ -15,6 +15,8 @@ jest.mock("@/lib/auth", () => ({
       roleId: 1,
       roleName: "Owner",
       isOwner: true,
+      timezone: "America/Tegucigalpa",
+      locale: "es-HN",
     },
   })),
   isAuthSuccess: jest.fn(() => true),
@@ -81,7 +83,7 @@ describe("GET /api/credit-cards/[id]/view", () => {
         started.add("totals");
         return totals.promise;
       }
-      if (query.includes("SELECT DISTINCT") && query.includes("occurred_at")) {
+      if (query.includes("SELECT DISTINCT") && query.includes("effective_date")) {
         started.add("periods");
         return periods.promise;
       }

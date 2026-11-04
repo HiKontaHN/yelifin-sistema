@@ -40,7 +40,7 @@ export type DashboardData = {
   }[];
   recent_sales: {
     id: number; sale_number: string; total: number;
-    payment_method: string; sold_at: string;
+    payment_method: string; sale_date: string; sold_at: string;
     customer_name: string | null; items_count: number; profit: number;
   }[];
   low_stock: {

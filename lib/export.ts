@@ -1,6 +1,8 @@
 // lib/export.ts — client-side export utilities (Excel + PDF)
 // Uses dynamic imports so libraries only load when the user triggers an export.
 
+import { DEFAULT_TIMEZONE, formatInstant } from "@/lib/date-utils";
+
 export type ExcelSheet = {
   name:    string;
   columns: string[];
@@ -49,6 +51,7 @@ export async function exportToPDF(options: {
   filename:    string;
   tables:      PDFTable[];
   landscape?:  boolean;
+  timezone?:   string;
 }) {
   const { default: jsPDF }     = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -73,7 +76,7 @@ export async function exportToPDF(options: {
   doc.setFontSize(8);
   doc.setTextColor(160);
   doc.text(
-    `Generado el ${new Date().toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })}`,
+    `Generado el ${formatInstant(new Date(), options.timezone ?? DEFAULT_TIMEZONE, { day: "numeric", month: "long", year: "numeric" })}`,
     14, y
   );
   y += 8;

@@ -11,6 +11,7 @@ import {
   type FifoTake,
 } from "@/lib/fifo";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const [sale] = await sql`
       SELECT
         s.*,
+        s.sale_date::text AS sale_date,
         EXTRACT(EPOCH FROM s.updated_at)::text AS updated_at_version,
         c.name  AS customer_name,
         c.phone AS customer_phone,
@@ -71,8 +73,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       WITH ordered AS (
         SELECT
           id,
-          LAG(id)  OVER (ORDER BY sold_at DESC, id DESC) AS newer_id,
-          LEAD(id) OVER (ORDER BY sold_at DESC, id DESC) AS older_id
+          LAG(id)  OVER (ORDER BY sale_date DESC, id DESC) AS newer_id,
+          LEAD(id) OVER (ORDER BY sale_date DESC, id DESC) AS older_id
         FROM sales
         WHERE org_id = ${orgId}
       )
@@ -189,6 +191,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // ── CONFIRM ──────────────────────────────────────────────────────
     if (action === "confirm") {
       const confirmedAt = body.confirmed_at ?? new Date().toISOString();
+      const legacyDatePrefix = typeof body.confirmed_at === "string" ? body.confirmed_at.slice(0, 10) : null;
+      const confirmedDate = body.confirmed_date
+        ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+        ?? todayInTimeZone(auth.data.timezone);
+      if (!isCalendarDate(confirmedDate)) return createErrorResponse("Fecha de confirmación inválida", 400);
       const hasPartialPayment = body.amount_paid !== undefined;
       const requestedAmountPaid = hasPartialPayment ? Number(body.amount_paid) : Number(sale.total);
 
@@ -236,7 +243,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           UPDATE sales SET
             status = 'COMPLETED',
             payment_status = ${receivableAmount > 0 ? (paidNow > 0 ? "PARTIAL" : "PENDING") : "PAID"},
-            sold_at = ${confirmedAt}, updated_at = CURRENT_TIMESTAMP, updated_by = ${userId}
+            sale_date = ${confirmedDate}, sold_at = ${confirmedAt}, updated_at = CURRENT_TIMESTAMP, updated_by = ${userId}
           WHERE id = ${saleId} AND org_id = ${orgId} AND status = 'PENDING'
         `;
         let saleTransaction: any = null;
@@ -244,10 +251,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           [saleTransaction] = await tx`
             INSERT INTO transactions (
               org_id, created_by, type, account_id, amount,
-              category, description, reference_type, reference_id, occurred_at
+              category, description, reference_type, reference_id, effective_date, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, 'INCOME', ${lockedSale.account_id}, ${paidNow},
-              'Ventas', ${txDescription}, 'SALE', ${saleId}, ${confirmedAt}
+              'Ventas', ${txDescription}, 'SALE', ${saleId}, ${confirmedDate}, ${confirmedAt}
             )
             RETURNING id
           `;
@@ -263,7 +270,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               original_amount, outstanding_amount, start_date, status, created_by, updated_by
             ) VALUES (
               ${orgId}, ${lockedSale.customer_id}, 'CREDIT_SALE', ${saleId}, ${txDescription},
-              ${lockedSale.total}, ${receivableAmount}, CURRENT_DATE, ${paidNow > 0 ? "PARTIAL" : "PENDING"}, ${userId}, ${userId}
+              ${lockedSale.total}, ${receivableAmount}, ${confirmedDate}, ${paidNow > 0 ? "PARTIAL" : "PENDING"}, ${userId}, ${userId}
             )
             RETURNING id
           `;
@@ -691,8 +698,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         const [lockedSale] = await tx`
           SELECT
             status,
-            -- Epoch representa el instante de forma idéntica aunque la
-            -- conexión HTTP use UTC y la transacción use America/Tegucigalpa.
+            -- Epoch representa el instante de forma idéntica sin depender
+            -- del timezone de la sesión o del proceso que hace la lectura.
             EXTRACT(EPOCH FROM updated_at)::text AS updated_at_version
           FROM sales
           WHERE id = ${saleId} AND org_id = ${orgId}

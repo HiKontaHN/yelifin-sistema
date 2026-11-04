@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate } from "@/lib/date-utils";
 
 export async function DELETE(
   request: NextRequest,
@@ -105,7 +106,9 @@ export async function PATCH(
     if (isNaN(transactionId)) return createErrorResponse("ID inválido", 400);
 
     const body = await request.json();
-    const { amount, account_id, to_account_id, category, description, occurred_at } = body;
+    const { amount, account_id, to_account_id, category, description, occurred_at, effective_date } = body;
+    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : undefined;
+    const requestedDate = effective_date ?? legacyDatePrefix;
 
     if (amount !== undefined && (!Number.isFinite(Number(amount)) || Number(amount) <= 0))
       return createErrorResponse("El monto debe ser mayor a 0", 400);
@@ -113,12 +116,14 @@ export async function PATCH(
       return createErrorResponse("Cuenta origen no encontrada", 404);
     if (to_account_id !== undefined && (!Number.isSafeInteger(Number(to_account_id)) || Number(to_account_id) <= 0))
       return createErrorResponse("Cuenta destino no encontrada", 404);
+    if (requestedDate !== undefined && !isCalendarDate(requestedDate))
+      return createErrorResponse("Fecha inválida", 400);
 
     const result = await withTransaction(async (tx) => {
       const [old] = await tx`
         SELECT
           id, type, amount, account_id, to_account_id, reference_type,
-          category, description, occurred_at
+          category, description, effective_date::text AS effective_date, occurred_at
         FROM transactions
         WHERE id = ${transactionId} AND org_id = ${orgId} AND deleted_at IS NULL
         FOR UPDATE
@@ -201,10 +206,11 @@ export async function PATCH(
           to_account_id = ${old.type === "TRANSFER" ? newToAccountId : null},
           category      = ${categoryValue},
           description   = ${descriptionValue},
+          effective_date = ${requestedDate ?? old.effective_date},
           occurred_at   = ${occurred_at ?? old.occurred_at},
           updated_by    = ${userId}
         WHERE id = ${transactionId} AND org_id = ${orgId}
-        RETURNING *
+        RETURNING *, effective_date::text AS effective_date
       `;
 
       return { ok: true as const, data: updated };

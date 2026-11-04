@@ -18,6 +18,7 @@ export type Transaction = {
   reference_type: string | null;
   reference_id: number | null;
   occurred_at: string;
+  effective_date: string;
   account_id: number;
   account_name: string;
   account_type: string;
@@ -41,6 +42,7 @@ export type CreateTransactionInput = {
   category?: string | null;
   description?: string | null;
   occurred_at?: string;
+  effective_date?: string;
   create_receivable?: boolean;
   customer_id?: number;
   due_date?: string;
@@ -53,6 +55,7 @@ export type UpdateTransactionInput = {
   category?: string | null;
   description?: string | null;
   occurred_at?: string;
+  effective_date?: string;
 };
 
 export type TransactionPeriod = { year: number; month: number };
@@ -66,7 +69,6 @@ type TransactionsViewFilters = {
   date?: string;
   type?: string;
   search?: string;
-  tz_offset?: number;
 };
 
 function useAuthFetch() {
@@ -90,7 +92,6 @@ export function useTransactions(filters?: {
   date?: string;
   type?: string;
   search?: string;
-  tz_offset?: number;
   /** false = no consulta el endpoint (p. ej. cuando la vista solo muestra tarjetas) */
   enabled?: boolean;
 }) {
@@ -104,7 +105,6 @@ export function useTransactions(filters?: {
   if (filters?.date)       params.set("date",        filters.date);
   if (filters?.type && filters.type !== "all") params.set("type", filters.type);
   if (filters?.search)     params.set("search",      filters.search);
-  if (filters?.tz_offset !== undefined) params.set("tz_offset", String(filters.tz_offset));
 
   const url = `${KEY}?${params.toString()}`;
 
@@ -143,7 +143,6 @@ export function useTransactionsView(filters?: TransactionsViewFilters) {
   if (filters?.date) params.set("date", filters.date);
   if (filters?.type && filters.type !== "all") params.set("type", filters.type);
   if (filters?.search) params.set("search", filters.search);
-  if (filters?.tz_offset !== undefined) params.set("tz_offset", String(filters.tz_offset));
 
   const query = params.toString();
   const url = `/api/finances/transactions-view${query ? `?${query}` : ""}`;

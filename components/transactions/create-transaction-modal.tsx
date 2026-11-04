@@ -29,7 +29,8 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCreateTransaction } from "@/hooks/swr/use-transactions";
-import { localDateToISO, toLocalDateInput } from "@/lib/date-utils";
+import { todayInTimeZone } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
@@ -62,6 +63,7 @@ export function CreateTransactionModal({
   const { createTransaction, isCreating } = useCreateTransaction();
   const { format, symbol, currency: nativeCurrency } = useCurrency();
   const { mutate } = useSWRConfig();
+  const timezone = useTimezone();
 
   const [type, setType] = useState<TxType>(defaultType);
   const [sourceMode, setSourceMode] = useState<"account" | "credit_card">("account");
@@ -73,8 +75,8 @@ export function CreateTransactionModal({
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [occurredAt, setOccurredAt] = useState(
-    toLocalDateInput(new Date()),
+  const [occurredAt, setOccurredAt] = useState<string>(
+    () => todayInTimeZone(timezone),
   );
   const [createReceivable, setCreateReceivable] = useState(false);
   const [personId, setPersonId] = useState("");
@@ -114,7 +116,7 @@ export function CreateTransactionModal({
     setAmount("");
     setCategory("");
     setDescription("");
-    setOccurredAt(toLocalDateInput(new Date()));
+    setOccurredAt(todayInTimeZone(timezone));
     setCreateReceivable(false);
     setPersonId("");
     setDueDate("");
@@ -178,7 +180,7 @@ export function CreateTransactionModal({
         amount: Number(amount),
         category: category || undefined,
         description: description || undefined,
-        occurred_at: localDateToISO(occurredAt),
+        effective_date: occurredAt,
         create_receivable: createReceivable,
         person_id: createReceivable ? Number(personId) : undefined,
         due_date: createReceivable && dueDate ? dueDate : undefined,

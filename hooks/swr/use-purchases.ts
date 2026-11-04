@@ -26,6 +26,7 @@ export type CreatePurchaseInput = {
   shipping: number;
   notes?: string;
   purchased_at?: string;
+  purchase_date?: string;
   status?: 'PENDING' | 'COMPLETED';
   // Ya se pagó antes de usar la plataforma — no requiere account_id/
   // credit_card_id y no genera ningún movimiento financiero.
@@ -48,6 +49,7 @@ export type Purchase = {
   status: 'PENDING' | 'COMPLETED';
   is_paid: boolean;
   purchased_at: string;
+  purchase_date: string;
   notes: string | null;
   created_at: string;
   items_count: number;
@@ -88,6 +90,7 @@ export type PurchaseDetail = {
   is_paid: boolean | null;
   warehouse_id: number | null;
   purchased_at: string;
+  purchase_date: string;
   notes: string | null;
   currency: string;
   subtotal: number | null;
@@ -200,6 +203,7 @@ export type EditPurchaseItemInput = {
   item_id: number;
   quantity: number;
   unit_cost?: number;
+  purchase_date?: string;
   purchased_at?: string;
   notes?: string | null;
 };

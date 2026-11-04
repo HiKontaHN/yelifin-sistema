@@ -1,12 +1,14 @@
 ﻿// components/products/inventory-section/index.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PurchaseForm, PurchaseFormValue, defaultPurchaseForm } from "./purchase-form";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./existing-form";
 import { PendingForm, PendingFormValue, defaultPendingForm } from "./pending-form";
+import { useTimezone } from "@/hooks/swr/use-timezone";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 // ── Tipos públicos ─────────────────────────────────────────────────────
 export type InventoryMode = "purchase" | "existing" | "pending";
@@ -25,13 +27,24 @@ type Props = {
 
 // ── Componente ─────────────────────────────────────────────────────────
 export function InventorySection({ value, onChange, disabled }: Props) {
+  const timezone = useTimezone();
+  const organizationToday = todayInTimeZone(timezone);
   const isOpen = value !== null;
   const mode   = value?.mode ?? "purchase";
 
   // Estado interno de cada form para no perder datos al cambiar de modo
-  const [purchaseData, setPurchaseData] = useState<PurchaseFormValue>(defaultPurchaseForm());
+  const [purchaseData, setPurchaseData] = useState<PurchaseFormValue>(() => defaultPurchaseForm(timezone));
   const [existingData, setExistingData] = useState<ExistingFormValue>(defaultExistingForm());
   const [pendingData,  setPendingData]  = useState<PendingFormValue>(defaultPendingForm());
+  const previousToday = useRef(organizationToday);
+
+  useEffect(() => {
+    const previous = previousToday.current;
+    setPurchaseData((current) => current.purchased_at === previous
+      ? { ...current, purchased_at: organizationToday }
+      : current);
+    previousToday.current = organizationToday;
+  }, [organizationToday]);
 
   const valueForMode = (m: InventoryMode): InventorySectionValue => {
     if (m === "existing") return { mode: "existing", data: existingData };

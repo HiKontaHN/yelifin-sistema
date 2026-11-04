@@ -1,3 +1,4 @@
+import { loadEnvConfig } from "@next/env";
 import {
   consumeFifo,
   recordSaleItemBatchAllocations,
@@ -5,6 +6,8 @@ import {
   supportsSaleItemBatchAllocations,
 } from "@/lib/fifo";
 import { withTransaction } from "@/lib/db-transaction";
+
+loadEnvConfig(process.cwd());
 
 const describeDatabase = process.env.RUN_DB_INTEGRATION === "1"
   ? describe

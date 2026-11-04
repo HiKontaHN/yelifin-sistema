@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
+import { formatCalendarDate } from "@/lib/date-utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,9 +18,8 @@ type Props = {
 export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = true, hideLowStock = false }: Props) {
   const { push } = useRouter();
   const { format } = useCurrency();
-  const tz = useTimezone();
   const formatDateFull = (d: string) =>
-    formatInTZ(d, tz, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    formatCalendarDate(d, { month: "short", day: "numeric", year: "numeric" });
 
   return (
     <div className="space-y-3 lg:hidden">
@@ -71,7 +70,7 @@ export function MobileSummary({ lowStock, recentSales, isLoading, showProfit = t
                     <div className="min-w-0">
                       <p className="font-mono text-sm font-medium">{sale.sale_number}</p>
                       <p className="text-xs text-muted-foreground truncate" suppressHydrationWarning>
-                        {sale.customer_name ?? "Consumidor Final"} · {formatDateFull(sale.sold_at)}
+                        {sale.customer_name ?? "Consumidor Final"} · {formatDateFull(sale.sale_date ?? sale.sold_at)}
                       </p>
                     </div>
                     <div className="text-right shrink-0 ml-3">

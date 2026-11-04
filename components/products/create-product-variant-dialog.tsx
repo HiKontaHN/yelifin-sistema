@@ -21,7 +21,6 @@ import { uploadProductImage } from "@/lib/product-image";
 import { ProductImageUpload } from "./product-image-upload";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./inventory-section/existing-form";
 import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
-import { localDateToISO } from "@/lib/date-utils";
 import { useDebounce } from "@/hooks/use-debounce";
 
 // ── Schema ─────────────────────────────────────────────────────────────
@@ -236,7 +235,7 @@ export function CreateProductVariantDialog({
               quantity:     Number(inventoryData.quantity),
               unit_cost:    inventoryData.unit_cost || 0,
               purchased_at: inventoryData.purchased_at
-                ? localDateToISO(inventoryData.purchased_at)
+                ? inventoryData.purchased_at
                 : undefined,
               notes: inventoryData.notes?.trim() || "Inventario inicial de variante",
             }),

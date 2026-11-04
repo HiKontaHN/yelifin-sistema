@@ -22,6 +22,7 @@ import {
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
   if (denyFeature) return denyFeature;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { userId, orgId, timezone } = auth.data;
     const url = new URL(request.url);
     const dryRun = url.searchParams.get("dry_run") === "true";
 
@@ -61,7 +62,8 @@ export async function POST(request: NextRequest) {
     const warehouseId: number = wh.warehouseId;
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { rows, error: parseError } = await parseWorkbook(buffer);
+    const today = todayInTimeZone(timezone);
+    const { rows, error: parseError } = await parseWorkbook(buffer, today);
     if (parseError) return createErrorResponse(parseError, 400);
 
     validateRows(rows);
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
     // ── Dry run: preview del archivo completo, sin escribir ───────────
     if (dryRun) {
       const summary = summarizeRows(resolved);
-      const limitError = await checkPlanLimits(orgId, summary);
+      const limitError = await checkPlanLimits(orgId, summary, timezone);
       if (limitError) return limitError;
 
       return Response.json({
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("No hay filas para procesar en ese rango", 400);
 
     const chunkSummary = summarizeRows(chunk);
-    const limitError = await checkPlanLimits(orgId, chunkSummary);
+    const limitError = await checkPlanLimits(orgId, chunkSummary, timezone);
     if (limitError) return limitError;
 
     const results: RowResult[] = [];
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
       try {
-        const purchaseId = await executeRow(row, orgId, userId, importBatchId, warehouseId);
+        const purchaseId = await executeRow(row, orgId, userId, importBatchId, warehouseId, timezone);
         results.push({ ...rowResult(row, "ok"), ...(purchaseId ? { purchaseId } : {}) });
       } catch (rowError) {
         console.error(`Import fila ${row.rowNumber}:`, rowError);
@@ -154,7 +156,11 @@ export async function POST(request: NextRequest) {
 
 // Valida límites del plan (productos, transacciones) contra un resumen —
 // se usa tanto para el preview completo como para cada lote de ejecución.
-async function checkPlanLimits(orgId: number, summary: ReturnType<typeof summarizeRows>): Promise<Response | null> {
+async function checkPlanLimits(
+  orgId: number,
+  summary: ReturnType<typeof summarizeRows>,
+  timezone: string,
+): Promise<Response | null> {
   if (summary.newProducts > 0) {
     const limit = await verifyResourceLimit(orgId, "products");
     if (!limit.withinLimit) {
@@ -185,11 +191,18 @@ async function checkPlanLimits(orgId: number, summary: ReturnType<typeof summari
   }
 
   if (summary.purchasesWithPayment > 0) {
+    const today = todayInTimeZone(timezone);
+    const [year, month] = today.split("-").map(Number);
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const nextMonthStart = month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
     const [plan] = await sql`
       SELECT sp.max_transactions_per_month,
         (SELECT COUNT(*) FROM transactions t
          WHERE t.org_id = ${orgId}
-           AND DATE_TRUNC('month', t.occurred_at) = DATE_TRUNC('month', NOW()))::int AS current_count
+           AND t.effective_date >= ${monthStart}::date
+           AND t.effective_date < ${nextMonthStart}::date)::int AS current_count
       FROM org_subscriptions os
       JOIN subscription_plans sp ON sp.id = os.plan_id
       WHERE os.org_id = ${orgId}
@@ -231,7 +244,8 @@ async function executeRow(
   orgId: number,
   userId: number,
   importBatchId: string | null,
-  warehouseId: number
+  warehouseId: number,
+  timezone: string,
 ): Promise<number | null> {
   return withTransaction(async (tx) => {
   let productId = row.productId;
@@ -258,7 +272,8 @@ async function executeRow(
   const quantity = row.cantidad;
   const unitCost = row.costoUnitario ?? 0;
   const totalCost = unitCost * quantity;
-  const occurredAt = row.fecha ?? new Date().toISOString();
+  const businessDate = row.fecha ?? todayInTimeZone(timezone);
+  const occurredAt = row.fecha ? `${businessDate}T12:00:00.000Z` : new Date().toISOString();
   const isPending = row.estado === "pendiente";
   const hasPayment = row.account !== null;
   const isCreditCard = row.account?.kind === "credit_card";
@@ -272,13 +287,13 @@ async function executeRow(
     const [batch] = await tx`
       INSERT INTO purchase_batches (
         org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
-        subtotal, shipping, tax, total, is_paid, purchased_at, notes, status, import_batch_id, warehouse_id
+        subtotal, shipping, tax, total, is_paid, purchase_date, purchased_at, notes, status, import_batch_id, warehouse_id
       ) VALUES (
         ${orgId}, ${userId},
         ${hasPayment && !isCreditCard ? row.account!.id : null}, ${null},
         ${"HNL"}, ${1},
         ${totalCost}, ${0}, ${0}, ${totalCost},
-        ${false}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}, ${importBatchId}, ${warehouseId}
+        ${false}, ${businessDate}, ${occurredAt}, ${"Importación Excel"}, ${isPending ? "PENDING" : "COMPLETED"}, ${importBatchId}, ${warehouseId}
       )
       RETURNING id
     `;
@@ -301,11 +316,11 @@ async function executeRow(
         INSERT INTO credit_card_transactions (
           org_id, created_by, credit_card_id, type, description,
           amount, currency, exchange_rate, amount_local,
-          purchase_batch_id, category, occurred_at
+          purchase_batch_id, category, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${row.account!.id}, 'CHARGE', ${txDescription},
           ${totalCost}, ${"HNL"}, ${null}, ${totalCost},
-          ${purchaseId}, ${INVENTORY_PURCHASE_CATEGORY}, ${occurredAt}
+          ${purchaseId}, ${INVENTORY_PURCHASE_CATEGORY}, ${businessDate}, ${occurredAt}
         )
       `;
       await tx`
@@ -316,10 +331,10 @@ async function executeRow(
       await tx`
         INSERT INTO transactions (
           org_id, created_by, account_id, type, amount,
-          description, category, reference_type, reference_id, occurred_at
+          description, category, reference_type, reference_id, effective_date, occurred_at
         ) VALUES (
           ${orgId}, ${userId}, ${row.account!.id}, 'EXPENSE', ${totalCost},
-          ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseId}, ${occurredAt}
+          ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseId}, ${businessDate}, ${occurredAt}
         )
       `;
       await tx`
@@ -333,10 +348,10 @@ async function executeRow(
       await tx`
         INSERT INTO inventory_batches (
           org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-          qty_in, qty_available, unit_cost, received_at, warehouse_id
+          qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${productId}, ${row.variantId}, ${batchItem.id},
-          ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
+          ${quantity}, ${quantity}, ${unitCost}, ${businessDate}, ${occurredAt}, ${warehouseId}
         )
       `;
       await tx`
@@ -354,10 +369,10 @@ async function executeRow(
     await tx`
       INSERT INTO inventory_batches (
         org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-        qty_in, qty_available, unit_cost, received_at, warehouse_id
+        qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
       ) VALUES (
         ${orgId}, ${userId}, ${productId}, ${row.variantId}, ${null},
-        ${quantity}, ${quantity}, ${unitCost}, ${occurredAt}, ${warehouseId}
+        ${quantity}, ${quantity}, ${unitCost}, ${businessDate}, ${occurredAt}, ${warehouseId}
       )
     `;
     await tx`

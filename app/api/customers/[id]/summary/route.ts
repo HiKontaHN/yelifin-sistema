@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         COALESCE(NULLIF(BTRIM(c.name), ''), 'Sin nombre') AS name,
         c.phone, c.email, c.notes,
         c.total_orders, c.total_spent, c.created_at,
-        MAX(s.sold_at) AS last_purchase_at,
+        MAX(s.sale_date)::text AS last_purchase_at,
         CASE WHEN COUNT(s.id) > 0
           THEN ROUND((SUM(s.total) / COUNT(s.id))::numeric, 2)
           ELSE 0
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest, { params }: Params) {
     // productos y el desglose) — solo 6 ventas, así que el N+1 es barato.
     const recentSales = await sql`
       SELECT
-        s.id, s.sale_number, s.total, s.sold_at, s.status, s.discount, s.shipping_cost,
+        s.id, s.sale_number, s.total, s.sale_date::text AS sale_date,
+        s.sold_at, s.status, s.discount, s.shipping_cost,
         COALESCE(items.items_count, 0)::int    AS items_count,
         COALESCE(items.total_quantity, 0)::int AS total_quantity,
         COALESCE(items.items, '[]'::jsonb)     AS items
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         WHERE si.sale_id = s.id AND si.org_id = s.org_id
       ) items ON TRUE
       WHERE s.customer_id = ${customerId} AND s.org_id = ${orgId}
-      ORDER BY s.sold_at DESC
+      ORDER BY s.sale_date DESC, s.id DESC
       LIMIT 6
     `;
 

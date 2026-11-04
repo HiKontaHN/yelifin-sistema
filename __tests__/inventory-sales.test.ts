@@ -98,6 +98,8 @@ function makeAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     isActive: true,
     subscription: { status: "ACTIVE", planSlug: "pro" },
     ...overrides,
+    timezone: overrides.timezone ?? "America/Tegucigalpa",
+    locale: overrides.locale ?? "es-HN",
   };
 }
 

@@ -5,6 +5,7 @@ import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModul
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
+import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     const {
       account_id, credit_card_id, shipping_account_id, currency, exchange_rate,
-      shipping, notes, purchased_at, items, warehouse_id,
+      shipping, notes, purchased_at, purchase_date, items, warehouse_id,
       status = "COMPLETED",
       // Ya se pagó antes de usar la plataforma (ej. stock comprado antes de
       // registrarse) — no requiere cuenta/tarjeta y NO genera ningún
@@ -137,7 +138,14 @@ export async function POST(request: NextRequest) {
     const productsLocal   = totalLocal - shippingTotal;
     const subtotal        = totalLocal;
     const total           = totalLocal;
-    const occurredAt      = purchased_at ?? new Date().toISOString();
+    const legacyDatePrefix = typeof purchased_at === "string" ? purchased_at.slice(0, 10) : null;
+    const purchaseDate = purchase_date
+      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+      ?? todayInTimeZone(auth.data.timezone);
+    if (!isCalendarDate(purchaseDate)) return createErrorResponse("Fecha de compra inválida", 400);
+    const occurredAt = typeof purchased_at === "string" && !isCalendarDate(purchased_at)
+      ? purchased_at
+      : new Date().toISOString();
 
     // ¿Se paga el envío desde una cuenta separada? — nunca si ya está pagado,
     // no hay ninguna cuenta de la que descontar nada.
@@ -159,12 +167,12 @@ export async function POST(request: NextRequest) {
         INSERT INTO purchase_batches (
           org_id, created_by, account_id, shipping_account_id, currency, exchange_rate,
           subtotal, shipping, tax, total,
-          is_paid, purchased_at, notes, status, warehouse_id
+          is_paid, purchase_date, purchased_at, notes, status, warehouse_id
         ) VALUES (
           ${orgId}, ${userId}, ${already_paid || isCreditCard ? null : account_id}, ${shippingAccId},
           ${curr}, ${rate},
           ${subtotal}, ${shippingTotal}, ${0}, ${total},
-          ${!!already_paid}, ${occurredAt}, ${notes ?? null}, ${status}, ${warehouseId}
+          ${!!already_paid}, ${purchaseDate}, ${occurredAt}, ${notes ?? null}, ${status}, ${warehouseId}
         )
         RETURNING id
       `;
@@ -189,10 +197,10 @@ export async function POST(request: NextRequest) {
           await tx`
             INSERT INTO inventory_batches (
               org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-              qty_in, qty_available, unit_cost, received_at, warehouse_id
+              qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
             ) VALUES (
               ${orgId}, ${userId}, ${item.product_id}, ${item.variant_id}, ${batchItem.id},
-              ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${occurredAt}, ${warehouseId}
+              ${item.quantity}, ${item.quantity}, ${item.unit_cost}, ${purchaseDate}, ${occurredAt}, ${warehouseId}
             )
           `;
 
@@ -220,11 +228,11 @@ export async function POST(request: NextRequest) {
           INSERT INTO credit_card_transactions (
             org_id, created_by, credit_card_id, type, description,
             amount, currency, exchange_rate, amount_local,
-            purchase_batch_id, category, occurred_at
+            purchase_batch_id, category, effective_date, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${Number(credit_card_id)}, 'CHARGE', ${txDescription},
             ${ccAmount}, ${curr}, ${isUsd ? rate : null}, ${ccAmountLocal},
-            ${purchaseBatchId}, ${INVENTORY_PURCHASE_CATEGORY}, ${occurredAt}
+            ${purchaseBatchId}, ${INVENTORY_PURCHASE_CATEGORY}, ${purchaseDate}, ${occurredAt}
           )
         `;
         if (isUsd) {
@@ -236,10 +244,10 @@ export async function POST(request: NextRequest) {
           await tx`
             INSERT INTO transactions (
               org_id, created_by, account_id, type, amount,
-              description, category, reference_type, reference_id, occurred_at
+              description, category, reference_type, reference_id, effective_date, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingTotal},
-              ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
+              ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${purchaseDate}, ${occurredAt}
             )
           `;
           await tx`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
@@ -249,20 +257,20 @@ export async function POST(request: NextRequest) {
         await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, category, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, effective_date, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${account_id}, 'EXPENSE', ${productsLocal},
-            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
+            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${purchaseDate}, ${occurredAt}
           )
         `;
         await tx`UPDATE accounts SET balance = balance - ${productsLocal}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
         await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, category, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, effective_date, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${shippingAccId}, 'EXPENSE', ${shippingTotal},
-            ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${occurredAt}
+            ${'Pago de envío'}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE_SHIPPING', ${purchaseBatchId}, ${purchaseDate}, ${occurredAt}
           )
         `;
         await tx`UPDATE accounts SET balance = balance - ${shippingTotal}, updated_by = ${userId} WHERE id = ${shippingAccId} AND org_id = ${orgId}`;
@@ -270,10 +278,10 @@ export async function POST(request: NextRequest) {
         await tx`
           INSERT INTO transactions (
             org_id, created_by, account_id, type, amount,
-            description, category, reference_type, reference_id, occurred_at
+            description, category, reference_type, reference_id, effective_date, occurred_at
           ) VALUES (
             ${orgId}, ${userId}, ${account_id}, 'EXPENSE', ${total},
-            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${occurredAt}
+            ${txDescription}, ${INVENTORY_PURCHASE_CATEGORY}, 'PURCHASE', ${purchaseBatchId}, ${purchaseDate}, ${occurredAt}
           )
         `;
         await tx`UPDATE accounts SET balance = balance - ${total}, updated_by = ${userId} WHERE id = ${account_id} AND org_id = ${orgId}`;
@@ -327,6 +335,7 @@ export async function GET(request: NextRequest) {
         pb.total,
         pb.status,
         pb.is_paid,
+        pb.purchase_date::text AS purchase_date,
         pb.purchased_at,
         pb.notes,
         pb.created_at,
@@ -354,7 +363,7 @@ export async function GET(request: NextRequest) {
       WHERE pb.org_id = ${orgId}
         AND (${statusFilter}::text IS NULL OR pb.status = ${statusFilter})
       GROUP BY pb.id, a.name, sa.name
-      ORDER BY pb.purchased_at DESC
+      ORDER BY pb.purchase_date DESC, pb.id DESC
     `;
 
     const payload = { data: purchases, total: purchases.length };

@@ -17,10 +17,11 @@ import {
 import { Event, EventStatus } from "@/hooks/swr/use-events";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { cn } from "@/lib/utils";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" });
+  formatCalendarDate(iso, { day: "numeric", month: "short", year: "numeric" });
 
 const STATUS_CONFIG: Record<EventStatus, {
   label: string;
@@ -53,7 +54,7 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
   const StatusIcon = cfg.icon;
 
   const sameDay =
-    event.starts_at.split("T")[0] === event.ends_at.split("T")[0];
+    event.start_date === event.end_date;
 
   return (
     <Card
@@ -85,8 +86,8 @@ export function EventCard({ event, onView, onEdit, onDelete, onAddExpense, canEd
           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
             <Calendar className="size-3 shrink-0" />
             {sameDay
-              ? formatDate(event.starts_at)
-              : <>{formatDate(event.starts_at)} — {formatDate(event.ends_at)}</>
+              ? formatDate(event.start_date)
+              : <>{formatDate(event.start_date)} — {formatDate(event.end_date)}</>
             }
           </p>
         </div>

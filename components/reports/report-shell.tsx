@@ -1,45 +1,58 @@
 ﻿// components/reports/report-shell.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePrivacyMode } from "@/context/privacy-mode-context";
 import { Button }  from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { Loader2, FileText, ArrowLeft, CalendarDays, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toLocalDateInput } from "@/lib/date-utils";
+import { addCalendarDays, DEFAULT_TIMEZONE, todayInTimeZone } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 // ── Date presets ───────────────────────────────────────────────────────
 
-export function thisMonth()   {
-  const n = new Date();
+export function thisMonth(timezone = DEFAULT_TIMEZONE) {
+  const [year, month] = todayInTimeZone(timezone).split("-").map(Number);
+  const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
   return {
-    from: toLocalDateInput(new Date(n.getFullYear(), n.getMonth(), 1)),
-    to:   toLocalDateInput(new Date(n.getFullYear(), n.getMonth() + 1, 0)),
+    from: `${year}-${String(month).padStart(2, "0")}-01`,
+    to: addCalendarDays(next, -1),
   };
 }
-export function lastMonth()   {
-  const n = new Date();
+export function lastMonth(timezone = DEFAULT_TIMEZONE) {
+  const [year, month] = todayInTimeZone(timezone).split("-").map(Number);
+  const previousYear = month === 1 ? year - 1 : year;
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const thisMonthStart = `${year}-${String(month).padStart(2, "0")}-01`;
   return {
-    from: toLocalDateInput(new Date(n.getFullYear(), n.getMonth() - 1, 1)),
-    to:   toLocalDateInput(new Date(n.getFullYear(), n.getMonth(), 0)),
+    from: `${previousYear}-${String(previousMonth).padStart(2, "0")}-01`,
+    to: addCalendarDays(thisMonthStart, -1),
   };
 }
-export function thisYear()    {
-  const n = new Date();
+export function thisYear(timezone = DEFAULT_TIMEZONE) {
+  const year = todayInTimeZone(timezone).slice(0, 4);
   return {
-    from: toLocalDateInput(new Date(n.getFullYear(), 0, 1)),
-    to:   toLocalDateInput(new Date(n.getFullYear(), 11, 31)),
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
   };
 }
 
 // ── useDateRange hook ──────────────────────────────────────────────────
 
 export function useDateRange(defaultPreset: "month" | "year" = "month") {
-  const init  = defaultPreset === "year" ? thisYear() : thisMonth();
+  const timezone = useTimezone();
+  const init  = defaultPreset === "year" ? thisYear(timezone) : thisMonth(timezone);
   const [from, setFrom] = useState(init.from);
   const [to,   setTo]   = useState(init.to);
+  const previousInit = useRef(init);
+  useEffect(() => {
+    const previous = previousInit.current;
+    setFrom((current) => current === previous.from ? init.from : current);
+    setTo((current) => current === previous.to ? init.to : current);
+    previousInit.current = init;
+  }, [init.from, init.to]);
   return { from, to, setFrom, setTo };
 }
 
@@ -65,6 +78,7 @@ export function ReportShell({
   isLoading, children,
 }: Props) {
   const { back } = useRouter();
+  const timezone = useTimezone();
   const [exportingPDF, setExportingPDF] = useState(false);
 
   const handlePDF = async () => {
@@ -114,6 +128,7 @@ export function ReportShell({
         <div className="flex justify-end rounded-xl border bg-muted/20 p-3">
           <DateRangePicker
             value={{ from, to }}
+            today={todayInTimeZone(timezone)}
             onChange={(range) => {
               onFromChange(range.from);
               onToChange(range.to);

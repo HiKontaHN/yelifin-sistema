@@ -1,7 +1,7 @@
 // app/api/sales/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, getOrgTimezone, requireModule, requireFeature, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, verifyResourceLimit, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import {
   consumeFifo,
   InsufficientStockError,
@@ -11,55 +11,9 @@ import {
 } from "@/lib/fifo";
 import { getDefaultWarehouseForUser } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
+import { addCalendarDays, isCalendarDate, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-// ── Timezone-aware date helpers ────────────────────────────────────────────
-// Returns the UTC offset in ms for a given IANA timezone at a specific instant.
-// Works on Vercel (runtime = UTC) because toLocaleString is parsed as "UTC local".
-function tzOffsetMs(tz: string, at: Date): number {
-  const tzStr  = at.toLocaleString("en-US", { timeZone: tz });
-  const utcStr = at.toLocaleString("en-US", { timeZone: "UTC" });
-  return new Date(tzStr).getTime() - new Date(utcStr).getTime();
-}
-
-// Midnight (start of day) in the given timezone, expressed as a UTC Date.
-function startOfDayTZ(d: Date, tz: string): Date {
-  const ymd    = d.toLocaleDateString("sv", { timeZone: tz }); // "YYYY-MM-DD"
-  const offset = tzOffsetMs(tz, d);
-  const [y, m, day] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, day, 0, 0, 0, 0) - offset);
-}
-
-function endOfDayTZ(d: Date, tz: string): Date {
-  return new Date(startOfDayTZ(d, tz).getTime() + 86_400_000 - 1);
-}
-
-function startOfMonthTZ(d: Date, tz: string): Date {
-  const ymd    = d.toLocaleDateString("sv", { timeZone: tz });
-  const offset = tzOffsetMs(tz, d);
-  const [y, m] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0) - offset);
-}
-
-function endOfMonthTZ(d: Date, tz: string): Date {
-  const ymd    = d.toLocaleDateString("sv", { timeZone: tz });
-  const offset = tzOffsetMs(tz, d);
-  const [y, m] = ymd.split("-").map(Number);
-  const firstOfNext = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0) - offset);
-  return new Date(firstOfNext.getTime() - 1);
-}
-
-// Parse a "YYYY-MM-DD" string (local date in TZ) into a UTC boundary.
-function parseDateTZ(dateStr: string, tz: string, edge: "start" | "end"): Date {
-  const ref    = new Date(`${dateStr}T12:00:00Z`); // noon UTC as reference for offset
-  const offset = tzOffsetMs(tz, ref);
-  const [y, m, day] = dateStr.split("-").map(Number);
-  const midnight = new Date(Date.UTC(y, m - 1, day, 0, 0, 0, 0) - offset);
-  return edge === "start" ? midnight : new Date(midnight.getTime() + 86_400_000 - 1);
-}
-
-// ──────────────────────────────────────────────────────────────────────────
 
 type Preset = "today" | "7d" | "this_month" | "last_month" | "all";
 
@@ -68,37 +22,39 @@ function resolveRange(params: URLSearchParams, tz: string) {
   const from    = params.get("from");
   const to      = params.get("to");
   const payment = params.get("payment");
-  const now     = new Date();
-
-  let fromDate: Date | null = null;
-  let toDate:   Date | null = null;
+  const today = todayInTimeZone(tz);
+  let fromDate: CalendarDate | null = null;
+  let toDate: CalendarDate | null = null;
 
   if (from || to) {
-    if (from) fromDate = parseDateTZ(from, tz, "start");
-    if (to)   toDate   = parseDateTZ(to,   tz, "end");
+    if (from && !isCalendarDate(from)) throw new RangeError("Fecha inicial inválida");
+    if (to && !isCalendarDate(to)) throw new RangeError("Fecha final inválida");
+    if (from) fromDate = from as CalendarDate;
+    if (to) toDate = addCalendarDays(to, 1);
   } else {
+    const [year, month] = today.split("-").map(Number);
+    const firstOfMonth = `${year}-${String(month).padStart(2, "0")}-01` as CalendarDate;
+    const nextMonth = month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
     switch (preset) {
       case "today":
-        fromDate = startOfDayTZ(now, tz);
-        toDate   = endOfDayTZ(now, tz);
+        fromDate = today;
+        toDate = addCalendarDays(today, 1);
         break;
-      case "7d": {
-        const seven = new Date(now.getTime() - 6 * 86_400_000);
-        fromDate = startOfDayTZ(seven, tz);
-        toDate   = endOfDayTZ(now, tz);
+      case "7d":
+        fromDate = addCalendarDays(today, -6);
+        toDate = addCalendarDays(today, 1);
         break;
-      }
       case "this_month":
-        fromDate = startOfMonthTZ(now, tz);
-        toDate   = endOfMonthTZ(now, tz);
+        fromDate = firstOfMonth;
+        toDate = nextMonth as CalendarDate;
         break;
       case "last_month": {
-        // "last month" relative to the current TZ date
-        const ymd  = now.toLocaleDateString("sv", { timeZone: tz });
-        const [y, m] = ymd.split("-").map(Number);
-        const lastMonth = new Date(Date.UTC(y, m - 2, 15)); // mid of prev month
-        fromDate = startOfMonthTZ(lastMonth, tz);
-        toDate   = endOfMonthTZ(lastMonth, tz);
+        const previousYear = month === 1 ? year - 1 : year;
+        const previousMonth = month === 1 ? 12 : month - 1;
+        fromDate = `${previousYear}-${String(previousMonth).padStart(2, "0")}-01` as CalendarDate;
+        toDate = firstOfMonth;
         break;
       }
       default:
@@ -108,8 +64,8 @@ function resolveRange(params: URLSearchParams, tz: string) {
   }
 
   return {
-    fromDateISO: fromDate?.toISOString() ?? null,
-    toDateISO:   toDate?.toISOString()   ?? null,
+    fromDate,
+    toDate,
     payment:     payment && payment !== "all" ? payment : null,
   };
 }
@@ -122,12 +78,10 @@ export async function GET(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { orgId, timezone } = auth.data;
     const { searchParams } = new URL(request.url);
 
-    const tz = await getOrgTimezone(orgId);
-
-    const { fromDateISO, toDateISO, payment } = resolveRange(searchParams, tz);
+    const { fromDate, toDate, payment } = resolveRange(searchParams, timezone);
 
     const search    = searchParams.get("search")?.trim()   || null;
     const status    = searchParams.get("status")           || null;
@@ -157,8 +111,8 @@ export async function GET(request: NextRequest) {
         FROM sale_items GROUP BY sale_id
       ) prof ON prof.sale_id = s.id
       WHERE s.org_id = ${orgId}
-        AND (${fromDateISO}::timestamptz IS NULL OR s.sold_at >= ${fromDateISO})
-        AND (${toDateISO}::timestamptz   IS NULL OR s.sold_at <= ${toDateISO})
+        AND (${fromDate}::date IS NULL OR s.sale_date >= ${fromDate}::date)
+        AND (${toDate}::date   IS NULL OR s.sale_date < ${toDate}::date)
         AND (${payment}::text            IS NULL OR s.payment_method = ${payment})
         AND (${search}::text             IS NULL OR s.sale_number ILIKE ${'%' + (search ?? '') + '%'} OR c.name ILIKE ${'%' + (search ?? '') + '%'} OR s.notes ILIKE ${'%' + (search ?? '') + '%'})
         AND (${accountId}::text          IS NULL OR s.account_id::text = ${accountId})
@@ -170,8 +124,8 @@ export async function GET(request: NextRequest) {
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       WHERE s.org_id = ${orgId}
-        AND (${fromDateISO}::timestamptz IS NULL OR s.sold_at >= ${fromDateISO})
-        AND (${toDateISO}::timestamptz   IS NULL OR s.sold_at <= ${toDateISO})
+        AND (${fromDate}::date IS NULL OR s.sale_date >= ${fromDate}::date)
+        AND (${toDate}::date   IS NULL OR s.sale_date < ${toDate}::date)
         AND (${payment}::text            IS NULL OR s.payment_method = ${payment})
         AND (${search}::text             IS NULL OR s.sale_number ILIKE ${'%' + (search ?? '') + '%'} OR c.name ILIKE ${'%' + (search ?? '') + '%'} OR s.notes ILIKE ${'%' + (search ?? '') + '%'})
         AND (${accountId}::text          IS NULL OR s.account_id::text = ${accountId})
@@ -204,6 +158,7 @@ export async function GET(request: NextRequest) {
         s.payment_status,
         CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN s.total ELSE 0 END ELSE s.total - ar.outstanding_amount END AS amount_paid,
         CASE WHEN ar.id IS NULL THEN CASE WHEN s.payment_status = 'PAID' THEN 0 ELSE s.total END ELSE ar.outstanding_amount END AS amount_due,
+        s.sale_date::text AS sale_date,
         s.sold_at,
         s.notes,
         s.created_at,
@@ -218,14 +173,14 @@ export async function GET(request: NextRequest) {
       LEFT JOIN accounts_receivable ar ON ar.org_id = s.org_id AND ar.source_type = 'CREDIT_SALE' AND ar.source_id = s.id
       LEFT JOIN sale_items si ON si.sale_id = s.id
       WHERE s.org_id = ${orgId}
-        AND (${fromDateISO}::timestamptz IS NULL OR s.sold_at >= ${fromDateISO})
-        AND (${toDateISO}::timestamptz   IS NULL OR s.sold_at <= ${toDateISO})
+        AND (${fromDate}::date IS NULL OR s.sale_date >= ${fromDate}::date)
+        AND (${toDate}::date   IS NULL OR s.sale_date < ${toDate}::date)
         AND (${payment}::text            IS NULL OR s.payment_method = ${payment})
         AND (${search}::text             IS NULL OR s.sale_number ILIKE ${'%' + (search ?? '') + '%'} OR c.name ILIKE ${'%' + (search ?? '') + '%'} OR s.notes ILIKE ${'%' + (search ?? '') + '%'})
         AND (${accountId}::text          IS NULL OR s.account_id::text = ${accountId})
         AND (${status}::text             IS NULL OR s.status = ${status})
       GROUP BY s.id, c.name, a.name, ar.id
-      ORDER BY s.sold_at DESC
+      ORDER BY s.sale_date DESC, s.id DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
@@ -279,6 +234,7 @@ export async function POST(request: NextRequest) {
       account_id,
       notes,
       sold_at,
+      sale_date,
       supplies_used,
       event_id,
       status = "COMPLETED",
@@ -522,7 +478,14 @@ export async function POST(request: NextRequest) {
       (acc, s) => acc + s.line_total,
       0,
     );
-    const occurredAt = sold_at ?? new Date().toISOString();
+    const legacyDatePrefix = typeof sold_at === "string" ? sold_at.slice(0, 10) : null;
+    const saleDate = sale_date
+      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
+      ?? todayInTimeZone(auth.data.timezone);
+    if (!isCalendarDate(saleDate)) return createErrorResponse("Fecha de venta inválida", 400);
+    const occurredAt = typeof sold_at === "string" && !isCalendarDate(sold_at)
+      ? sold_at
+      : new Date().toISOString();
 
     // ══════════════════════════════════════════════════════════════════
     try {
@@ -551,13 +514,13 @@ export async function POST(request: NextRequest) {
           org_id, created_by, sale_number, customer_id,
           subtotal, discount, tax_rate, tax, shipping_cost, total,
           payment_method, account_id, event_id, warehouse_id,
-          status, payment_status, sold_at, notes
+          status, payment_status, sale_date, sold_at, notes
         ) VALUES (
           ${orgId}, ${userId}, ${saleNumber}, ${customer_id ?? null},
           ${subtotal}, ${totalDiscount}, ${taxRateNum}, ${taxAmount},
           ${shippingAmount}, ${grandTotal},
           ${payment_method}, ${account_id}, ${eventIdNum}, ${warehouseId},
-          ${status}, ${paymentStatus}, ${occurredAt}::timestamptz, ${notes ?? null}
+          ${status}, ${paymentStatus}, ${saleDate}, ${occurredAt}, ${notes ?? null}
         )
         RETURNING id
       `;
@@ -662,11 +625,11 @@ export async function POST(request: NextRequest) {
             INSERT INTO transactions (
               org_id, created_by, type, account_id, amount,
               category, description,
-              reference_type, reference_id, occurred_at
+              reference_type, reference_id, effective_date, occurred_at
             ) VALUES (
               ${orgId}, ${userId}, 'INCOME', ${account_id}, ${receivedAmount},
               'Ventas', ${txDescription},
-              'SALE', ${saleId}, ${occurredAt}::timestamptz
+              'SALE', ${saleId}, ${saleDate}, ${occurredAt}
             )
             RETURNING id
           `;
@@ -688,7 +651,7 @@ export async function POST(request: NextRequest) {
             ) VALUES (
               ${orgId}, ${customer_id}, 'CREDIT_SALE', ${saleId},
               ${`Venta ${saleNumber}`}, ${grandTotal}, ${grandTotal - paidNow},
-              'HNL', CURRENT_DATE, ${notes ?? null}, ${userId}
+              'HNL', ${saleDate}, ${notes ?? null}, ${userId}
             )
           `;
 

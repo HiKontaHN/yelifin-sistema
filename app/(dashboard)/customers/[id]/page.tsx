@@ -1,7 +1,7 @@
 // app/(dashboard)/customers/[id]/page.tsx
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,12 @@ import {
   TIER_COLOR_CLASSES, type RecentSale,
 } from "@/hooks/swr/use-costumers";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { EditCustomerDialog } from "@/components/customers/edit-customer-dialog";
 import { DeleteCustomerDialog } from "@/components/customers/delete-customer-dialog";
-import { useTimezone } from "@/hooks/swr/use-timezone";
 import { toast } from "sonner";
+import { formatCalendarDate } from "@/lib/date-utils";
 
 const STATUS_COLOR: Record<string, string> = {
   COMPLETED: "bg-green-100 text-green-700 border-green-200",
@@ -48,17 +49,10 @@ export default function CustomerDetailPage({ params }: Props) {
   const { id }         = use(params);
   const numericId      = Number(id);
   const { push, back } = useRouter();
-  const timezone = useTimezone();
-  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
-  }), [timezone]);
-  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
-    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
-  }), [timezone]);
-
   const { customer: summary, recentSales, isLoading, error, mutate } = useCustomerSummary(numericId);
   const { policies } = useLoyaltyPolicies();
   const { format }   = useCurrency();
+  const timezone     = useTimezone();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("CUSTOMERS");
 
   const [editOpen,   setEditOpen]   = useState(false);
@@ -91,9 +85,6 @@ export default function CustomerDetailPage({ params }: Props) {
   const tier       = computeLoyaltyTier(summary, policies);
   const tierColors = tier ? (TIER_COLOR_CLASSES[tier.color] ?? TIER_COLOR_CLASSES.amber) : null;
 
-  const dateOpts: Intl.DateTimeFormatOptions = {
-    day: "numeric", month: "short", year: "numeric",
-  };
   const saleColumns: DataTableTimeSectionColumn<RecentSale>[] = [
     {
       id: "sale", header: "Número", width: "clamp(8rem, 20vw, 12rem)",
@@ -121,10 +112,10 @@ export default function CustomerDetailPage({ params }: Props) {
     },
   ];
   const renderSaleDate = (_key: string, rows: readonly RecentSale[]) => {
-    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].sold_at));
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
-    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
-    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+    const value = formatCalendarDate(rows[0].sale_date, {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+    });
+    return value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
   };
 
   return (
@@ -222,7 +213,7 @@ export default function CustomerDetailPage({ params }: Props) {
           { label: "Órdenes", icon: ShoppingCart, value: summary.total_orders },
           { label: "Total gastado", icon: TrendingUp, value: format(Number(summary.total_spent)), valueClassName: "text-green-600 dark:text-green-400" },
           { label: "Ticket promedio", icon: Banknote, value: format(Number(summary.avg_order_value)) },
-          { label: "Última compra", icon: Clock, value: summary.last_purchase_at ? new Date(summary.last_purchase_at).toLocaleDateString("es-HN", dateOpts) : "—", detail: !summary.last_purchase_at ? "sin compras" : undefined },
+          { label: "Última compra", icon: Clock, value: summary.last_purchase_at ? formatCalendarDate(summary.last_purchase_at, { day: "numeric", month: "short", year: "numeric" }) : "—", detail: !summary.last_purchase_at ? "sin compras" : undefined },
         ]}
       />
 
@@ -253,7 +244,7 @@ export default function CustomerDetailPage({ params }: Props) {
             columns={saleColumns}
             data={recentSales}
             getRowKey={(sale) => sale.id}
-            getGroupKey={(sale) => dateKeyFormatter.format(new Date(sale.sold_at))}
+            getGroupKey={(sale) => sale.sale_date}
             renderGroupHeader={renderSaleDate}
             renderMobileRow={(sale) => (
               <Card
@@ -319,7 +310,7 @@ export default function CustomerDetailPage({ params }: Props) {
         <Calendar className="size-3" />
         Cliente desde{" "}
         <span suppressHydrationWarning>
-          {new Date(summary.created_at).toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" })}
+          {formatInTZ(summary.created_at, timezone, { day: "numeric", month: "long", year: "numeric" })}
         </span>
       </div>
 

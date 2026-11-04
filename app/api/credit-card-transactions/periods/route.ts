@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
     const { userId, orgId } = auth.data;
     const periods = await sql`
       SELECT DISTINCT
-        EXTRACT(YEAR  FROM occurred_at)::int AS year,
-        EXTRACT(MONTH FROM occurred_at)::int AS month
+        EXTRACT(YEAR  FROM effective_date)::int AS year,
+        EXTRACT(MONTH FROM effective_date)::int AS month
       FROM credit_card_transactions
       WHERE org_id = ${orgId}
       ORDER BY year DESC, month DESC

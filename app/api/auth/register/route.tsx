@@ -6,6 +6,14 @@ import { seedDefaultCategories } from "@/lib/seed-default-categories";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
 import { redeemPartnerInviteCode } from "@/lib/partner-invites";
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_TIMEZONE,
+  ageOnCalendarDate,
+  isCalendarDate,
+  isValidTimeZone,
+  todayInTimeZone,
+} from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -29,7 +37,16 @@ export async function POST(req: NextRequest) {
   let createdFirebaseUid: string | null = null;
 
   try {
-    const { email, password, display_name, business_name, date_of_birth, partner_code } = await req.json();
+    const {
+      email,
+      password,
+      display_name,
+      business_name,
+      date_of_birth,
+      partner_code,
+      timezone,
+      locale,
+    } = await req.json();
 
     // ── Validaciones básicas ──────────────────────────────────────
     if (!email || !password || !display_name || !business_name || !date_of_birth) {
@@ -39,31 +56,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const organizationTimezone = isValidTimeZone(timezone) ? timezone : DEFAULT_TIMEZONE;
+
     // Age is checked again on the server and deliberately not persisted.
     // HiKonta is a general-audience business service restricted to adults;
     // this also prevents knowingly collecting data from children under COPPA.
-    const birthDate = new Date(`${date_of_birth}T00:00:00Z`);
-    const today = new Date();
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(date_of_birth) ||
-      Number.isNaN(birthDate.getTime()) ||
-      birthDate.toISOString().slice(0, 10) !== date_of_birth ||
-      birthDate > today
-    ) {
+    const today = todayInTimeZone(organizationTimezone);
+    if (!isCalendarDate(date_of_birth) || date_of_birth > today) {
       return NextResponse.json(
         { error: "Fecha de nacimiento inválida" },
         { status: 400 },
       );
     }
 
-    let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
-    const birthdayPending =
-      today.getUTCMonth() < birthDate.getUTCMonth() ||
-      (today.getUTCMonth() === birthDate.getUTCMonth() &&
-        today.getUTCDate() < birthDate.getUTCDate());
-    if (birthdayPending) age -= 1;
-
-    if (age < 18) {
+    if (ageOnCalendarDate(date_of_birth, today) < 18) {
       const response = NextResponse.json(
         { error: "Debes tener al menos 18 años para crear una cuenta" },
         { status: 403 },
@@ -91,6 +97,15 @@ export async function POST(req: NextRequest) {
         { error: "La contraseña debe tener al menos 6 caracteres" },
         { status: 400 }
       );
+    }
+
+    let organizationLocale = DEFAULT_LOCALE;
+    if (typeof locale === "string" && locale.length <= 35) {
+      try {
+        organizationLocale = new Intl.Locale(locale).toString();
+      } catch {
+        organizationLocale = DEFAULT_LOCALE;
+      }
     }
 
     // ── 1. Usuario previo en PostgreSQL con este email ─────────────
@@ -166,7 +181,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 4. Org + rol dueño + membresía + suscripción trial ────────
-    const { orgId } = await ensureOrgExists(userId, business_name);
+    const { orgId } = await ensureOrgExists(
+      userId,
+      business_name,
+      organizationTimezone,
+      "HNL",
+      organizationLocale,
+    );
 
     // ── 5. Categorías por defecto (las cuentas se crean en onboarding)
     await seedDefaultCategories(orgId, userId, sql);

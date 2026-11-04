@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useTimezone } from "@/hooks/swr/use-timezone";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import { Fab } from "@/components/ui/fab";
@@ -41,10 +40,12 @@ import { useSales, usePatchSale, useDeleteSale, Sale } from "@/hooks/swr/use-sal
 import { useDebounce } from "@/hooks/use-debounce";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { formatCalendarDate, todayInTimeZone, toCalendarDate } from "@/lib/date-utils";
+import { useTimezone } from "@/hooks/swr/use-timezone";
 
 // ── Utils ──────────────────────────────────────────────────────────────
 const formatDateOnly = (dateString: string) =>
-  new Date(dateString).toLocaleDateString("es-HN", {
+  formatCalendarDate(dateString, {
     year: "numeric", month: "short", day: "numeric",
   });
 
@@ -71,6 +72,11 @@ const PRESET_LABELS: Record<Preset, string> = {
 const toDateInput = (date: Date) => {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const calendarDateObject = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
 };
 
 const salesPresetRange = (preset: Preset, today = new Date()): DateRangeValue => {
@@ -246,12 +252,8 @@ export default function SalesPage() {
   const searchParams = useSearchParams();
   const { format } = useCurrency();
   const timezone = useTimezone();
-  const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
-  }), [timezone]);
-  const dateTitleFormatter = useMemo(() => new Intl.DateTimeFormat("es-HN", {
-    timeZone: timezone, weekday: "long", year: "numeric", month: "long", day: "2-digit",
-  }), [timezone]);
+  const organizationToday = todayInTimeZone(timezone);
+  const presetToday = useMemo(() => calendarDateObject(organizationToday), [organizationToday]);
   const { show_profit: showProfit, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("SALES");
 
   // Filtros restaurados desde la URL — así, al volver del detalle de una
@@ -335,13 +337,12 @@ export default function SalesPage() {
 
   const selectedDateRange = dateFrom || dateTo
     ? { from: dateFrom, to: dateTo }
-    : salesPresetRange(preset);
+    : salesPresetRange(preset, presetToday);
 
   const onDateRangeChange = (range: DateRangeValue) => {
-    const today = new Date();
     const matchingPreset = (["today", "7d", "this_month", "last_month", "all"] as const)
       .find((candidate) => {
-        const candidateRange = salesPresetRange(candidate, today);
+        const candidateRange = salesPresetRange(candidate, presetToday);
         return candidateRange.from === range.from && candidateRange.to === range.to;
       });
 
@@ -434,10 +435,11 @@ export default function SalesPage() {
   });
 
   const renderSaleDate = (_key: string, rows: readonly Sale[]) => {
-    const parts = dateTitleFormatter.formatToParts(new Date(rows[0].sold_at));
-    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? "";
-    const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase("es-HN") + value.slice(1);
-    return `${capitalize(part("weekday"))} ${part("day")} de ${capitalize(part("month"))} del ${part("year")}`;
+    const value = rows[0].sale_date ?? toCalendarDate(rows[0].sold_at);
+    const label = formatCalendarDate(value, {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+    return label.charAt(0).toLocaleUpperCase("es-HN") + label.slice(1);
   };
 
   const renderMobileSale = (sale: Sale) => {
@@ -602,6 +604,7 @@ export default function SalesPage() {
               value={selectedDateRange}
               onChange={onDateRangeChange}
               presets={SALES_DATE_PRESETS}
+              today={organizationToday}
             />
           </div>
           <div className="w-[38%] shrink-0">
@@ -628,7 +631,7 @@ export default function SalesPage() {
         columns={saleColumns}
         data={sales}
         getRowKey={(sale) => sale.id}
-        getGroupKey={(sale) => dateKeyFormatter.format(new Date(sale.sold_at))}
+        getGroupKey={(sale) => sale.sale_date ?? toCalendarDate(sale.sold_at)}
         renderGroupHeader={renderSaleDate}
         renderMobileRow={renderMobileSale}
         onRowClick={(sale) => push(`/sales/${sale.id}`)}

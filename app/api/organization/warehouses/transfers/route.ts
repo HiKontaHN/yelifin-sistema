@@ -8,6 +8,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 import { withTransaction } from "@/lib/db-transaction";
+import { todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   if (deny) return deny;
 
   try {
-    const { userId, orgId } = auth.data;
+    const { userId, orgId, timezone } = auth.data;
     const { from_warehouse_id, to_warehouse_id, items, notes } = await request.json();
 
     const fromId = Number(from_warehouse_id);
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
 
     try {
       return await withTransaction(async (tx) => {
+      const receivedDate = todayInTimeZone(timezone);
       const [transfer] = await tx`
         INSERT INTO warehouse_transfers (org_id, from_warehouse_id, to_warehouse_id, notes, created_by)
         VALUES (${orgId}, ${fromId}, ${toId}, ${notes?.trim() || null}, ${userId})
@@ -102,10 +104,10 @@ export async function POST(request: NextRequest) {
         const [newBatch] = await tx`
           INSERT INTO inventory_batches (
             org_id, created_by, product_id, variant_id, purchase_batch_item_id,
-            qty_in, qty_available, unit_cost, received_at, warehouse_id
+            qty_in, qty_available, unit_cost, received_date, received_at, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${productId}, ${variantId}, ${null},
-            ${quantity}, ${quantity}, ${unitCost}, NOW(), ${toId}
+            ${quantity}, ${quantity}, ${unitCost}, ${receivedDate}, NOW(), ${toId}
           )
           RETURNING id
         `;
