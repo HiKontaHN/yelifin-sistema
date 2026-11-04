@@ -95,7 +95,8 @@ INSERT INTO system_features (feature_key, feature_name, category) VALUES
   ('sales.view',            'Ver historial de ventas', 'SALES'),
   ('finances.accounts',     'Cuentas financieras',   'FINANCES'),
   ('finances.transactions', 'Transacciones',         'FINANCES'),
-  ('reports.sales',         'Reporte de ventas',     'REPORTS')
+  ('reports.sales',         'Reporte de ventas',     'REPORTS'),
+  ('inventory.adjust',      'Ajustar inventario',    'INVENTORY')
 ON CONFLICT (feature_key) DO NOTHING;
 
 -- Si el plan ya existía, primero deja todas sus features apagadas para que
@@ -114,7 +115,8 @@ JOIN system_features f ON f.feature_key IN (
   'sales.view',
   'finances.accounts',
   'finances.transactions',
-  'reports.sales'
+  'reports.sales',
+  'inventory.adjust'
 )
 WHERE p.slug = 'free'
 ON CONFLICT (plan_id, feature_id) DO UPDATE SET
