@@ -6,7 +6,7 @@ jest.mock("@neondatabase/serverless", () => ({
 }));
 
 jest.mock("@/lib/auth", () => ({
-  verifyAuth: jest.fn(async () => ({
+  verifyAuthAndSubscription: jest.fn(async () => ({
     error: null,
     status: 200,
     data: {
@@ -18,6 +18,7 @@ jest.mock("@/lib/auth", () => ({
     },
   })),
   isAuthSuccess: jest.fn(() => true),
+  requireFeature: jest.fn(async () => null),
   requireModule: jest.fn(async () => null),
   getModulePermissions: (...args: unknown[]) => mockGetModulePermissions(...args),
   createErrorResponse: jest.fn((message: string, status: number) =>

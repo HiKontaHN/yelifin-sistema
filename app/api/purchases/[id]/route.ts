@@ -1,7 +1,7 @@
 // app/api/purchases/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
@@ -23,8 +23,10 @@ class PurchaseStateConflictError extends Error {
 // nulo), agrupa TODAS las compras de esa misma ejecución de importación
 // (una por fila) y devuelve sus items juntos, como un solo lote.
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'INCOMING');
   if (deny) return deny;
 
@@ -119,8 +121,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 // ── PATCH /api/purchases/[id] — confirmar llegada de inventario ────────
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'INCOMING');
   if (deny) return deny;
 
@@ -628,8 +632,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // ── DELETE /api/purchases/[id] — cancelar compra pendiente ─────────────
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete', 'INCOMING');
   if (deny) return deny;
 

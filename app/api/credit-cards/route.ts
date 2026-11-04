@@ -2,9 +2,10 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import {
-  verifyAuth,
+  verifyAuthAndSubscription,
   createErrorResponse,
   isAuthSuccess,
+  requireFeature,
   requireModule,
   verifyAnyModuleAccess,
   getModulePermissions,
@@ -17,8 +18,10 @@ const sql = neon(process.env.DATABASE_URL!);
 const CREDIT_CARD_SELECTOR_MODULES: OrgModule[] = ["FINANCES", "INVENTORY"];
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  if (feature) return feature;
   const canList = await verifyAnyModuleAccess(auth.data, CREDIT_CARD_SELECTOR_MODULES, "canView");
   if (!canList) return createErrorResponse("Sin acceso a este módulo", 403);
 
@@ -50,8 +53,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;
 

@@ -4,8 +4,9 @@ import {
   createErrorResponse,
   getModulePermissions,
   isAuthSuccess,
+  requireFeature,
   requireModule,
-  verifyAuth,
+  verifyAuthAndSubscription,
 } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
 import { getCreditCardCycleStart } from "@/lib/credit-card-cycle";
@@ -16,8 +17,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.accounts");
+  if (feature) return feature;
 
   const deny = await requireModule(auth.data, "FINANCES", "canView", "CREDIT_CARDS");
   if (deny) return deny;

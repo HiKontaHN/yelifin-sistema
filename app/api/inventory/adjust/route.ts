@@ -1,7 +1,7 @@
 // app/api/inventory/adjust/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
@@ -10,8 +10,10 @@ import { todayInTimeZone } from "@/lib/date-utils";
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.adjust");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit');
   if (deny) return deny;
 
