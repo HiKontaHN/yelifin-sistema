@@ -1,6 +1,7 @@
 // lib/rate-limit.ts
 // Rate limiter con almacén compartido opcional (Upstash Redis vía REST).
-// Si UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN existen, el contador
+// Si UPSTASH_REDIS_REST_URL/_TOKEN (o KV_REST_API_URL/_TOKEN, que crea la
+// integracion de Upstash en Vercel) existen, el contador
 // se comparte entre instancias. Si no existen (desarrollo) o Redis falla,
 // se usa un Map en memoria por instancia.
 
@@ -73,8 +74,8 @@ export async function rateLimit(
   limit: number,
   windowMs: number,
 ): Promise<Result> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (url && token) {
     try {
       return await redisLimit(url.replace(/\/$/, ""), token, key, limit, windowMs);
