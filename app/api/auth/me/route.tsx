@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
         os.grace_ends_at,
         os.is_in_grace,
         os.is_degraded,
+        os.is_trial_expired,
 
         sp.id               AS plan_id,
         sp.name             AS plan_name,
@@ -252,6 +253,7 @@ export async function GET(request: NextRequest) {
         grace_ends_at:        row.grace_ends_at,
         is_in_grace:          row.is_in_grace === true,
         is_degraded:          row.is_degraded === true,
+        is_trial_expired:     row.is_trial_expired === true,
         current_period_start: row.current_period_start,
         current_period_end:   row.current_period_end,
         cancel_at_period_end: row.cancel_at_period_end,

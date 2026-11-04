@@ -5,7 +5,7 @@ import { neon } from "@neondatabase/serverless";
 import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
 import { withTransaction } from "@/lib/db-transaction";
-import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from "@/lib/date-utils";
+import { DEFAULT_LOCALE, DEFAULT_TIMEZONE, isValidTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -50,6 +50,7 @@ export type AuthUser = {
     graceEndsAt: string | null;
     isInGrace: boolean;
     isDegraded: boolean;
+    isTrialExpired: boolean;
   };
 };
 
@@ -104,7 +105,8 @@ export async function verifyAuth(
         contracted.slug       AS contracted_plan_slug,
         os.grace_ends_at,
         os.is_in_grace,
-        os.is_degraded
+        os.is_degraded,
+        os.is_trial_expired
       FROM users u
       JOIN organization_members om ON om.user_id   = u.id     AND om.is_active = TRUE
       JOIN organizations         o  ON o.id         = om.org_id AND o.is_active  = TRUE
@@ -160,6 +162,7 @@ export async function verifyAuth(
           graceEndsAt: row.grace_ends_at ?? null,
           isInGrace: row.is_in_grace === true,
           isDegraded: row.is_degraded === true,
+          isTrialExpired: row.is_trial_expired === true,
         },
       },
     };
@@ -184,6 +187,7 @@ export async function verifySubscription(
       graceEndsAt: string | null;
       isInGrace: boolean;
       isDegraded: boolean;
+      isTrialExpired: boolean;
     }
 > {
   try {
@@ -194,7 +198,8 @@ export async function verifySubscription(
         contracted.slug AS contracted_plan_slug,
         os.grace_ends_at,
         os.is_in_grace,
-        os.is_degraded
+        os.is_degraded,
+        os.is_trial_expired
       FROM org_effective_subscriptions os
       JOIN subscription_plans effective ON effective.id = os.effective_plan_id
       JOIN subscription_plans contracted ON contracted.id = os.contracted_plan_id
@@ -224,6 +229,7 @@ export async function verifySubscription(
       graceEndsAt: subscription.grace_ends_at ?? null,
       isInGrace: subscription.is_in_grace === true,
       isDegraded: subscription.is_degraded === true,
+      isTrialExpired: subscription.is_trial_expired === true,
     };
   } catch (error) {
     console.error("Error en verifySubscription:", error);
@@ -611,6 +617,8 @@ export async function ensureOrgExists(
   currency = "HNL",
   locale = DEFAULT_LOCALE
 ): Promise<{ orgId: number; roleId: number; roleName: string }> {
+  const safeTimezone = isValidTimeZone(timezone) ? timezone : DEFAULT_TIMEZONE;
+
   return withTransaction(async (tx) => {
     const [existing] = await tx`
       SELECT om.org_id, r.id AS role_id, r.name AS role_name
@@ -629,7 +637,7 @@ export async function ensureOrgExists(
     const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + userId;
     const [org] = await tx`
       INSERT INTO organizations (name, slug, timezone, currency, locale, owner_user_id)
-      VALUES (${orgName}, ${slug}, ${timezone}, ${currency}, ${locale}, ${userId})
+      VALUES (${orgName}, ${slug}, ${safeTimezone}, ${currency}, ${locale}, ${userId})
       ON CONFLICT (slug) DO NOTHING
       RETURNING id
     `;

@@ -1,3 +1,6 @@
+-- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03 y 04 en producción,
+-- en ese orden, ANTES de desplegar el código que consume estas migraciones.
+--
 -- Permiso de plan independiente para tarjetas de crédito.
 -- Idempotente: crea la feature si falta y sincroniza solo los planes que
 -- deben incluirla. Los planes ausentes se ignoran sin error.

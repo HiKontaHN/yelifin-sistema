@@ -50,7 +50,7 @@ const mainNav: NavItemDef[] = [
     title: "Inventario", url: "/inventory", icon: Package, activeIcon: PackageOpen, module: "INVENTORY",
     submenu: [
       { title: "Productos",    url: "/inventory",          subitem: "STOCK" },
-      { title: "Movimientos",  url: "/inventory/movements", subitem: "MOVEMENTS" },
+      { title: "Movimientos",  url: "/inventory/movements", subitem: "MOVEMENTS", feature: "inventory.movements" },
       { title: "En camino",    url: "/purchases/pending",   subitem: "INCOMING" },
     ],
   },

@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         os.grace_ends_at,
         os.is_in_grace,
         os.is_degraded,
+        os.is_trial_expired,
         (o.owner_user_id = ${user.id} OR r.is_owner = TRUE) AS is_owner
       FROM org_effective_subscriptions os
       JOIN organizations o ON o.id = os.org_id
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "El pago de la suscripción está pendiente y el acceso temporal está limitado al dueño de la organización",
+          needs_upgrade: true,
         },
         { status: 403 },
       );
@@ -165,6 +167,7 @@ export async function POST(req: NextRequest) {
           grace_ends_at: orgSub?.grace_ends_at ?? null,
           is_in_grace: orgSub?.is_in_grace === true,
           is_degraded: orgSub?.is_degraded === true,
+          is_trial_expired: orgSub?.is_trial_expired === true,
         },
       },
     });

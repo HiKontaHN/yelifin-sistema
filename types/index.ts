@@ -51,6 +51,7 @@ export interface UserSubscription {
   grace_ends_at: string | null;
   is_in_grace: boolean;
   is_degraded: boolean;
+  is_trial_expired: boolean;
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
@@ -80,6 +81,7 @@ export type FeatureKey =
   | 'inventory.view'
   | 'inventory.adjust'
   | 'inventory.purchases'
+  | 'inventory.movements'
   // SALES
   | 'sales.create'
   | 'sales.view'
@@ -91,6 +93,7 @@ export type FeatureKey =
   | 'finances.accounts'
   | 'finances.transactions'
   | 'finances.credit_cards'
+  | 'finances.custom_categories'
   | 'finances.reports'
   | 'finances.receivables_payables'
   // EVENTS

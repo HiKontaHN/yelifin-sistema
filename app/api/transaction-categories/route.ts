@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
-  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
   if (feature) return feature;
   const deny = await requireModule(auth.data, 'ADMIN', 'canEdit', 'CATEGORIES');
   if (deny) return deny;

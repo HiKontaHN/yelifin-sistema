@@ -46,7 +46,7 @@ function makeAuthUser(): AuthUser {
     isActive: true,
     subscription: {
       status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
-      graceEndsAt: null, isInGrace: false, isDegraded: false,
+      graceEndsAt: null, isInGrace: false, isDegraded: false, isTrialExpired: false,
     },
   };
 }

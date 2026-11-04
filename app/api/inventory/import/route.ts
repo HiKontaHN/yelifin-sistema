@@ -41,6 +41,8 @@ type RowResult = {
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const movementsFeature = await requireFeature(auth.data.orgId, "inventory.movements");
+  if (movementsFeature) return movementsFeature;
   const deny = await requireModule(auth.data, "INVENTORY", "canEdit");
   if (deny) return deny;
   const denyFeature = await requireFeature(auth.data.orgId, "products.bulk_import");

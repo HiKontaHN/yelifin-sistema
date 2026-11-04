@@ -11,6 +11,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useMe } from "@/hooks/swr/use-me";
 import { OwnerGuard } from "@/components/shared/owner-guard";
+import { SubscriptionStatusBanner } from "@/components/subscription-status-banner";
 
 export default function BillingSettingsPage() {
   return (
@@ -22,22 +23,14 @@ export default function BillingSettingsPage() {
 
 function BillingSettingsContent() {
   const { push } = useRouter();
-  const { subscription, org, isTrial, isPastDue, hasActiveSubscription, isLoading } = useMe();
+  const { subscription, org, isTrial, hasActiveSubscription, isLoading } = useMe();
 
   const planName = subscription?.contracted_plan?.name ?? subscription?.plan?.name ?? "Sin plan";
   const status = subscription?.status ?? "SIN_SUSCRIPCIÓN";
-  const graceEndLabel = subscription?.grace_ends_at
-    ? new Intl.DateTimeFormat("es-HN", {
-        dateStyle: "long",
-        timeStyle: "short",
-        timeZone: org?.timezone ?? "America/Tegucigalpa",
-      }).format(new Date(subscription.grace_ends_at))
-    : null;
-
   const statusLabel = (() => {
     switch (status) {
       case "TRIAL":
-        return "Prueba";
+        return subscription?.is_trial_expired ? "Prueba finalizada" : "Prueba";
       case "ACTIVE":
         return "Activa";
       case "PAST_DUE":
@@ -72,22 +65,7 @@ function BillingSettingsContent() {
         </div>
       </div>
 
-      {!isLoading && isPastDue && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          {subscription?.is_degraded ? (
-            <>
-              El período de gracia terminó{graceEndLabel ? ` el ${graceEndLabel}` : ""}. Hasta que se
-              confirme el pago, solo el dueño puede ingresar y la organización usa temporalmente el plan Gratis.
-            </>
-          ) : (
-            <>
-              Tu pago está pendiente. Mantendrás las funciones del plan contratado hasta
-              {graceEndLabel ? ` el ${graceEndLabel}` : " que termine el período de gracia"}; después se
-              aplicará temporalmente el plan Gratis.
-            </>
-          )}
-        </div>
-      )}
+      {!isLoading && <SubscriptionStatusBanner subscription={subscription} org={org} />}
 
       {/* Placeholder principal */}
       <Card>

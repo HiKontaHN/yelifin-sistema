@@ -1,7 +1,7 @@
 // app/api/inventory/existing/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
@@ -11,6 +11,8 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.movements");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit');
   if (deny) return deny;
 

@@ -1,6 +1,11 @@
+-- ORDEN DE DESPLIEGUE OBLIGATORIO: ejecutar 01, 02, 03 y 04 en producción,
+-- en ese orden, ANTES de desplegar el código que consume estas migraciones.
+--
 -- Plan Gratis usado como plan efectivo cuando una suscripción facturable
 -- permanece PAST_DUE después de su período de gracia.
 -- Idempotente y preparado para ejecución manual en producción.
+-- ADVERTENCIA: reejecutar este archivo restaura los límites y features
+-- declarados abajo; por tanto, pisa ajustes manuales hechos al plan Gratis.
 
 INSERT INTO subscription_plans (
   name,
@@ -58,6 +63,9 @@ ON CONFLICT (slug) DO UPDATE SET
 --   Cuentas financieras (2)       -> finances.accounts
 --   Transacciones                 -> finances.transactions
 --   Tarjetas de crédito           -> excluidas (finances.credit_cards)
+--   Movimientos de inventario     -> excluidos (inventory.movements)
+--   Categorías personalizadas    -> excluidas (finances.custom_categories);
+--                                    las predeterminadas siguen disponibles
 --   Reporte de ventas             -> reports.sales
 --
 -- Filas excluidas mediante ausencia de feature:
@@ -70,15 +78,11 @@ ON CONFLICT (slug) DO UPDATE SET
 --   otros reportes                -> reports.inventory / reports.profit /
 --                                    reports.events
 --
--- Filas sin feature key inequívoca en el catálogo actual:
+-- Otras superficies sin feature key propia:
 --   Panel general, perfil y suscripción no usan requireFeature.
---   Categorías predeterminadas no tienen feature propia; las categorías
---   financieras se habilitan indirectamente con finances.transactions.
---   Las rutas de movimientos de inventario no llaman requireFeature; solo
---   validan permisos del módulo. inventory.view sí es necesario para listar
---   productos y bodegas, por lo que omitirlo no resolvería esa separación.
---   Por eso no es posible separar completamente esas dos filas sin crear
---   feature keys nuevas y actualizar sus rutas, cambio fuera de este paso.
+--   inventory.view sigue siendo necesario para listar productos y bodegas.
+--   Las separaciones de movimientos y categorías personalizadas se crean
+--   en 04-inventory-movements-categories-features.sql.
 
 -- Asegura el subconjunto de claves que Gratis necesita incluso si el seed del
 -- catálogo no se ejecutó completo en un ambiente antiguo.

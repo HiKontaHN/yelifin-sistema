@@ -153,7 +153,7 @@ export function useMe() {
     subscription?.status === "ACTIVE" ||
     subscription?.status === "PAST_DUE";
 
-  const isTrial = subscription?.status === "TRIAL";
+  const isTrial = subscription?.status === "TRIAL" && !subscription.is_trial_expired;
   const isPastDue = subscription?.status === "PAST_DUE";
 
   return {

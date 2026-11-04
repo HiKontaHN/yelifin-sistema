@@ -81,6 +81,7 @@ describeDatabase("dashboard — integración con la base de desarrollo", () => {
       subscription: {
         status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
         graceEndsAt: null, isInGrace: false, isDegraded: false,
+        isTrialExpired: false,
       },
     };
 

@@ -44,6 +44,7 @@ function authRow(
     grace_ends_at: null,
     is_in_grace: false,
     is_degraded: false,
+    is_trial_expired: false,
     ...overrides,
   };
 }
@@ -164,6 +165,30 @@ describe("subscription guard", () => {
     expect(result.data?.subscription).toMatchObject({
       planSlug: "original",
       contractedPlanSlug: "original",
+      isDegraded: false,
+    });
+  });
+
+  it("expone Gratis para un TRIAL vencido sin bloquear a un miembro", async () => {
+    mockSql.mockResolvedValue([
+      authRow("ACTIVE", {
+        subscription_status: "TRIAL",
+        owner_user_id: 99,
+        role_is_owner: false,
+        plan_slug: "free",
+        contracted_plan_slug: "trial",
+        is_trial_expired: true,
+      }),
+    ]);
+
+    const result = await verifyAuth(request());
+
+    expect(result.status).toBe(200);
+    expect(result.data?.subscription).toMatchObject({
+      status: "TRIAL",
+      planSlug: "free",
+      contractedPlanSlug: "trial",
+      isTrialExpired: true,
       isDegraded: false,
     });
   });

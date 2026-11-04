@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useMe } from "@/hooks/swr/use-me";
 import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
 import {
   useWarehouses,
   useCreateWarehouse,
@@ -297,7 +298,8 @@ export default function WarehousesPage() {
   const { can_edit: canEditWarehouses, isLoading: permLoading } = useModulePermissions("ADMIN", "WAREHOUSES");
   const { warehouses, isLoading: whLoading, mutate } = useWarehouses();
   const { updateWarehouse } = useUpdateWarehouse();
-  const { transfers, isLoading: transfersLoading } = useWarehouseTransfers();
+  const { canViewMovements } = useFeatures();
+  const { transfers, isLoading: transfersLoading } = useWarehouseTransfers(canViewMovements);
   const timezone = useTimezone();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -396,7 +398,7 @@ export default function WarehousesPage() {
           </CardContent>
         </Card>
 
-        <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+        {canViewMovements && <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <TransferStockCard warehouses={activeWarehouses} />
           <Card>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</CardTitle></CardHeader>
@@ -410,7 +412,7 @@ export default function WarehousesPage() {
               ))}
             </CardContent>
           </Card>
-        </main>
+        </main>}
       </div>
 
       <CreateWarehouseDialog

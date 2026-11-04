@@ -29,6 +29,7 @@ import {
 } from "@/components/shared/date-range-picker";
 import { useDebounce } from "@/hooks/use-debounce";
 import { addCalendarDays, formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { FeatureGate } from "@/components/shared/feature-gate";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -352,7 +353,7 @@ function MobileDetail({ m, format, showCosts, showProfit }: { m: Movement; forma
 
 // ── Page ───────────────────────────────────────────────────────────────
 
-export default function MovementsPage() {
+function MovementsPageContent() {
   const { push } = useRouter();
   const timezone = useTimezone();
   const dateKeyFormatter = useMemo(() => new Intl.DateTimeFormat("en-CA", {
@@ -590,5 +591,13 @@ export default function MovementsPage() {
         ]}
       />
     </div>
+  );
+}
+
+export default function MovementsPage() {
+  return (
+    <FeatureGate feature="inventory.movements">
+      <MovementsPageContent />
+    </FeatureGate>
   );
 }

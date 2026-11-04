@@ -56,6 +56,7 @@ const profileRow = {
   grace_ends_at: null,
   is_in_grace: false,
   is_degraded: false,
+  is_trial_expired: false,
   plan_id: 4,
   plan_name: "Pro",
   plan_slug: "pro",
@@ -196,6 +197,43 @@ describe("GET /api/auth/me", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toContain("limitado al dueño");
+  });
+
+  it("expone un TRIAL vencido como Gratis sin bloquear al miembro", async () => {
+    mockVerifySessionCookie.mockResolvedValue({
+      uid: "firebase-1",
+      email_verified: true,
+    });
+    mockGetUser.mockResolvedValue({
+      uid: "firebase-1",
+      email: "user@example.com",
+      displayName: "Usuario",
+      emailVerified: true,
+      disabled: false,
+    });
+    mockSql.mockResolvedValue([{
+      ...profileRow,
+      owner_user_id: 99,
+      role_is_owner: false,
+      subscription_status: "TRIAL",
+      plan_name: "Gratis",
+      plan_slug: "free",
+      contracted_plan_name: "Prueba",
+      contracted_plan_slug: "trial",
+      is_trial_expired: true,
+    }]);
+
+    const response = await GET(authenticatedRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.subscription).toMatchObject({
+      status: "TRIAL",
+      plan: { slug: "free" },
+      contracted_plan: { slug: "trial" },
+      is_trial_expired: true,
+      is_degraded: false,
+    });
   });
 
   it("rechaza una cookie inválida sin consultar Neon", async () => {

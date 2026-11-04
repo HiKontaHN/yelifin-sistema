@@ -16,7 +16,11 @@ class OnboardingAlreadyCompletedError extends Error {}
 // GET /api/onboarding — verificar si el usuario completó el onboarding
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
-  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  if (!isAuthSuccess(auth)) return createErrorResponse(
+    auth.error,
+    auth.status,
+    "needsUpgrade" in auth ? auth.needsUpgrade : false,
+  );
 
   try {
     const { userId } = auth.data;
@@ -44,7 +48,11 @@ export async function GET(request: NextRequest) {
 // Body: { currency: string, industry_id?: number, accounts: { name: string, type: string, balance?: number }[] }
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
-  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  if (!isAuthSuccess(auth)) return createErrorResponse(
+    auth.error,
+    auth.status,
+    "needsUpgrade" in auth ? auth.needsUpgrade : false,
+  );
   if (!auth.data.isOwner)
     return createErrorResponse("Solo el dueño puede completar el onboarding", 403);
 

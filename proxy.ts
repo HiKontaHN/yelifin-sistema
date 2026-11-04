@@ -57,7 +57,11 @@ function enforcePlanRules(
 const SESSION_COOKIE = "hikonta_nav";
 const SESSION_TTL = 600; // 10 minutos
 
-type Session = { onboarding_completed: boolean; plan_slug: string | null };
+type Session = {
+  onboarding_completed: boolean;
+  plan_slug: string | null;
+  access_blocked?: boolean;
+};
 
 function readSessionCookie(request: NextRequest, uid: string): Session | null {
   const raw = request.cookies.get(SESSION_COOKIE)?.value;
@@ -68,7 +72,7 @@ function readSessionCookie(request: NextRequest, uid: string): Session | null {
 }
 
 function attachSessionCookie(res: NextResponse, session: Session, uid: string) {
-  if (!session.onboarding_completed) return;
+  if (!session.onboarding_completed || session.access_blocked) return;
   res.cookies.set(SESSION_COOKIE, `1|${session.plan_slug ?? ""}|${uid}`, {
     httpOnly: true,
     sameSite: "lax",
@@ -82,11 +86,18 @@ function attachSessionCookie(res: NextResponse, session: Session, uid: string) {
 async function fetchSession(
   sessionCookie: string,
   requestUrl: string
-): Promise<{ onboarding_completed: boolean; plan_slug: string | null } | null> {
+): Promise<Session | null> {
   try {
     const res = await fetch(new URL("/api/onboarding", requestUrl), {
       headers: { Cookie: `hikonta_auth=${sessionCookie}` },
     });
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({}));
+      if (body?.needs_upgrade === true) {
+        return { onboarding_completed: true, plan_slug: null, access_blocked: true };
+      }
+      return null;
+    }
     if (!res.ok) return null;
     const body = await res.json();
     return {
