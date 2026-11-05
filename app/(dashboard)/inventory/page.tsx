@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { useInventory, VariantStock } from "@/hooks/swr/use-inventory";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useProducts, useDeleteVariant } from "@/hooks/swr/use-products";
 import { Fab } from "@/components/ui/fab";
@@ -541,6 +542,13 @@ export default function InventoryPage() {
   // trae de vuelta esta misma URL con los filtros ya aplicados.
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [stockFilter, setStockFilter] = useState(() => searchParams.get("stock") ?? "in_stock");
+  // Filtro por bodega: "all" = todas. Solo se muestra si hay 2+ bodegas activas.
+  const [warehouseFilter, setWarehouseFilter] = useState(() => searchParams.get("bodega") ?? "all");
+  const { activeWarehouses } = useWarehouses();
+  const showWarehouseFilter = activeWarehouses.length > 1;
+  const selectedWarehouseId = showWarehouseFilter && warehouseFilter !== "all" && activeWarehouses.some((w) => String(w.id) === warehouseFilter)
+    ? Number(warehouseFilter)
+    : undefined;
   const [page, setPage] = useState(() => {
     const p = Number(searchParams.get("page"));
     return Number.isInteger(p) && p > 0 ? p : 1;
@@ -556,7 +564,7 @@ export default function InventoryPage() {
   useEffect(() => {
     if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
     setPage(1);
-  }, [debouncedSearch, stockFilter]);
+  }, [debouncedSearch, stockFilter, warehouseFilter]);
 
   // Reflejar los filtros en la URL (replace, no push, para no ensuciar el
   // historial) — es lo que permite que "volver" desde /inventory/[id]
@@ -565,16 +573,18 @@ export default function InventoryPage() {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (stockFilter !== "in_stock") params.set("stock", stockFilter);
+    if (warehouseFilter !== "all") params.set("bodega", warehouseFilter);
     if (page > 1) params.set("page", String(page));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [debouncedSearch, stockFilter, page, pathname, replace]);
+  }, [debouncedSearch, stockFilter, warehouseFilter, page, pathname, replace]);
 
   const { inventory, stats, total, isLoading: loadingInventory, mutate: mutateInventory } = useInventory({
     search: debouncedSearch || undefined,
     stock: stockFilter !== "all" ? stockFilter : undefined,  // "all" omits the param so API returns everything
     page,
     limit: pageSize,
+    warehouse: selectedWarehouseId,
   });
   const { products, mutate: mutateProducts } = useProducts();
   const { deleteVariant, isDeleting: isDeletingVariant } = useDeleteVariant();
@@ -617,7 +627,7 @@ export default function InventoryPage() {
     });
   };
 
-  const hasFilters = search || stockFilter !== "in_stock";
+  const hasFilters = search || stockFilter !== "in_stock" || selectedWarehouseId !== undefined;
 
   const handleSuccess = () => {
     mutateProducts();
@@ -893,11 +903,24 @@ export default function InventoryPage() {
             <SelectItem value="services">Servicios</SelectItem>
           </SelectContent>
         </Select>
+        {showWarehouseFilter && (
+          <Select value={selectedWarehouseId !== undefined ? warehouseFilter : "all"} onValueChange={setWarehouseFilter}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Bodega" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las bodegas</SelectItem>
+              {activeWarehouses.map((w) => (
+                <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {hasFilters && (
           <Button
             variant="ghost" size="sm"
             className="gap-1.5 text-muted-foreground shrink-0"
-            onClick={() => { setSearch(""); setStockFilter("in_stock"); setPage(1); }}
+            onClick={() => { setSearch(""); setStockFilter("in_stock"); setWarehouseFilter("all"); setPage(1); }}
           >
             <X className="size-3.5" /> Limpiar
           </Button>
