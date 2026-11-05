@@ -11,6 +11,7 @@ import { ShoppingBag, Plus, Minus, X, Search } from "lucide-react";
 import { useSupplies } from "@/hooks/swr/use-supplies";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { finiteCost } from "@/lib/sale-estimate";
 import { cn } from "@/lib/utils";
 
 export type SupplyUsed = {
@@ -56,7 +57,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
           name:      supply.name,
           unit:      supply.unit,
           quantity:  1,
-          unit_cost: Number(supply.unit_cost),
+          unit_cost: finiteCost(supply.unit_cost),
         },
       ]);
     }
@@ -76,7 +77,11 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
     );
   };
 
-  const totalCost = selected.reduce((acc, s) => acc + s.quantity * Number(s.unit_cost ?? 0), 0);
+  const selectedCostsKnown = selected.every((s) => finiteCost(s.unit_cost) != null);
+  const totalCost = selected.reduce(
+    (acc, s) => acc + s.quantity * (finiteCost(s.unit_cost) ?? 0),
+    0,
+  );
 
   const handleConfirm = () => {
     onConfirm(selected.filter((s) => s.quantity > 0));
@@ -95,7 +100,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
       width="md"
       footer={
         <div className="w-full space-y-3">
-          {showCosts && selected.length > 0 && (
+          {showCosts && selected.length > 0 && selectedCostsKnown && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Costo suministros</span>
               <Badge variant="outline" className="font-bold text-destructive border-destructive/30">
@@ -133,6 +138,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
           ) : (
             filtered.map((supply) => {
               const sel = getSelected(supply.id);
+              const unitCost = finiteCost(supply.unit_cost);
               return (
                 <div
                   key={supply.id}
@@ -163,8 +169,8 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
                       <p className="text-sm font-medium truncate">{supply.name}</p>
                       <p className="text-xs text-muted-foreground">
                         Stock: {supply.stock} {supply.unit ?? "uds"}
-                        {showCosts && (
-                          <> · {format(Number(supply.unit_cost))}/{supply.unit ?? "ud"}</>
+                        {showCosts && unitCost != null && (
+                          <> · {format(unitCost)}/{supply.unit ?? "ud"}</>
                         )}
                       </p>
                     </div>

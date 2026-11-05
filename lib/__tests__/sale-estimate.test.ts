@@ -2,7 +2,9 @@ import {
   applyEstimatedUnitCosts,
   estimateSaleProfit,
   estimateUnitCost,
+  finiteCost,
   hydrateSupplyCosts,
+  resolveSupplyUnitCost,
 } from "../sale-estimate";
 
 const inventory = [
@@ -17,6 +19,20 @@ const inventory = [
     variants_stock: [],
   },
 ];
+
+describe("resolveSupplyUnitCost", () => {
+  it("keeps null instead of turning it into zero", () => {
+    expect(finiteCost(null)).toBeNull();
+    expect(resolveSupplyUnitCost(null, null)).toBeNull();
+    expect(resolveSupplyUnitCost(undefined, Number.NaN)).toBeNull();
+  });
+
+  it("uses the line cost, then the catalog, including a real zero", () => {
+    expect(resolveSupplyUnitCost(0, 4)).toBe(0);
+    expect(resolveSupplyUnitCost(null, 4)).toBe(4);
+    expect(resolveSupplyUnitCost(2.5, 4)).toBe(2.5);
+  });
+});
 
 describe("estimateUnitCost", () => {
   it("uses base average, variant average, service cost, or null when hidden", () => {

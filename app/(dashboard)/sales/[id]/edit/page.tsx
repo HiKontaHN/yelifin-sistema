@@ -36,7 +36,7 @@ import { useCustomers } from "@/hooks/swr/use-costumers";
 import { useMe } from "@/hooks/swr/use-me";
 import { useSupplies } from "@/hooks/swr/use-supplies";
 import { useInventory } from "@/hooks/swr/use-inventory";
-import { applyEstimatedUnitCosts, estimateUnitCost, hydrateSupplyCosts } from "@/lib/sale-estimate";
+import { applyEstimatedUnitCosts, estimateUnitCost, finiteCost, hydrateSupplyCosts, resolveSupplyUnitCost } from "@/lib/sale-estimate";
 import { Product, ProductVariant } from "@/types";
 
 import { PosProductGrid } from "@/components/sales/pos/product-grid";
@@ -254,7 +254,7 @@ function EditSaleContent() {
           name: s.supply_name,
           unit: null,
           quantity: Number(s.quantity),
-          unit_cost: s.unit_cost == null ? null : Number(s.unit_cost),
+          unit_cost: finiteCost(s.unit_cost),
         }))
       );
     }
@@ -465,14 +465,11 @@ function EditSaleContent() {
   const handleSuppliesConfirm = (supplies: SupplyUsed[]) =>
     setSuppliesUsed(supplies);
 
-  const supplyCostForSave = (row: SupplyUsed) => {
-    if (row.unit_cost != null && Number.isFinite(Number(row.unit_cost))) {
-      return Number(row.unit_cost);
-    }
-    const match = supplies.find((supply) => supply.id === row.supply_id);
-    const cost = Number(match?.unit_cost);
-    return Number.isFinite(cost) ? cost : 0;
-  };
+  const supplyCostForSave = (row: SupplyUsed) =>
+    resolveSupplyUnitCost(
+      row.unit_cost,
+      supplies.find((supply) => supply.id === row.supply_id)?.unit_cost,
+    );
 
   // Guardar como pendiente (sin modal)
   const handleSavePending = async () => {

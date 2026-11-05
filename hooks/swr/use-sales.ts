@@ -31,7 +31,7 @@ export type CreateSaleInput = {
   account_id?:     number | null;
   notes?:          string;
   tax_rate?:       number;
-  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number }[];
+  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number | null }[];
   event_id?:       number;
   status?:         SaleStatus;
   credit_sale?:    boolean;
@@ -53,7 +53,7 @@ export type EditSaleInput = {
   customer_id?:    number | null;
   account_id:      number;
   status?:         SaleStatus;
-  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number }[];
+  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number | null }[];
 };
 
 export type PatchSaleInput = ConfirmSaleInput | CancelSaleInput | EditSaleInput;

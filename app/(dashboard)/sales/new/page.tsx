@@ -32,7 +32,7 @@ import { MobileCartSheet } from "@/components/sales/pos/mobile-cart-sheet";
 
 import { VariantPickerSheet } from "@/components/sales/pos/variant-picker-sheet";
 import { useInventory }        from "@/hooks/swr/use-inventory";
-import { applyEstimatedUnitCosts, estimateUnitCost } from "@/lib/sale-estimate";
+import { applyEstimatedUnitCosts, estimateUnitCost, resolveSupplyUnitCost } from "@/lib/sale-estimate";
 import { useMe } from "@/hooks/swr/use-me";
 import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
@@ -313,7 +313,10 @@ function NewSaleContent() {
           ? suppliesUsed.map((s) => ({
               supply_id: s.supply_id,
               quantity: s.quantity,
-              unit_cost: Number(s.unit_cost ?? 0),
+              unit_cost: resolveSupplyUnitCost(
+                s.unit_cost,
+                supplies.find((row) => row.id === s.supply_id)?.unit_cost,
+              ),
             }))
           : undefined,
         ...(eventId && { event_id: eventId }),

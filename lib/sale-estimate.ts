@@ -37,10 +37,18 @@ export type SaleEstimate = {
   costsKnown: boolean;
 };
 
-function finiteCost(value: number | null | undefined): number | null {
+export function finiteCost(value: number | null | undefined): number | null {
   if (value == null) return null;
   const cost = Number(value);
   return Number.isFinite(cost) ? cost : null;
+}
+
+/** Costo de la línea si es finito; si no, el del catálogo. null si ninguno lo es. */
+export function resolveSupplyUnitCost(
+  provided: number | null | undefined,
+  catalogCost: number | null | undefined,
+): number | null {
+  return finiteCost(provided) ?? finiteCost(catalogCost);
 }
 
 export function estimateUnitCost(
