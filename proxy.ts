@@ -116,7 +116,7 @@ export async function proxy(request: NextRequest) {
   // ── Rate limit global para toda la API ─────────────────────────────
   // Protección base anti-abuso/DoS por IP para /api/*. Endpoints sensibles
   // (login, register) aplican además su propio límite más estricto dentro
-  // del route handler. Almacén compartido (Upstash) o memoria — ver lib/rate-limit.ts.
+  // del route handler. Este límite global usa memoria por instancia.
   if (pathname.startsWith("/api")) {
     // Responder el preflight sin consumir el límite ni requerir una sesión.
     if (process.env.NODE_ENV === "development" && request.method === "OPTIONS") {

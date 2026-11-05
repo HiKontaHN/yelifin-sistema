@@ -1,4 +1,4 @@
-import { getClientIP, rateLimit } from "@/lib/rate-limit";
+import { getClientIP, rateLimit, sharedRateLimit } from "@/lib/rate-limit";
 
 const req = (headers: Record<string, string>) => new Request("http://x", { headers });
 
@@ -29,22 +29,47 @@ describe("rateLimit", () => {
     expect((await rateLimit(key, 2, 1000)).allowed).toBe(false);
   });
 
+  it("nunca llama a fetch aunque Upstash esté configurado", async () => {
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.test";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "t";
+    const fetchMock = jest.spyOn(global, "fetch");
+    await rateLimit(`local:${Math.random()}`, 3, 60000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("sharedRateLimit", () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+    jest.restoreAllMocks();
+  });
+
   it("con Upstash usa el contador compartido", async () => {
     process.env.UPSTASH_REDIS_REST_URL = "https://redis.test";
     process.env.UPSTASH_REDIS_REST_TOKEN = "t";
     const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify([{ result: 4 }, { result: 0 }, { result: 30000 }])),
     );
-    const r = await rateLimit("k", 3, 60000);
+    const r = await sharedRateLimit("k", 3, 60000);
     expect(fetchMock).toHaveBeenCalledWith("https://redis.test/pipeline", expect.anything());
     expect(r).toEqual({ allowed: false, remaining: 0, retryAfterSec: 30 });
   });
 
-  it("si Redis falla degrada a memoria", async () => {
+  it("si Redis falla degrada a memoria y avisa una sola vez sin incluir la IP", async () => {
     process.env.UPSTASH_REDIS_REST_URL = "https://redis.test";
     process.env.UPSTASH_REDIS_REST_TOKEN = "t";
     jest.spyOn(global, "fetch").mockRejectedValue(new Error("down"));
-    jest.spyOn(console, "error").mockImplementation(() => {});
-    expect((await rateLimit(`fb:${Math.random()}`, 1, 1000)).allowed).toBe(true);
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const ip = "203.0.113.42";
+
+    expect((await sharedRateLimit(`login:${ip}`, 2, 1000)).allowed).toBe(true);
+    expect((await sharedRateLimit(`login:${ip}`, 2, 1000)).allowed).toBe(true);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[rate-limit] REDIS_FALLBACK"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("action=login"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("error=down"));
+    expect(warn.mock.calls.flat().join(" ")).not.toContain(ip);
   });
 });

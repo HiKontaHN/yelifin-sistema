@@ -15,7 +15,7 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { createErrorResponse } from "@/lib/auth";
 import { sendMail } from "@/lib/mailer";
 import { resetPasswordTemplate } from "@/lib/email-templates";
-import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { sharedRateLimit, getClientIP } from "@/lib/rate-limit";
 
 const GENERIC_RESPONSE = {
   data: { message: "Si el correo está registrado, recibirás un enlace en breve." },
@@ -23,7 +23,7 @@ const GENERIC_RESPONSE = {
 
 export async function POST(request: NextRequest) {
   // 5 solicitudes por IP cada 10 minutos.
-  const { allowed, retryAfterSec } = await rateLimit(
+  const { allowed, retryAfterSec } = await sharedRateLimit(
     `send-password-reset:${getClientIP(request)}`,
     5,
     10 * 60 * 1000,
@@ -43,7 +43,11 @@ export async function POST(request: NextRequest) {
     // 3 solicitudes por correo cada hora, aunque cambie la IP. Respuesta
     // genérica para no revelar nada (el límite aplica exista o no la cuenta).
     const emailKey = createHash("sha256").update(email).digest("hex");
-    const byEmail = await rateLimit(`send-password-reset-email:${emailKey}`, 3, 60 * 60 * 1000);
+    const byEmail = await sharedRateLimit(
+      `send-password-reset-email:${emailKey}`,
+      3,
+      60 * 60 * 1000,
+    );
     if (!byEmail.allowed) return Response.json(GENERIC_RESPONSE);
 
     try {
