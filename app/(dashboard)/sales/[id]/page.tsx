@@ -79,6 +79,8 @@ export default function SaleDetailPage({ params }: Props) {
   const isPending   = sale.status === "PENDING";
   const isCompleted = sale.status === "COMPLETED";
   const isCancelled = sale.status === "CANCELLED";
+  const showEdit      = canEdit && !isCancelled;
+  const showDocuments = isCompleted;
   const paymentStatus = sale.payment_status ?? (isPending ? "PENDING" : "PAID");
   const amountPaid = Number(sale.amount_paid ?? (paymentStatus === "PAID" ? sale.total : 0));
   const amountDue = Number(sale.amount_due ?? 0);
@@ -169,54 +171,68 @@ export default function SaleDetailPage({ params }: Props) {
             </p>
           </div>
 
-          {/* Botones factura/ticket — solo visibles en sm+ */}
-          <div className="hidden sm:flex gap-2 shrink-0">
-            {canEdit && !isCancelled && (
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+          {/* Editar y documentos — solo visibles en sm+ */}
+          {(showEdit || showDocuments) && (
+            <div className="hidden sm:flex gap-2 shrink-0">
+              {showEdit && (
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                  <Link href={`/sales/${sale.id}/edit`}>
+                    <NotebookPen className="size-3.5" />
+                    Editar
+                  </Link>
+                </Button>
+              )}
+              {showDocuments && (
+                <>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                    <Link href={`/sales/${sale.id}/invoice`}>
+                      <FileText className="size-3.5" />
+                      Ticket PDF
+                    </Link>
+                  </Button>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                    <Link href={`/sales/${sale.id}/receipt`}>
+                      <Printer className="size-3.5" />
+                      Ticket
+                    </Link>
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Misma fila de acciones en móvil */}
+        {(showEdit || showDocuments) && (
+          <div className={`grid gap-2 sm:hidden ${
+            showEdit && showDocuments ? "grid-cols-3" : showDocuments ? "grid-cols-2" : "grid-cols-1"
+          }`}>
+            {showEdit && (
+              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
                 <Link href={`/sales/${sale.id}/edit`}>
                   <NotebookPen className="size-3.5" />
                   Editar
                 </Link>
               </Button>
             )}
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-              <Link href={`/sales/${sale.id}/invoice`}>
-                <FileText className="size-3.5" />
-                Ticket PDF
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-              <Link href={`/sales/${sale.id}/receipt`}>
-                <Printer className="size-3.5" />
-                Ticket
-              </Link>
-            </Button>
+            {showDocuments && (
+              <>
+                <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
+                  <Link href={`/sales/${sale.id}/invoice`}>
+                    <FileText className="size-3.5" />
+                    Factura PDF
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
+                  <Link href={`/sales/${sale.id}/receipt`}>
+                    <Printer className="size-3.5" />
+                    Ticket
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
-        </div>
-
-        {/* Botones factura/ticket en móvil — segunda fila */}
-        <div className={`grid gap-2 sm:hidden ${canEdit && !isCancelled ? "grid-cols-3" : "grid-cols-2"}`}>
-          {canEdit && !isCancelled && (
-            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
-              <Link href={`/sales/${sale.id}/edit`}>
-                <NotebookPen className="size-3.5" />
-                Editar
-              </Link>
-            </Button>
-          )}
-          <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
-            <Link href={`/sales/${sale.id}/invoice`}>
-              <FileText className="size-3.5" />
-              Factura PDF
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
-            <Link href={`/sales/${sale.id}/receipt`}>
-              <Printer className="size-3.5" />
-              Ticket
-            </Link>
-          </Button>
-        </div>
+        )}
       </div>
 
    
