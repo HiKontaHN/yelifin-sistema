@@ -33,6 +33,12 @@ import {
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import {
+  DATA_TABLE_PAGE_SIZE_OPTIONS,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
+  DataTableTimeSection,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
+import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -330,6 +336,8 @@ export default function WarehousesPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const [transferPage, setTransferPage] = useState(1);
+  const [transferPageSize, setTransferPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const isLoading = meLoading || whLoading || permLoading;
 
@@ -363,6 +371,34 @@ export default function WarehousesPage() {
   }
 
   const activeWarehouses = warehouses.filter((w) => w.is_active);
+  const paginatedTransfers = transfers.slice(
+    (transferPage - 1) * transferPageSize,
+    transferPage * transferPageSize,
+  );
+  const transferColumns: DataTableTimeSectionColumn<(typeof transfers)[number]>[] = [
+    {
+      id: "time", header: "Hora", width: 90,
+      cell: (transfer) => formatInTZ(transfer.created_at, timezone, { hour: "2-digit", minute: "2-digit" }),
+    },
+    {
+      id: "route", header: "Origen → Destino", width: "clamp(12rem, 24vw, 18rem)",
+      cell: (transfer) => <span className="inline-flex items-center gap-1 font-medium">{transfer.from_warehouse_name}<ArrowRightLeft className="size-3 shrink-0 text-muted-foreground" />{transfer.to_warehouse_name}</span>,
+    },
+    {
+      id: "items", header: "Productos",
+      cell: (transfer) => <div className="space-y-0.5 text-xs text-muted-foreground">{transfer.items.map((item, index) => <p key={index}>{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}</div>,
+    },
+    {
+      id: "units", header: "Unidades", width: 90, align: "right", className: "font-medium tabular-nums",
+      cell: (transfer) => transfer.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+    },
+    {
+      id: "notes", header: "Notas", width: "clamp(8rem, 18vw, 14rem)",
+      cell: (transfer) => <span className="block truncate" title={transfer.notes ?? undefined}>{transfer.notes || "-"}</span>,
+    },
+  ];
+  const transferDateKey = (transfer: (typeof transfers)[number]) => formatInTZ(transfer.created_at, timezone, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const renderTransferDate = (_key: string, rows: readonly (typeof transfers)[number][]) => formatInTZ(rows[0].created_at, timezone, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:h-full lg:min-h-0 md:gap-6">
@@ -426,18 +462,44 @@ export default function WarehousesPage() {
 
         {(canAdjustInventory || canViewMovements) && <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           {canAdjustInventory && <TransferStockCard warehouses={activeWarehouses} />}
-          {canViewMovements && <Card>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</CardTitle></CardHeader>
-            <CardContent className="divide-y divide-border p-0">
-              {transfersLoading ? <div className="p-6"><Skeleton className="h-16 rounded-lg" /></div> : transfers.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin transferencias todavía.</div> : transfers.map((t) => (
-                <div key={t.id} className="space-y-1 px-6 py-3">
-                  <div className="flex items-center justify-between gap-2 text-sm"><span className="font-medium">{t.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {t.to_warehouse_name}</span><span className="shrink-0 text-xs text-muted-foreground">{formatInTZ(t.created_at, timezone, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
-                  {t.items.map((item, i) => <p key={i} className="text-xs text-muted-foreground">{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}
-                  {t.notes && <p className="text-xs italic text-muted-foreground">"{t.notes}"</p>}
-                </div>
-              ))}
-            </CardContent>
-          </Card>}
+          {canViewMovements && <section>
+            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</h2>
+            <DataTableTimeSection
+              columns={transferColumns}
+              data={paginatedTransfers}
+              getRowKey={(transfer) => transfer.id}
+              getGroupKey={transferDateKey}
+              renderGroupHeader={renderTransferDate}
+              renderMobileRow={(transfer) => (
+                <Card key={transfer.id}>
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium">{transfer.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {transfer.to_warehouse_name}</p>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatInTZ(transfer.created_at, timezone, { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
+                      {transfer.items.map((item, index) => <p key={index}>{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}
+                    </div>
+                    <p className="truncate text-xs italic text-muted-foreground">{transfer.notes || "-"}</p>
+                  </CardContent>
+                </Card>
+              )}
+              isLoading={transfersLoading}
+              emptyState="Sin transferencias todavía."
+              recordLabel="transferencias"
+              ariaLabel="Transferencias recientes"
+              minWidth={760}
+              stickyOffset="0px"
+              pagination={{
+                page: transferPage,
+                pageSize: transferPageSize,
+                total: transfers.length,
+                onPageChange: setTransferPage,
+                onPageSizeChange: (size) => { setTransferPage(1); setTransferPageSize(size); },
+                pageSizeOptions: DATA_TABLE_PAGE_SIZE_OPTIONS,
+              }}
+            />
+          </section>}
         </main>}
       </div>
 
