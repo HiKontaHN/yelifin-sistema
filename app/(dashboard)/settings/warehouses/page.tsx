@@ -18,6 +18,7 @@ import {
 } from "@/hooks/swr/use-warehouses";
 
 import { Button }   from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
 import { Badge }    from "@/components/ui/badge";
@@ -257,14 +258,14 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
         <div className="border-t pt-5">
           <Label className="text-xs">Producto</Label>
           <div className="mt-3 space-y-3">
-            {lines.map((line) => {
+            {lines.map((line, index) => {
               const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
               const selectedElsewhere = new Set(lines.filter((other) => other.id !== line.id).map((other) => other.productKey));
               const availableItems = stock
                 .filter((s) => !selectedElsewhere.has(keyOf(s)))
                 .map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }));
               return (
-                <div key={line.id} className="grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto]">
+                <div key={line.id} className="grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto_auto]">
                   <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
                     <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.max(1, Number(item.quantity) - 1)) } : item))} disabled={isCreating || Number(line.quantity) <= 1}>−</button>
                     <span className="text-sm tabular-nums">{line.quantity}</span>
@@ -283,12 +284,21 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
                   <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => setLines((current) => current.length === 1 ? [{ ...current[0], productKey: "", quantity: "1" }] : current.filter((item) => item.id !== line.id))} disabled={isCreating}>
                     <Trash2 className="size-4 text-muted-foreground" />
                   </Button>
+                  {/* El boton vive en la ultima fila; en las demas queda un hueco invisible para alinear columnas */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn("h-10 gap-1.5 whitespace-nowrap", index !== lines.length - 1 && "hidden md:inline-flex md:invisible")}
+                    aria-hidden={index !== lines.length - 1}
+                    tabIndex={index !== lines.length - 1 ? -1 : undefined}
+                    onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((item) => item.id), 0) + 1, productKey: "", quantity: "1" }])}
+                    disabled={isCreating || !fromId}
+                  >
+                    <Plus className="size-3.5" /> Agregar producto
+                  </Button>
                 </div>
               );
             })}
-            <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((line) => line.id), 0) + 1, productKey: "", quantity: "1" }])} disabled={isCreating || !fromId}>
-              <Plus className="size-3.5" /> Agregar producto
-            </Button>
           </div>
         </div>
 
