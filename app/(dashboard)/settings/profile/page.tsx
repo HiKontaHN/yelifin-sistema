@@ -110,7 +110,7 @@ export default function ProfilePage() {
 
       {/* General */}
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Building2 className="size-4 text-muted-foreground" />
             General
@@ -162,7 +162,7 @@ export default function ProfilePage() {
 
       {/* Seguridad */}
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Lock className="size-4 text-muted-foreground" />
             Seguridad

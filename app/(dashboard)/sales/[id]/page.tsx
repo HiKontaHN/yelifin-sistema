@@ -342,8 +342,8 @@ export default function SaleDetailPage({ params }: Props) {
 
       {paymentStatus !== "PAID" && (
         <Card className="border-blue-200 bg-blue-50/40 dark:bg-blue-950/20">
-          <CardHeader className="pb-3"><CardTitle className="text-base">Estado del pago</CardTitle></CardHeader>
-          <CardContent className="pt-0">
+          <CardHeader><CardTitle className="text-base">Estado del pago</CardTitle></CardHeader>
+          <CardContent>
             <SummaryStats
               ariaLabel="Estado del pago"
               columns="three"
