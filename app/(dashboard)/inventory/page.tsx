@@ -543,11 +543,14 @@ export default function InventoryPage() {
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [stockFilter, setStockFilter] = useState(() => searchParams.get("stock") ?? "in_stock");
   // Filtro por bodega: "all" = todas. Solo se muestra si hay 2+ bodegas activas.
-  const [warehouseFilter, setWarehouseFilter] = useState(() => searchParams.get("bodega") ?? "all");
-  const { activeWarehouses } = useWarehouses();
+  // "" = sin eleccion del usuario -> se usa la bodega principal (is_default).
+  const [warehouseFilter, setWarehouseFilter] = useState(() => searchParams.get("bodega") ?? "");
+  const { activeWarehouses, defaultWarehouse } = useWarehouses();
   const showWarehouseFilter = activeWarehouses.length > 1;
-  const selectedWarehouseId = showWarehouseFilter && warehouseFilter !== "all" && activeWarehouses.some((w) => String(w.id) === warehouseFilter)
-    ? Number(warehouseFilter)
+  const defaultWarehouseKey = defaultWarehouse ? String(defaultWarehouse.id) : "all";
+  const effectiveWarehouseFilter = warehouseFilter || defaultWarehouseKey;
+  const selectedWarehouseId = showWarehouseFilter && effectiveWarehouseFilter !== "all" && activeWarehouses.some((w) => String(w.id) === effectiveWarehouseFilter)
+    ? Number(effectiveWarehouseFilter)
     : undefined;
   const [page, setPage] = useState(() => {
     const p = Number(searchParams.get("page"));
@@ -573,11 +576,11 @@ export default function InventoryPage() {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (stockFilter !== "in_stock") params.set("stock", stockFilter);
-    if (warehouseFilter !== "all") params.set("bodega", warehouseFilter);
+    if (warehouseFilter && warehouseFilter !== defaultWarehouseKey) params.set("bodega", warehouseFilter);
     if (page > 1) params.set("page", String(page));
     const qs = params.toString();
     replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [debouncedSearch, stockFilter, warehouseFilter, page, pathname, replace]);
+  }, [debouncedSearch, stockFilter, warehouseFilter, defaultWarehouseKey, page, pathname, replace]);
 
   const { inventory, stats, total, isLoading: loadingInventory, mutate: mutateInventory } = useInventory({
     search: debouncedSearch || undefined,
@@ -627,7 +630,7 @@ export default function InventoryPage() {
     });
   };
 
-  const hasFilters = search || stockFilter !== "in_stock" || selectedWarehouseId !== undefined;
+  const hasFilters = search || stockFilter !== "in_stock" || (showWarehouseFilter && effectiveWarehouseFilter !== defaultWarehouseKey);
 
   const handleSuccess = () => {
     mutateProducts();
@@ -904,7 +907,7 @@ export default function InventoryPage() {
           </SelectContent>
         </Select>
         {showWarehouseFilter && (
-          <Select value={selectedWarehouseId !== undefined ? warehouseFilter : "all"} onValueChange={setWarehouseFilter}>
+          <Select value={selectedWarehouseId !== undefined ? effectiveWarehouseFilter : "all"} onValueChange={setWarehouseFilter}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="Bodega" />
             </SelectTrigger>
@@ -920,7 +923,7 @@ export default function InventoryPage() {
           <Button
             variant="ghost" size="sm"
             className="gap-1.5 text-muted-foreground shrink-0"
-            onClick={() => { setSearch(""); setStockFilter("in_stock"); setWarehouseFilter("all"); setPage(1); }}
+            onClick={() => { setSearch(""); setStockFilter("in_stock"); setWarehouseFilter(""); setPage(1); }}
           >
             <X className="size-3.5" /> Limpiar
           </Button>
