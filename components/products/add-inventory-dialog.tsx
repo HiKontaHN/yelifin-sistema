@@ -49,7 +49,7 @@ type LineItem = {
   key: string; // id interno para React key
   variant_key: VariantKey;
   quantity: string;
-  unit_cost: string; // en la moneda seleccionada (USD o HNL)
+  cost_input: string; // texto escrito: costo unitario o total según costMode
 };
 
 // ── Schema — solo campos de cabecera ──────────────────────────────────
@@ -96,7 +96,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const [isPending, setIsPending] = useState(false);
   const [costMode, setCostMode] = useState<CostMode>("unit");
   const [items, setItems] = useState<LineItem[]>([
-    { key: uid(), variant_key: "base", quantity: "1", unit_cost: "0" },
+    { key: uid(), variant_key: "base", quantity: "1", cost_input: "0" },
   ]);
 
   const {
@@ -139,7 +139,9 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   const totalUnits = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
   const shippingPerUnit = totalUnits > 0 ? ship / totalUnits : 0;
   const getUnitCost = (item: LineItem) => {
-    return Number(item.unit_cost) || 0;
+    const cost = Number(item.cost_input) || 0;
+    const qty = Number(item.quantity) || 0;
+    return costMode === "unit" ? cost : (qty > 0 ? cost / qty : 0);
   };
 
   const totalCost = items.reduce((acc, i) => {
@@ -151,7 +153,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
 
   useEffect(() => {
     if (open) {
-      setItems([{ key: uid(), variant_key: "base", quantity: "1", unit_cost: "0" }]);
+      setItems([{ key: uid(), variant_key: "base", quantity: "1", cost_input: "0" }]);
       setCostMode("unit");
       setIsPending(false);
       setPaymentMode("account");
@@ -170,13 +172,26 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
   // ── Manejo de items ────────────────────────────────────────────────
 
   const addItem = () =>
-    setItems((prev) => [...prev, { key: uid(), variant_key: "base", quantity: "1", unit_cost: "0" }]);
+    setItems((prev) => [...prev, { key: uid(), variant_key: "base", quantity: "1", cost_input: "0" }]);
 
   const removeItem = (key: string) =>
     setItems((prev) => prev.filter((i) => i.key !== key));
 
   const updateItem = (key: string, field: keyof Omit<LineItem, "key">, value: string) =>
     setItems((prev) => prev.map((i) => i.key === key ? { ...i, [field]: value } : i));
+
+  const changeCostMode = (nextMode: CostMode) => {
+    if (nextMode === costMode) return;
+    setItems((prev) => prev.map((item) => {
+      const qty = Number(item.quantity) || 0;
+      const amount = Number(item.cost_input) || 0;
+      const converted = costMode === "unit"
+        ? amount * qty
+        : (qty > 0 ? amount / qty : 0);
+      return { ...item, cost_input: converted.toFixed(2) };
+    }));
+    setCostMode(nextMode);
+  };
 
   // Claves ya usadas por otras filas (para deshabilitar en el selector)
   const usedVariantKeys = (currentKey: string) =>
@@ -191,7 +206,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       if (!item.quantity || Number(item.quantity) < 1) {
         toast.error("Todas las filas deben tener al menos 1 unidad"); return;
       }
-      if (Number(item.unit_cost) < 0) {
+      if (Number(item.cost_input) < 0) {
         toast.error("El costo no puede ser negativo"); return;
       }
     }
@@ -217,7 +232,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
           product_id: product.id,
           variant_id: item.variant_key === "base" ? undefined : Number(item.variant_key),
           quantity: Number(item.quantity),
-          unit_cost_usd: getUnitCost(item),
+          unit_cost_usd: Math.round(getUnitCost(item) * 1e4) / 1e4,
         })),
       });
 
@@ -478,7 +493,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
             </div>
 
             <div className="flex items-center justify-end">
-              <Tabs value={costMode} onValueChange={(mode) => setCostMode(mode as CostMode)}>
+              <Tabs value={costMode} onValueChange={(mode) => changeCostMode(mode as CostMode)}>
                 <TabsList className="max-w-full gap-1.5 overflow-x-auto rounded-xl border bg-card [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   <TabsTrigger value="unit" disabled={isCreating} className="rounded-xl border-0 px-2 py-1.5 text-xs font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Por unidad</TabsTrigger>
                   <TabsTrigger value="total" disabled={isCreating} className="rounded-xl border-0 px-2 py-1.5 text-xs font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Total</TabsTrigger>
@@ -502,7 +517,6 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
             {/* Filas */}
             {items.map((item) => {
               const qty = Number(item.quantity) || 0;
-              const cost = Number(item.unit_cost) || 0;
               const unitCost = getUnitCost(item);
               const costHnl = isUSD ? unitCost * rate : unitCost;
               const unitFinal = costHnl + shippingPerUnit;
@@ -573,14 +587,8 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                         step="0.01"
                         min="0"
                         placeholder="0.00"
-                        value={costMode === "total" && qty > 0 ? cost * qty : item.unit_cost}
-                        onChange={(e) => updateItem(
-                          item.key,
-                          "unit_cost",
-                          costMode === "total" && qty > 0
-                            ? String((Number(e.target.value) || 0) / qty)
-                            : e.target.value,
-                        )}
+                        value={item.cost_input}
+                        onChange={(e) => updateItem(item.key, "cost_input", e.target.value)}
                         disabled={isCreating || (costMode === "total" && qty <= 0)}
                         className="h-10 text-sm pl-5"
                       />
@@ -602,11 +610,11 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                   </div>
 
                   {/* Mini resumen por fila */}
-                  {qty > 0 && cost > 0 && (
+                  {qty > 0 && Number(item.cost_input) > 0 && (
                     <p className="text-xs text-muted-foreground leading-none pl-0.5">
                       {costMode === "unit"
-                        ? <>Total ({qty} uds): <span className="font-medium text-foreground">{formatInputAmount(cost * qty)}</span></>
-                        : <>Por unidad: <span className="font-medium text-foreground">{formatInputAmount(getUnitCost(item))}</span></>}
+                        ? <>Total ({qty} uds): <span className="font-medium text-foreground">{formatInputAmount(unitCost * qty)}</span></>
+                        : <>Por unidad: <span className="font-medium text-foreground">{formatInputAmount(unitCost)}</span></>}
                       <span className="ml-2">{qty} × {format(unitFinal)} = {" "}
                         <span className="font-medium text-foreground">{format(unitFinal * qty)}</span>
                       </span>
@@ -733,7 +741,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                 Resumen de la compra
               </div>
               {items
-                .filter((i) => Number(i.quantity) > 0 && Number(i.unit_cost) > 0)
+                .filter((i) => Number(i.quantity) > 0 && getUnitCost(i) > 0)
                 .map((item) => {
                   const qty = Number(item.quantity);
                   const cost = getUnitCost(item);
