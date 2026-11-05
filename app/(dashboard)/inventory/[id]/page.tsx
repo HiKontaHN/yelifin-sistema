@@ -1,7 +1,7 @@
 // app/(dashboard)/inventory/[id]/page.tsx
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -18,6 +18,9 @@ import {
 import {
   ArrowLeft,
   Package,
+  PackagePlus,
+  Pencil,
+  SlidersHorizontal,
   TrendingUp,
   BarChart2,
   Layers,
@@ -38,8 +41,15 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrency } from "@/hooks/swr/use-currency";
+import { useProduct } from "@/hooks/swr/use-products";
 import { useTimezone, formatInTZ } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
+import { Fab } from "@/components/ui/fab";
+import { AddInventoryDialog } from "@/components/products/add-inventory-dialog";
+import { AdjustInventoryDialog } from "@/components/products/adjust-inventory-dialog";
+import { CreateProductVariantDialog } from "@/components/products/create-product-variant-dialog";
+import { EditProductDialog } from "@/components/products/edit-product-dialog";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
 import { SummaryStats } from "@/components/shared/summary-stats";
 import { formatCalendarDate } from "@/lib/date-utils";
@@ -155,7 +165,7 @@ function useProductDetail(id: number | null) {
     return res.json();
   };
 
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     firebaseUser && id ? `/api/products/${id}/detail` : null,
     fetcher,
     { revalidateOnFocus: false }
@@ -165,6 +175,7 @@ function useProductDetail(id: number | null) {
     product:   (data?.data ?? null) as ProductDetail | null,
     isLoading,
     error:     error?.message ?? null,
+    mutate,
   };
 }
 
@@ -304,13 +315,19 @@ type Props = { params: Promise<{ id: string }> };
 export default function ProductDetailPage({ params }: Props) {
   const { id }             = use(params);
   const numericId          = Number(id);
-  const { product, isLoading, error } = useProductDetail(numericId);
+  const { product, isLoading, error, mutate: mutateDetail } = useProductDetail(numericId);
+  const { product: dialogProduct, mutate: mutateDialogProduct } = useProduct(numericId);
   const { format }         = useCurrency();
   const tz                 = useTimezone();
   const { push, back }     = useRouter();
-  const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
+  const { show_costs: showCosts, show_profit: showProfit, can_edit: canEdit } = useModulePermissions("INVENTORY");
   const { can_edit: canEditIncoming } = useModulePermissions("INVENTORY", "INCOMING");
   const { can_edit: canEditSales } = useModulePermissions("SALES");
+  const { canAdjustInventory } = useFeatures();
+  const [editProduct, setEditProduct] = useState<typeof dialogProduct>(null);
+  const [inventoryProduct, setInventoryProduct] = useState<typeof dialogProduct>(null);
+  const [adjustProduct, setAdjustProduct] = useState<typeof dialogProduct>(null);
+  const [variantProduct, setVariantProduct] = useState<typeof dialogProduct>(null);
 
   if (isLoading) return <ProductDetailSkeleton />;
 
@@ -334,6 +351,14 @@ export default function ProductDetailPage({ params }: Props) {
   const profitMarginP = product.sales_stats.total_revenue > 0
     ? (Number(product.sales_stats.total_profit ?? 0) / product.sales_stats.total_revenue) * 100
     : 0;
+  // El detalle solo trae los ultimos 8 lotes: el stock base sale del total menos el de las variantes.
+  const baseStock = Math.max(
+    0,
+    Number(product.total_stock ?? 0) - product.variants.reduce((sum, v) => sum + Number(v.stock ?? 0), 0),
+  );
+  const handleDialogSuccess = () => {
+    void Promise.all([mutateDetail(), mutateDialogProduct()]);
+  };
 
   const movementEditHref = (movement: MovementRow): string | null => {
     if (
@@ -352,7 +377,7 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto mb-8">
+    <div className="space-y-6 max-w-3xl mx-auto mb-8 pb-24">
 
       {/* Header */}
       <div className="flex items-start gap-3">
@@ -827,6 +852,52 @@ export default function ProductDetailPage({ params }: Props) {
       <p className="text-xs text-muted-foreground text-center">
         Registrado el {formatInTZ(product.created_at, tz, dateOpts)}
       </p>
+
+      {canEdit && dialogProduct && (
+        <Fab
+          actions={product.is_service
+            ? [{ label: "Editar servicio", icon: Pencil, onClick: () => setEditProduct(dialogProduct) }]
+            : [
+                { label: "Agregar stock", icon: PackagePlus, onClick: () => setInventoryProduct(dialogProduct) },
+                ...(canAdjustInventory
+                  ? [{ label: "Ajuste de inventario", icon: SlidersHorizontal, onClick: () => setAdjustProduct(dialogProduct) }]
+                  : []),
+                { label: "Agregar variante", icon: Layers, onClick: () => setVariantProduct(dialogProduct) },
+                { label: "Editar producto", icon: Pencil, onClick: () => setEditProduct(dialogProduct) },
+              ]}
+        />
+      )}
+
+      <EditProductDialog
+        product={editProduct}
+        open={!!editProduct}
+        onOpenChange={(open) => !open && setEditProduct(null)}
+        onSuccess={handleDialogSuccess}
+        is_service={editProduct?.is_service ?? false}
+      />
+      <AddInventoryDialog
+        product={inventoryProduct}
+        open={!!inventoryProduct}
+        onOpenChange={(open) => !open && setInventoryProduct(null)}
+        onSuccess={handleDialogSuccess}
+      />
+      <AdjustInventoryDialog
+        product={adjustProduct}
+        open={!!adjustProduct}
+        onOpenChange={(open) => !open && setAdjustProduct(null)}
+        onSuccess={handleDialogSuccess}
+      />
+      <CreateProductVariantDialog
+        open={!!variantProduct}
+        onOpenChange={(open) => !open && setVariantProduct(null)}
+        productId={variantProduct?.id ?? 0}
+        productName={variantProduct?.name ?? ""}
+        basePrice={variantProduct?.price ?? 0}
+        baseSku={variantProduct?.sku ?? undefined}
+        variantCount={variantProduct?.variants.length ?? 0}
+        baseStock={baseStock}
+        onSuccess={handleDialogSuccess}
+      />
     </div>
   );
 }
