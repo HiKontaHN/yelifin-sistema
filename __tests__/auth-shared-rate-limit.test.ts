@@ -5,6 +5,9 @@ describe("rate limit compartido en autenticación sensible", () => {
   it.each([
     "app/api/auth/login/route.ts",
     "app/api/auth/send-password-reset/route.ts",
+    "app/api/auth/register/route.tsx",
+    "app/api/auth/send-verification-email/route.ts",
+    "app/api/upload/route.ts",
   ])("%s importa y usa sharedRateLimit", (route) => {
     const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
 

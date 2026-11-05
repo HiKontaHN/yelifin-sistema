@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { seedDefaultCategories } from "@/lib/seed-default-categories";
-import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { sharedRateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
 import { redeemPartnerInviteCode } from "@/lib/partner-invites";
 import {
@@ -19,7 +19,7 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export async function POST(req: NextRequest) {
   // 3 registros por IP cada hora
-  const { allowed, retryAfterSec } = await rateLimit(
+  const { allowed, retryAfterSec } = await sharedRateLimit(
     `register:${getClientIP(req)}`,
     3,
     60 * 60 * 1000,
