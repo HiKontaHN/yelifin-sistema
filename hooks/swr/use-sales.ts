@@ -15,6 +15,9 @@ export type CartItem = {
   quantity:     number;
   unit_price:   number;
   discount:     number;
+  // Costo unitario estimado (promedio de inventario o service_cost).
+  // null si todavía no hay visibilidad de costos. El FIFO real se calcula al guardar.
+  unit_cost?:   number | null;
 };
 
 export type SaleStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';

@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 
 import { CartItem } from "@/hooks/swr/use-sales";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SupplyUsed } from "../supplies-used-modal";
+import { CartMarginSummary } from "../cart-margin-summary";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { EditCartItemRow } from "./edit-cart-item-row";
 
@@ -74,10 +76,14 @@ export function EditCartPanel({
   onSupplyRemove,
 }: Props) {
   const { format } = useCurrency();
+  const { show_costs: showCosts } = useModulePermissions("SALES");
 
   const globalDiscountAmount = subtotal * (globalDiscount / 100);
+  const suppliesCostKnown = suppliesUsed.every(
+    (s) => s.unit_cost != null && Number.isFinite(Number(s.unit_cost)),
+  );
   const suppliesCost = suppliesUsed.reduce(
-    (acc, s) => acc + s.quantity * s.unit_cost,
+    (acc, s) => acc + s.quantity * Number(s.unit_cost ?? 0),
     0
   );
   const grandTotal = total + shippingCost;
@@ -236,10 +242,12 @@ export function EditCartPanel({
                   <p className="font-medium truncate pr-7">{s.name}</p>
 
                   <div className="flex items-center justify-between gap-2 mt-1.5">
-                    <span className="text-[10px] font-semibold text-orange-600">
-                      {format(s.quantity * s.unit_cost)}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
+                    {showCosts && s.unit_cost != null && (
+                      <span className="text-[10px] font-semibold text-orange-600">
+                        {format(s.quantity * s.unit_cost)}
+                      </span>
+                    )}
+                    <div className={`flex items-center gap-1 shrink-0 ${showCosts && s.unit_cost != null ? "" : "ml-auto"}`}>
                       <div className="flex items-center gap-0.5 rounded-full border bg-muted/30 p-0.5">
                         <button
                           className="size-6 rounded-full flex items-center justify-center hover:bg-muted transition-colors cursor-pointer"
@@ -281,14 +289,16 @@ export function EditCartPanel({
                 </div>
               ))}
             </div>
-            <div className="flex justify-between items-center pt-0.5 border-t border-orange-200/60">
-              <span className="text-[10px] text-orange-600">
-                Costo suministros
-              </span>
-              <span className="text-[10px] font-bold text-orange-700">
-                -{format(suppliesCost)}
-              </span>
-            </div>
+            {showCosts && suppliesCostKnown && (
+              <div className="flex justify-between items-center pt-0.5 border-t border-orange-200/60">
+                <span className="text-[10px] text-orange-600">
+                  Costo suministros
+                </span>
+                <span className="text-[10px] font-bold text-orange-700">
+                  -{format(suppliesCost)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -329,6 +339,13 @@ export function EditCartPanel({
                 Incluye ISV {taxRate}%: {format(taxAmount)}
               </p>
             )}
+            <CartMarginSummary
+              cart={cart}
+              subtotal={subtotal}
+              totalDiscount={totalDiscount}
+              taxAmount={taxAmount}
+              suppliesUsed={suppliesUsed}
+            />
           </div>
         )}
       </CardContent>
