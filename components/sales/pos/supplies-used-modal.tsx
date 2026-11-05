@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShoppingBag, Plus, Minus, X, Search } from "lucide-react";
 import { useSupplies } from "@/hooks/swr/use-supplies";
+import { useCurrency } from "@/hooks/swr/use-currency";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { finiteCost } from "@/lib/sale-estimate";
 import { cn } from "@/lib/utils";
 
 export type SupplyUsed = {
@@ -16,7 +19,7 @@ export type SupplyUsed = {
   name: string;
   unit: string | null;
   quantity: number;
-  unit_cost: number;
+  unit_cost: number | null;
 };
 
 type Props = {
@@ -26,11 +29,10 @@ type Props = {
   initialSupplies?: SupplyUsed[];
 };
 
-const formatCurrency = (v: number) =>
-  new Intl.NumberFormat("es-HN", { style: "currency", currency: "HNL", minimumFractionDigits: 0 }).format(v);
-
 export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSupplies = [] }: Props) {
   const { supplies } = useSupplies();
+  const { format } = useCurrency();
+  const { show_costs: showCosts } = useModulePermissions("SALES");
   const [search,   setSearch]   = useState("");
   const [selected, setSelected] = useState<SupplyUsed[]>(initialSupplies);
 
@@ -55,7 +57,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
           name:      supply.name,
           unit:      supply.unit,
           quantity:  1,
-          unit_cost: Number(supply.unit_cost),
+          unit_cost: finiteCost(supply.unit_cost),
         },
       ]);
     }
@@ -75,7 +77,11 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
     );
   };
 
-  const totalCost = selected.reduce((acc, s) => acc + s.quantity * s.unit_cost, 0);
+  const selectedCostsKnown = selected.every((s) => finiteCost(s.unit_cost) != null);
+  const totalCost = selected.reduce(
+    (acc, s) => acc + s.quantity * (finiteCost(s.unit_cost) ?? 0),
+    0,
+  );
 
   const handleConfirm = () => {
     onConfirm(selected.filter((s) => s.quantity > 0));
@@ -87,16 +93,18 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
       open={open}
       onOpenChange={onOpenChange}
       title="Suministros usados"
-      subtitle="Selecciona los suministros utilizados en esta venta para calcular el costo real"
+      subtitle={showCosts
+        ? "Selecciona los suministros utilizados en esta venta para calcular el costo real"
+        : "Selecciona los suministros utilizados en esta venta"}
       icon={ShoppingBag}
       width="md"
       footer={
         <div className="w-full space-y-3">
-          {selected.length > 0 && (
+          {showCosts && selected.length > 0 && selectedCostsKnown && (
             <div className="flex justify-between items-center">
               <span className="text-xs text-muted-foreground">Costo suministros</span>
               <Badge variant="outline" className="font-bold text-destructive border-destructive/30">
-                -{formatCurrency(totalCost)}
+                -{format(totalCost)}
               </Badge>
             </div>
           )}
@@ -130,6 +138,7 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
           ) : (
             filtered.map((supply) => {
               const sel = getSelected(supply.id);
+              const unitCost = finiteCost(supply.unit_cost);
               return (
                 <div
                   key={supply.id}
@@ -159,7 +168,10 @@ export function SuppliesUsedModal({ open, onOpenChange, onConfirm, initialSuppli
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{supply.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        Stock: {supply.stock} {supply.unit ?? "uds"} · {formatCurrency(Number(supply.unit_cost))}/{supply.unit ?? "ud"}
+                        Stock: {supply.stock} {supply.unit ?? "uds"}
+                        {showCosts && unitCost != null && (
+                          <> · {format(unitCost)}/{supply.unit ?? "ud"}</>
+                        )}
                       </p>
                     </div>
                   </div>

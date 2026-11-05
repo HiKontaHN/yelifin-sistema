@@ -14,7 +14,10 @@ import {
 } from "lucide-react";
 
 import { CartItem } from "@/hooks/swr/use-sales";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { finiteCost } from "@/lib/sale-estimate";
 import { SupplyUsed } from "../supplies-used-modal";
+import { CartMarginSummary } from "../cart-margin-summary";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { EditCartItemRow } from "./edit-cart-item-row";
 
@@ -74,12 +77,9 @@ export function EditCartPanel({
   onSupplyRemove,
 }: Props) {
   const { format } = useCurrency();
+  const { show_costs: showCosts } = useModulePermissions("SALES");
 
   const globalDiscountAmount = subtotal * (globalDiscount / 100);
-  const suppliesCost = suppliesUsed.reduce(
-    (acc, s) => acc + s.quantity * s.unit_cost,
-    0
-  );
   const grandTotal = total + shippingCost;
 
   return (
@@ -221,7 +221,9 @@ export function EditCartPanel({
               </Badge>
             </div>
             <div className="space-y-1.5">
-              {suppliesUsed.map((s) => (
+              {suppliesUsed.map((s) => {
+                const lineCost = finiteCost(s.unit_cost);
+                return (
                 <div
                   key={s.supply_id}
                   className="relative rounded-lg border bg-background p-2 text-xs"
@@ -236,10 +238,12 @@ export function EditCartPanel({
                   <p className="font-medium truncate pr-7">{s.name}</p>
 
                   <div className="flex items-center justify-between gap-2 mt-1.5">
-                    <span className="text-[10px] font-semibold text-orange-600">
-                      {format(s.quantity * s.unit_cost)}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
+                    {showCosts && lineCost != null && (
+                      <span className="text-[10px] font-semibold text-orange-600">
+                        {format(s.quantity * lineCost)}
+                      </span>
+                    )}
+                    <div className={`flex items-center gap-1 shrink-0 ${showCosts && lineCost != null ? "" : "ml-auto"}`}>
                       <div className="flex items-center gap-0.5 rounded-full border bg-muted/30 p-0.5">
                         <button
                           className="size-6 rounded-full flex items-center justify-center hover:bg-muted transition-colors cursor-pointer"
@@ -279,15 +283,8 @@ export function EditCartPanel({
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="flex justify-between items-center pt-0.5 border-t border-orange-200/60">
-              <span className="text-[10px] text-orange-600">
-                Costo suministros
-              </span>
-              <span className="text-[10px] font-bold text-orange-700">
-                -{format(suppliesCost)}
-              </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -329,6 +326,13 @@ export function EditCartPanel({
                 Incluye ISV {taxRate}%: {format(taxAmount)}
               </p>
             )}
+            <CartMarginSummary
+              cart={cart}
+              subtotal={subtotal}
+              totalDiscount={totalDiscount}
+              taxAmount={taxAmount}
+              suppliesUsed={suppliesUsed}
+            />
           </div>
         )}
       </CardContent>
