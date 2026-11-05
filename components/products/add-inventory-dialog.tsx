@@ -188,7 +188,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
       const converted = costMode === "unit"
         ? amount * qty
         : (qty > 0 ? amount / qty : 0);
-      return { ...item, cost_input: converted.toFixed(2) };
+      return { ...item, cost_input: converted.toFixed(4) };
     }));
     setCostMode(nextMode);
   };
@@ -418,7 +418,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">USD → {symbol}</Label>
                 <Input
-                  type="number" step="0.01"
+                  type="number" step="0.0001"
                   placeholder={`${TASA_DEFAULT}`}
                   {...register("exchange_rate")}
                   disabled={isCreating}
@@ -584,7 +584,7 @@ export function AddInventoryDialog({ product, open, onOpenChange, onSuccess }: P
                       </span>
                       <Input
                         type="number"
-                        step="0.01"
+                        step="0.0001"
                         min="0"
                         placeholder="0.00"
                         value={item.cost_input}
