@@ -64,7 +64,7 @@ export function PartnerLinkCard() {
   if (partner) {
     return (
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Handshake className="size-4 text-muted-foreground" />
             Partner vinculado
@@ -127,7 +127,7 @@ export function PartnerLinkCard() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Handshake className="size-4 text-muted-foreground" />
           Vincular con una incubadora
