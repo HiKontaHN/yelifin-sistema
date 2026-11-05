@@ -36,6 +36,7 @@ import { useCustomers } from "@/hooks/swr/use-costumers";
 import { useMe } from "@/hooks/swr/use-me";
 import { useSupplies } from "@/hooks/swr/use-supplies";
 import { useInventory } from "@/hooks/swr/use-inventory";
+import { applyEstimatedUnitCosts, estimateUnitCost, finiteCost, hydrateSupplyCosts, resolveSupplyUnitCost } from "@/lib/sale-estimate";
 import { Product, ProductVariant } from "@/types";
 
 import { PosProductGrid } from "@/components/sales/pos/product-grid";
@@ -207,6 +208,7 @@ function EditSaleContent() {
         quantity:     Number(i.quantity),
         unit_price:   Number(i.unit_price),
         discount:     0,
+        unit_cost:    null,
       })
     );
 
@@ -252,13 +254,27 @@ function EditSaleContent() {
           name: s.supply_name,
           unit: null,
           quantity: Number(s.quantity),
-          unit_cost: Number(s.unit_cost),
+          unit_cost: finiteCost(s.unit_cost),
         }))
       );
     }
 
     setInitialized(true);
   }, [sale, initialized, push]);
+
+  const cartCostKey = cart
+    .map((item) => `${item.product_id}:${item.variant_id ?? ""}`)
+    .join("|");
+  useEffect(() => {
+    setCart((prev) => applyEstimatedUnitCosts(prev, products, inventory));
+  }, [products, inventory, cartCostKey]);
+
+  const supplyHydrateKey = suppliesUsed
+    .map((row) => `${row.supply_id}:${row.unit_cost ?? ""}`)
+    .join("|");
+  useEffect(() => {
+    setSuppliesUsed((prev) => hydrateSupplyCosts(prev, supplies));
+  }, [supplies, supplyHydrateKey]);
 
   // productos disponibles
   const availableProducts = useMemo(
@@ -345,6 +361,7 @@ function EditSaleContent() {
           quantity:     1,
           unit_price:   price,
           discount:     0,
+          unit_cost:    estimateUnitCost(product, variantId, inventory),
         },
       ];
     });
@@ -448,6 +465,12 @@ function EditSaleContent() {
   const handleSuppliesConfirm = (supplies: SupplyUsed[]) =>
     setSuppliesUsed(supplies);
 
+  const supplyCostForSave = (row: SupplyUsed) =>
+    resolveSupplyUnitCost(
+      row.unit_cost,
+      supplies.find((supply) => supply.id === row.supply_id)?.unit_cost,
+    );
+
   // Guardar como pendiente (sin modal)
   const handleSavePending = async () => {
     if (!sale) return;
@@ -485,7 +508,7 @@ function EditSaleContent() {
             ? suppliesUsed.map((s) => ({
               supply_id: s.supply_id,
               quantity: s.quantity,
-              unit_cost: s.unit_cost,
+              unit_cost: supplyCostForSave(s),
             }))
             : undefined,
       };
@@ -536,7 +559,7 @@ function EditSaleContent() {
           ? suppliesUsed.map((s) => ({
             supply_id: s.supply_id,
             quantity: s.quantity,
-            unit_cost: s.unit_cost,
+            unit_cost: supplyCostForSave(s),
           }))
           : undefined,
       });

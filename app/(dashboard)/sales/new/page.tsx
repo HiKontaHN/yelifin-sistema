@@ -32,6 +32,7 @@ import { MobileCartSheet } from "@/components/sales/pos/mobile-cart-sheet";
 
 import { VariantPickerSheet } from "@/components/sales/pos/variant-picker-sheet";
 import { useInventory }        from "@/hooks/swr/use-inventory";
+import { applyEstimatedUnitCosts, estimateUnitCost, resolveSupplyUnitCost } from "@/lib/sale-estimate";
 import { useMe } from "@/hooks/swr/use-me";
 import { useWarehouses } from "@/hooks/swr/use-warehouses";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
@@ -202,6 +203,7 @@ function NewSaleContent() {
         quantity:     1,
         unit_price:   price,
         discount:     0,
+        unit_cost:    estimateUnitCost(product, variantId, inventory),
       }];
     });
   };
@@ -240,6 +242,11 @@ function NewSaleContent() {
       )
     );
  
+
+  const cartCostKey = cart.map((item) => `${item.product_id}:${item.variant_id ?? ""}`).join("|");
+  useEffect(() => {
+    setCart((prev) => applyEstimatedUnitCosts(prev, products, inventory));
+  }, [products, inventory, cartCostKey]);
 
   const updateSupplyQty = (id: number, qty: number) =>
     setSuppliesUsed((prev) => prev.map((s) => s.supply_id === id ? { ...s, quantity: qty } : s));
@@ -303,7 +310,14 @@ function NewSaleContent() {
         status: isPending ? "PENDING" : "COMPLETED",
         ...(warehouseSelection !== "assigned" && { warehouse_id: Number(warehouseSelection) }),
         supplies_used: suppliesUsed.length > 0
-          ? suppliesUsed.map((s) => ({ supply_id: s.supply_id, quantity: s.quantity, unit_cost: s.unit_cost }))
+          ? suppliesUsed.map((s) => ({
+              supply_id: s.supply_id,
+              quantity: s.quantity,
+              unit_cost: resolveSupplyUnitCost(
+                s.unit_cost,
+                supplies.find((row) => row.id === s.supply_id)?.unit_cost,
+              ),
+            }))
           : undefined,
         ...(eventId && { event_id: eventId }),
       });
