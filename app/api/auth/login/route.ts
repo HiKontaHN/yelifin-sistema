@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
-import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { sharedRateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5 intentos por IP cada 15 minutos
-  const { allowed, remaining, retryAfterSec } = await rateLimit(
+  const { allowed, remaining, retryAfterSec } = await sharedRateLimit(
     `login:${getClientIP(req)}`,
     5,
     15 * 60 * 1000,

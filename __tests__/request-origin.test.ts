@@ -14,12 +14,13 @@ jest.mock("@neondatabase/serverless", () => ({
 
 jest.mock("@/lib/rate-limit", () => ({
   rateLimit: jest.fn(),
+  sharedRateLimit: jest.fn(),
   getClientIP: jest.fn(() => "127.0.0.1"),
 }));
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimit, sharedRateLimit } from "@/lib/rate-limit";
 import { hasValidRequestOrigin, withDevelopmentCors } from "@/lib/request-origin";
 import { verifyAuth } from "@/lib/auth";
 import { proxy } from "@/proxy";
@@ -53,6 +54,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   setEnvironment("development");
   jest.mocked(rateLimit).mockResolvedValue({ allowed: true, remaining: 299, retryAfterSec: 0 });
+  jest.mocked(sharedRateLimit).mockResolvedValue({ allowed: true, remaining: 4, retryAfterSec: 0 });
   jest.mocked(adminAuth.verifySessionCookie).mockResolvedValue({
     uid: "test-user",
     email_verified: true,

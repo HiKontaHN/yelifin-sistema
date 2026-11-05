@@ -1,14 +1,15 @@
 // lib/rate-limit.ts
-// Rate limiter con almacén compartido opcional (Upstash Redis vía REST).
-// Si UPSTASH_REDIS_REST_URL/_TOKEN (o KV_REST_API_URL/_TOKEN, que crea la
-// integracion de Upstash en Vercel) existen, el contador
-// se comparte entre instancias. Si no existen (desarrollo) o Redis falla,
-// se usa un Map en memoria por instancia.
+// Rate limiters por instancia y compartido para acciones de autenticación.
+// rateLimit siempre usa memoria. sharedRateLimit usa Upstash Redis vía REST
+// cuando está configurado y degrada a memoria si Redis no está disponible.
 
 type Entry = { count: number; resetAt: number };
 type Result = { allowed: boolean; remaining: number; retryAfterSec: number };
 
 const store = new Map<string, Entry>();
+const REDIS_WARNING_INTERVAL_MS = 60 * 1000;
+let lastRedisFallbackWarningAt = 0;
+let warnedRedisNotConfigured = false;
 
 function cleanup() {
   const now = Date.now();
@@ -74,15 +75,35 @@ export async function rateLimit(
   limit: number,
   windowMs: number,
 ): Promise<Result> {
+  return memoryLimit(key, limit, windowMs);
+}
+
+/**
+ * Aplica un límite compartido entre instancias mediante Redis. Si Redis no
+ * está configurado o falla, degrada al contador en memoria de esta instancia.
+ */
+export async function sharedRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<Result> {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (url && token) {
     try {
       return await redisLimit(url.replace(/\/$/, ""), token, key, limit, windowMs);
     } catch (error) {
-      // shortcut: si Redis cae degradamos a memoria por instancia, no bloqueamos a todos.
-      console.error("rateLimit: Redis no disponible, usando memoria:", error);
+      const now = Date.now();
+      if (now - lastRedisFallbackWarningAt >= REDIS_WARNING_INTERVAL_MS) {
+        lastRedisFallbackWarningAt = now;
+        const action = key.split(":", 1)[0];
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[rate-limit] REDIS_FALLBACK action=${action} error=${message}`);
+      }
     }
+  } else if (process.env.NODE_ENV === "production" && !warnedRedisNotConfigured) {
+    warnedRedisNotConfigured = true;
+    console.warn("[rate-limit] REDIS_NOT_CONFIGURED");
   }
   return memoryLimit(key, limit, windowMs);
 }
