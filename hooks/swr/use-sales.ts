@@ -21,7 +21,7 @@ export type SaleStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
 
 export type CreateSaleInput = {
   customer_id?:    number | null;
-  items:           { product_id: number; quantity: number; unit_price: number; discount: number }[];
+  items:           { product_id: number; variant_id?: number | null; quantity: number; unit_price: number; discount: number }[];
   discount?:       number;
   shipping_cost?:  number;
   payment_method:  string;
@@ -33,6 +33,7 @@ export type CreateSaleInput = {
   status?:         SaleStatus;
   credit_sale?:    boolean;
   amount_paid?:    number;
+  warehouse_id?:   number;
 };
 
 export type ConfirmSaleInput = { action: 'confirm'; confirmed_at?: string; confirmed_date?: string; amount_paid?: number };
