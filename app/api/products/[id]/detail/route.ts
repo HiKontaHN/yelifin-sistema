@@ -51,7 +51,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         AND org_id     = ${orgId}
     `;
 
-    // ── 3. avg_cost and last_cost (base product, no variant) ─────────
+    // ── 3. avg_cost and last_cost del producto ────────────────────────
+    // Incluye los lotes de todas las variantes: en productos con variantes el
+    // stock vive en lotes con variant_id, y filtrar por NULL daba costo 0.
     const [costRow] = await sql`
       SELECT
         CASE
@@ -62,7 +64,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       FROM inventory_batches
       WHERE product_id = ${productId}
         AND org_id     = ${orgId}
-        AND variant_id IS NULL
         AND qty_available > 0
     `;
 
@@ -71,7 +72,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       FROM inventory_batches
       WHERE product_id = ${productId}
         AND org_id     = ${orgId}
-        AND variant_id IS NULL
       ORDER BY received_date DESC, received_at DESC
       LIMIT 1
     `;
