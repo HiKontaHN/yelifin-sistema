@@ -1,11 +1,13 @@
 // app/api/purchases/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
 import { isCalendarDate } from "@/lib/date-utils";
+
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -23,8 +25,10 @@ class PurchaseStateConflictError extends Error {
 // nulo), agrupa TODAS las compras de esa misma ejecución de importación
 // (una por fila) y devuelve sus items juntos, como un solo lote.
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'INCOMING');
   if (deny) return deny;
 
@@ -119,8 +123,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 // ── PATCH /api/purchases/[id] — confirmar llegada de inventario ────────
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'INCOMING');
   if (deny) return deny;
 
@@ -158,6 +164,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         : null;
       if (purchasedAt && Number.isNaN(purchasedAt.getTime()))
         return createErrorResponse("La fecha de compra no es válida", 400);
+
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+      }
 
       try {
         return await withTransaction(async (tx) => {
@@ -628,8 +646,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // ── DELETE /api/purchases/[id] — cancelar compra pendiente ─────────────
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canDelete', 'INCOMING');
   if (deny) return deny;
 
@@ -667,6 +687,19 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       WHERE table_name = 'credit_card_transactions' AND column_name = 'purchase_batch_id'
     `;
     const hasCcLink = !!ccLinkColumn;
+    if (hasCcLink) {
+      const [cardFunding] = await sql`
+        SELECT EXISTS (
+          SELECT 1 FROM credit_card_transactions
+          WHERE org_id = ${orgId} AND purchase_batch_id = ${purchaseId}
+            AND type = 'CHARGE'
+        ) AS uses_credit_card
+      `;
+      if (cardFunding?.uses_credit_card) {
+        const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+        if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+      }
+    }
 
     try {
       return await withTransaction(async (tx) => {

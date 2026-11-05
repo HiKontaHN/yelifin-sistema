@@ -1,16 +1,20 @@
 // app/api/transactions/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, verifyResourceLimit } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, verifyResourceLimit } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'TRANSACTIONS');
   if (deny) return deny;
 
@@ -85,8 +89,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'TRANSACTIONS');
   if (deny) return deny;
 
@@ -114,6 +120,10 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("El monto debe ser mayor a 0", 400);
 
     const isCreditCardExpense = type === "EXPENSE" && !!credit_card_id;
+    if (isCreditCardExpense) {
+      const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+      if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+    }
     const sourceAccountId = account_id === undefined || account_id === null
       ? null
       : Number(account_id);

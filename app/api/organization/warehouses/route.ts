@@ -1,13 +1,15 @@
 // app/api/organization/warehouses/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, verifyResourceLimit, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, verifyResourceLimit, requireFeature, requireModule } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.view");
+  if (feature) return feature;
 
   try {
     const { orgId } = auth.data;
@@ -39,8 +41,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.adjust");
+  if (feature) return feature;
 
   const denyWarehouses = await requireModule(auth.data, 'ADMIN', 'canEdit', 'WAREHOUSES');
   if (denyWarehouses) return denyWarehouses;

@@ -57,7 +57,11 @@ function enforcePlanRules(
 const SESSION_COOKIE = "hikonta_nav";
 const SESSION_TTL = 600; // 10 minutos
 
-type Session = { onboarding_completed: boolean; plan_slug: string | null };
+type Session = {
+  onboarding_completed: boolean;
+  plan_slug: string | null;
+  access_blocked?: boolean;
+};
 
 function readSessionCookie(request: NextRequest, uid: string): Session | null {
   const raw = request.cookies.get(SESSION_COOKIE)?.value;
@@ -68,7 +72,7 @@ function readSessionCookie(request: NextRequest, uid: string): Session | null {
 }
 
 function attachSessionCookie(res: NextResponse, session: Session, uid: string) {
-  if (!session.onboarding_completed) return;
+  if (!session.onboarding_completed || session.access_blocked) return;
   res.cookies.set(SESSION_COOKIE, `1|${session.plan_slug ?? ""}|${uid}`, {
     httpOnly: true,
     sameSite: "lax",
@@ -82,11 +86,18 @@ function attachSessionCookie(res: NextResponse, session: Session, uid: string) {
 async function fetchSession(
   sessionCookie: string,
   requestUrl: string
-): Promise<{ onboarding_completed: boolean; plan_slug: string | null } | null> {
+): Promise<Session | null> {
   try {
     const res = await fetch(new URL("/api/onboarding", requestUrl), {
       headers: { Cookie: `hikonta_auth=${sessionCookie}` },
     });
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({}));
+      if (body?.needs_upgrade === true) {
+        return { onboarding_completed: true, plan_slug: null, access_blocked: true };
+      }
+      return null;
+    }
     if (!res.ok) return null;
     const body = await res.json();
     return {
@@ -105,14 +116,14 @@ export async function proxy(request: NextRequest) {
   // ── Rate limit global para toda la API ─────────────────────────────
   // Protección base anti-abuso/DoS por IP para /api/*. Endpoints sensibles
   // (login, register) aplican además su propio límite más estricto dentro
-  // del route handler. In-memory por instancia — ver lib/rate-limit.ts.
+  // del route handler. Este límite global usa memoria por instancia.
   if (pathname.startsWith("/api")) {
     // Responder el preflight sin consumir el límite ni requerir una sesión.
     if (process.env.NODE_ENV === "development" && request.method === "OPTIONS") {
       return withDevelopmentCors(request, new NextResponse(null, { status: 204 }));
     }
 
-    const { allowed, retryAfterSec } = rateLimit(
+    const { allowed, retryAfterSec } = await rateLimit(
       `api:${getClientIP(request)}`,
       300,
       60 * 1000, // 300 solicitudes por minuto por IP

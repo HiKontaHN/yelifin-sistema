@@ -149,9 +149,12 @@ export function useMe() {
   };
 
   const hasActiveSubscription =
-    subscription?.status === "TRIAL" || subscription?.status === "ACTIVE";
+    subscription?.status === "TRIAL" ||
+    subscription?.status === "ACTIVE" ||
+    subscription?.status === "PAST_DUE";
 
-  const isTrial = subscription?.status === "TRIAL";
+  const isTrial = subscription?.status === "TRIAL" && !subscription.is_trial_expired;
+  const isPastDue = subscription?.status === "PAST_DUE";
 
   return {
     data,
@@ -171,6 +174,9 @@ export function useMe() {
     getModulePermissions,
     hasActiveSubscription,
     isTrial,
+    isPastDue,
+    graceEndsAt: subscription?.grace_ends_at ?? null,
+    isDegraded: subscription?.is_degraded ?? false,
     isLoading,
     error: (error as any)?.message ?? null,
     mutate,

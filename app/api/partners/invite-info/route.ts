@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   // Sin auth (lo llama /register antes de crear cuenta) — limitar intentos
   // por IP para que no sirva para adivinar códigos por fuerza bruta.
-  const { allowed } = rateLimit(`invite-info:${getClientIP(request)}`, 20, 10 * 60 * 1000);
+  const { allowed } = await rateLimit(`invite-info:${getClientIP(request)}`, 20, 10 * 60 * 1000);
   if (!allowed) return Response.json({ data: { valid: false } });
 
   try {

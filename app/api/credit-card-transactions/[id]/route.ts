@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate } from "@/lib/date-utils";
 
@@ -7,8 +7,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canEdit', 'CREDIT_CARDS');
   if (deny) return deny;
 
@@ -128,8 +130,10 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canDelete', 'CREDIT_CARDS');
   if (deny) return deny;
 

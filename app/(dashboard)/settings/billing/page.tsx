@@ -11,6 +11,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useMe } from "@/hooks/swr/use-me";
 import { OwnerGuard } from "@/components/shared/owner-guard";
+import { SubscriptionStatusBanner } from "@/components/subscription-status-banner";
 
 export default function BillingSettingsPage() {
   return (
@@ -22,15 +23,14 @@ export default function BillingSettingsPage() {
 
 function BillingSettingsContent() {
   const { push } = useRouter();
-  const { subscription, isTrial, hasActiveSubscription, isLoading } = useMe();
+  const { subscription, org, isTrial, hasActiveSubscription, isLoading } = useMe();
 
-  const planName = subscription?.plan?.name ?? "Sin plan";
+  const planName = subscription?.contracted_plan?.name ?? subscription?.plan?.name ?? "Sin plan";
   const status = subscription?.status ?? "SIN_SUSCRIPCIÓN";
-
   const statusLabel = (() => {
     switch (status) {
       case "TRIAL":
-        return "Prueba";
+        return subscription?.is_trial_expired ? "Prueba finalizada" : "Prueba";
       case "ACTIVE":
         return "Activa";
       case "PAST_DUE":
@@ -65,6 +65,8 @@ function BillingSettingsContent() {
         </div>
       </div>
 
+      {!isLoading && <SubscriptionStatusBanner subscription={subscription} org={org} />}
+
       {/* Placeholder principal */}
       <Card>
         <CardHeader className="pb-2">
@@ -79,8 +81,13 @@ function BillingSettingsContent() {
                 Estado actual de tu suscripción
               </p>
               <p>
-                Plan: <span className="font-medium">{planName}</span>
+                Plan contratado: <span className="font-medium">{planName}</span>
               </p>
+              {subscription?.is_degraded && (
+                <p>
+                  Plan temporal: <span className="font-medium">{subscription.plan.name}</span>
+                </p>
+              )}
               <p>
                 Estado: <span className="font-medium">{statusLabel}</span>
               </p>

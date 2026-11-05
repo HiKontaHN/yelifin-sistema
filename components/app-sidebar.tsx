@@ -34,7 +34,7 @@ import {
 const financesOnlyNav = [
   { title: "Cuentas",          url: "/finances",                icon: Wallet },
   { title: "Transacciones",    url: "/finances/transactions",   icon: ArrowLeftRight },
-  { title: "Tarjetas crédito", url: "/finances/credit-cards",   icon: CreditCard },
+  { title: "Tarjetas crédito", url: "/finances/credit-cards",   icon: CreditCard, feature: "finances.credit_cards" },
 ]
 
 // ── Nav config ──────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ const mainNav: NavItemDef[] = [
     title: "Inventario", url: "/inventory", icon: Package, activeIcon: PackageOpen, module: "INVENTORY",
     submenu: [
       { title: "Productos",    url: "/inventory",          subitem: "STOCK" },
-      { title: "Movimientos",  url: "/inventory/movements", subitem: "MOVEMENTS" },
+      { title: "Movimientos",  url: "/inventory/movements", subitem: "MOVEMENTS", feature: "inventory.movements" },
       { title: "En camino",    url: "/purchases/pending",   subitem: "INCOMING" },
     ],
   },
@@ -67,7 +67,7 @@ const mainNav: NavItemDef[] = [
     submenu: [
       { title: "Cuentas",          url: "/finances",               subitem: "ACCOUNTS" },
       { title: "Transacciones",    url: "/finances/transactions",  subitem: "TRANSACTIONS" },
-      { title: "Tarjetas crédito", url: "/finances/credit-cards",  subitem: "CREDIT_CARDS" },
+      { title: "Tarjetas crédito", url: "/finances/credit-cards",  subitem: "CREDIT_CARDS", feature: "finances.credit_cards" },
       { title: "Cobros y pagos",   url: "/finances/receivables-payables", subitem: "ACCOUNTS", feature: "finances.receivables_payables" },
       { title: "Entidades",        url: "/finances/financial-entities",    subitem: "ACCOUNTS", feature: "finances.receivables_payables" },
     ],
@@ -295,7 +295,7 @@ export function AppSidebar() {
             <SidebarGroup>
               {!isCollapsed && <SidebarGroupLabel>Finanzas</SidebarGroupLabel>}
               <SidebarGroupContent>
-                <SidebarMenu>{renderNav(financesOnlyNav)}</SidebarMenu>
+                <SidebarMenu>{renderNav(filterByPlan(financesOnlyNav))}</SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
           ) : (

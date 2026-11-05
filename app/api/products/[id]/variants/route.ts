@@ -1,7 +1,7 @@
 // app/api/products/[id]/variants/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { nextVariantSkus, isVariantSkuAvailable, variantSkuBase } from "@/lib/sku";
 import { withTransaction } from "@/lib/db-transaction";
 
@@ -10,8 +10,10 @@ const sql = neon(process.env.DATABASE_URL!);
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "products.variants");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'PRODUCTS', 'canEdit');
   if (deny) return deny;
 

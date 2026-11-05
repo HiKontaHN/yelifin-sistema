@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
 import { SearchBar } from "@/components/shared/search-bar";
 import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -94,6 +95,8 @@ function CategoriesPageContent() {
   const [pageSize, setPageSize] = useState(() => [15, 30, 50].includes(initialPageSize) ? initialPageSize : pageLimit);
   const debouncedSearch = useDebounce(search, 300);
   const { can_edit: canEdit } = useModulePermissions("ADMIN", "CATEGORIES");
+  const { canManageCategories } = useFeatures();
+  const canMutate = canEdit && canManageCategories;
 
   const { categories, total, isLoading, mutate } = useTransactionCategories({
     type:   selectedType,
@@ -292,7 +295,7 @@ function CategoriesPageContent() {
             id: "actions",
             header: "Acciones",
             align: "right",
-            cell: (cat) => cat.is_active ? (
+            cell: (cat) => !canMutate ? null : cat.is_active ? (
               <div className="flex justify-end gap-1">
                 <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}>
                   <Pencil className="size-4" />
@@ -339,7 +342,7 @@ function CategoriesPageContent() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {cat.is_active ? (
+              {canMutate ? (cat.is_active ? (
                 <>
                   <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}><Pencil className="size-4" /></Button>
                   <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Eliminar ${cat.name}`}><Trash2 className="size-4" /></Button>
@@ -348,14 +351,14 @@ function CategoriesPageContent() {
                 <Button variant="ghost" size="icon" className="size-8" disabled={reactivatingId === cat.id} onClick={() => handleReactivate(cat)} aria-label={`Reactivar ${cat.name}`}>
                   {reactivatingId === cat.id ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
                 </Button>
-              )}
+              )) : null}
             </div>
           </div>
         )}
       />
 
       {/* FAB */}
-      {canEdit && <Fab
+      {canMutate && <Fab
         actions={[
           {
             label: "Nueva categoría",

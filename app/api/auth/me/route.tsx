@@ -60,6 +60,11 @@ export async function GET(request: NextRequest) {
         os.current_period_start,
         os.current_period_end,
         os.cancel_at_period_end,
+        os.past_due_since,
+        os.grace_ends_at,
+        os.is_in_grace,
+        os.is_degraded,
+        os.is_trial_expired,
 
         sp.id               AS plan_id,
         sp.name             AS plan_name,
@@ -69,6 +74,12 @@ export async function GET(request: NextRequest) {
         sp.max_products,
         sp.max_sales_per_month,
         sp.max_storage_mb,
+
+        contracted.id               AS contracted_plan_id,
+        contracted.name             AS contracted_plan_name,
+        contracted.slug             AS contracted_plan_slug,
+        contracted.price_usd        AS contracted_price_usd,
+        contracted.billing_interval AS contracted_billing_interval,
 
         COALESCE((
           SELECT jsonb_agg(
@@ -81,8 +92,8 @@ export async function GET(request: NextRequest) {
           )
           FROM plan_features pf
           JOIN system_features sf ON sf.id = pf.feature_id
-          WHERE pf.plan_id = os.plan_id
-            AND os.status IN ('TRIAL', 'ACTIVE')
+          WHERE pf.plan_id = os.effective_plan_id
+            AND os.status IN ('TRIAL', 'ACTIVE', 'PAST_DUE')
             AND pf.is_enabled = TRUE
             AND sf.is_active = TRUE
         ), '[]'::jsonb) AS plan_features,
@@ -109,8 +120,9 @@ export async function GET(request: NextRequest) {
       JOIN  organization_members  om ON om.user_id  = u.id  AND om.is_active = TRUE
       JOIN  organizations         o  ON o.id        = om.org_id AND o.is_active = TRUE
       JOIN  org_roles             r  ON r.id        = om.role_id
-      JOIN  org_subscriptions     os ON os.org_id   = o.id
-      JOIN  subscription_plans    sp ON sp.id       = os.plan_id
+      JOIN  org_effective_subscriptions os ON os.org_id = o.id
+      JOIN  subscription_plans    sp ON sp.id       = os.effective_plan_id
+      JOIN  subscription_plans    contracted ON contracted.id = os.contracted_plan_id
       WHERE u.firebase_uid = ${decoded.uid}
       ORDER BY om.joined_at ASC
       LIMIT 1
@@ -140,6 +152,14 @@ export async function GET(request: NextRequest) {
 
     // Permisos por módulo del rol actual
     const isOwner = row.role_is_owner === true || row.owner_user_id === row.id;
+
+    if (row.is_degraded === true && !isOwner) {
+      return createErrorResponse(
+        "El pago de la suscripción está pendiente y el acceso temporal está limitado al dueño de la organización",
+        403,
+        true,
+      );
+    }
 
     // Permisos anidados por módulo y luego por subitem — ver
     // lib/permissions.ts (MODULE_SUBITEMS) para el catálogo completo.
@@ -222,6 +242,18 @@ export async function GET(request: NextRequest) {
             max_storage_mb:      row.max_storage_mb,
           },
         },
+        contracted_plan: {
+          id:               row.contracted_plan_id,
+          name:             row.contracted_plan_name,
+          slug:             row.contracted_plan_slug,
+          price_usd:        row.contracted_price_usd,
+          billing_interval: row.contracted_billing_interval,
+        },
+        past_due_since:       row.past_due_since,
+        grace_ends_at:        row.grace_ends_at,
+        is_in_grace:          row.is_in_grace === true,
+        is_degraded:          row.is_degraded === true,
+        is_trial_expired:     row.is_trial_expired === true,
         current_period_start: row.current_period_start,
         current_period_end:   row.current_period_end,
         cancel_at_period_end: row.cancel_at_period_end,

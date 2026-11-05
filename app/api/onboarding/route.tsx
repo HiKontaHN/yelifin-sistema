@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
+import {
+  verifyAuth,
+  createErrorResponse,
+  isAuthSuccess,
+  verifyResourceLimit,
+} from "@/lib/auth";
+import { withTransaction } from "@/lib/db-transaction";
 import { FREE_PLAN_MAX_ACCOUNTS } from "@/lib/plan-limits";
 
 const sql = neon(process.env.DATABASE_URL!);
 
+class OnboardingAlreadyCompletedError extends Error {}
+
 // GET /api/onboarding — verificar si el usuario completó el onboarding
 export async function GET(request: NextRequest) {
   const auth = await verifyAuth(request);
-  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  if (!isAuthSuccess(auth)) return createErrorResponse(
+    auth.error,
+    auth.status,
+    "needsUpgrade" in auth ? auth.needsUpgrade : false,
+  );
 
   try {
     const { userId } = auth.data;
@@ -36,7 +48,13 @@ export async function GET(request: NextRequest) {
 // Body: { currency: string, industry_id?: number, accounts: { name: string, type: string, balance?: number }[] }
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request);
-  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  if (!isAuthSuccess(auth)) return createErrorResponse(
+    auth.error,
+    auth.status,
+    "needsUpgrade" in auth ? auth.needsUpgrade : false,
+  );
+  if (!auth.data.isOwner)
+    return createErrorResponse("Solo el dueño puede completar el onboarding", 403);
 
   try {
     const { userId, orgId } = auth.data;
@@ -76,46 +94,55 @@ export async function POST(request: NextRequest) {
         return createErrorResponse(`Tipo de cuenta inválido: ${acc.type}`, 400);
     }
 
-    // Nota: el driver HTTP de Neon ejecuta cada query en una conexión
-    // distinta, así que BEGIN/COMMIT no crean una transacción real.
-    // Las operaciones son idempotentes (ON CONFLICT), reintentar es seguro.
-
-    // 1. Crear cuentas (si ya existía por nombre, actualizar tipo/balance —
-    //    el onboarding solo corre una vez, antes de que haya movimientos)
-    for (const acc of accounts) {
-      const name    = acc.name.trim();
-      const type    = (acc.type ?? "CASH").toUpperCase();
-      const balance = Number(acc.balance ?? 0);
-
-      await sql`
-        INSERT INTO accounts (org_id, created_by, name, type, balance, is_active)
-        VALUES (${orgId}, ${userId}, ${name}, ${type}, ${balance}, TRUE)
-        ON CONFLICT (org_id, name) DO UPDATE
-          SET type = EXCLUDED.type, balance = EXCLUDED.balance, is_active = TRUE
-      `;
+    const limit = await verifyResourceLimit(orgId, "accounts");
+    if (!limit.withinLimit) {
+      return createErrorResponse(
+        limit.error ?? "Límite alcanzado",
+        limit.status,
+        "needsUpgrade" in limit ? !!limit.needsUpgrade : false,
+      );
     }
 
-    // 2. Guardar moneda + industria en la org (currency es lo que lee
-    //    /api/auth/me y la app; industry_id queda NULL si no se
-    //    seleccionó — se puede completar después en /settings/organization).
-    await sql`
-      UPDATE organizations
-      SET currency    = ${currency},
-          industry_id = COALESCE(${industryId}, industry_id),
-          updated_at  = CURRENT_TIMESTAMP
-      WHERE id = ${orgId}
-    `;
+    await withTransaction(async (tx) => {
+      const [profile] = await tx`
+        SELECT onboarding_completed
+        FROM user_profile
+        WHERE user_id = ${userId}
+        FOR UPDATE
+      `;
+      if (profile?.onboarding_completed) {
+        throw new OnboardingAlreadyCompletedError();
+      }
 
-    // 3. Marcar onboarding completo (al final: si algo falló antes,
-    //    el usuario puede reintentar desde el onboarding)
-    await sql`
-      UPDATE user_profile
-      SET
-        currency             = ${currency},
-        onboarding_completed = TRUE,
-        updated_at           = CURRENT_TIMESTAMP
-      WHERE user_id = ${userId}
-    `;
+      for (const acc of accounts) {
+        const name    = acc.name.trim();
+        const type    = (acc.type ?? "CASH").toUpperCase();
+        const balance = Number(acc.balance ?? 0);
+
+        await tx`
+          INSERT INTO accounts (org_id, created_by, name, type, balance, is_active)
+          VALUES (${orgId}, ${userId}, ${name}, ${type}, ${balance}, TRUE)
+          ON CONFLICT (org_id, name) DO NOTHING
+        `;
+      }
+
+      await tx`
+        UPDATE organizations
+        SET currency    = ${currency},
+            industry_id = COALESCE(${industryId}, industry_id),
+            updated_at  = CURRENT_TIMESTAMP
+        WHERE id = ${orgId}
+      `;
+
+      await tx`
+        UPDATE user_profile
+        SET
+          currency             = ${currency},
+          onboarding_completed = TRUE,
+          updated_at           = CURRENT_TIMESTAMP
+        WHERE user_id = ${userId}
+      `;
+    });
 
     // Actualizar la cookie de sesión que cachea el proxy (mismo formato
     // que hikonta_nav en proxy.ts) para que la navegación al dashboard
@@ -137,6 +164,9 @@ export async function POST(request: NextRequest) {
     );
     return res;
   } catch (error) {
+    if (error instanceof OnboardingAlreadyCompletedError) {
+      return createErrorResponse("El onboarding ya fue completado", 409);
+    }
     console.error(" POST /api/onboarding:", error);
     return createErrorResponse("Error al completar onboarding", 500);
   }

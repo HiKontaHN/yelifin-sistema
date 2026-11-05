@@ -13,11 +13,14 @@ export function useSubscription() {
   const planSlug = subscription?.plan?.slug ?? 'trial';
   const planName = subscription?.plan?.name ?? 'Trial';
   const limits = subscription?.plan?.limits;
+  const graceEndsAt = subscription?.grace_ends_at ?? null;
+  const isDegraded = subscription?.is_degraded ?? false;
 
   // Estado de la suscripción
-  const isActive = status === 'TRIAL' || status === 'ACTIVE';
-  const isExpired = status === 'EXPIRED' || status === 'CANCELLED' || status === 'PAST_DUE';
-  const isTrial = status === 'TRIAL';
+  const isPastDue = status === 'PAST_DUE';
+  const isActive = status === 'TRIAL' || status === 'ACTIVE' || isPastDue;
+  const isExpired = status === 'EXPIRED' || status === 'CANCELLED';
+  const isTrial = status === 'TRIAL' && !subscription?.is_trial_expired;
   const isPro = planSlug === 'pro';
   const isOriginal = planSlug === 'original';
 
@@ -93,6 +96,9 @@ export function useSubscription() {
     features,
     isActive,
     isExpired,
+    isPastDue,
+    graceEndsAt,
+    isDegraded,
     isTrial,
     isPro,
     isOriginal,

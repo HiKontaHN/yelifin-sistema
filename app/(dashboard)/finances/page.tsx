@@ -37,6 +37,7 @@ import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { SummaryStats } from "@/components/shared/summary-stats";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 import { formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { useFeatures } from "@/hooks/use-features";
 
 const MONTH_NAMES = [
   "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -116,6 +117,7 @@ export default function FinancesPage() {
     year: selectedYear,
   });
   const { format } = useCurrency();
+  const { canManageCreditCards } = useFeatures();
   const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("FINANCES");
 
   const availableYears = [...new Set(periods.map((p) => p.year))].sort((a, b) => b - a);
@@ -277,7 +279,7 @@ export default function FinancesPage() {
         <Card className="pt-1 pb-1">
           <CardContent className="p-0">
             <div className="flex items-center justify-between px-3.5 py-2.5 border-b">
-              <p className="text-sm font-semibold">Cuentas y tarjetas</p>
+              <p className="text-sm font-semibold">{canManageCreditCards ? "Cuentas y tarjetas" : "Cuentas"}</p>
             </div>
             {isLoading ? (
               <div className="divide-y">
@@ -353,7 +355,7 @@ export default function FinancesPage() {
                     </div>
                   );
                 })}
-                {creditCards.map((card) => (
+                {canManageCreditCards && creditCards.map((card) => (
                   <div key={`cc-${card.id}`} className="flex items-center gap-3 p-3.5">
                     <div
                       className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover:bg-muted/50 rounded-lg transition-colors -m-1 p-1"
@@ -462,7 +464,7 @@ export default function FinancesPage() {
       <Fab
         actions={[
           ...(canEdit ? [{ label: "Nueva cuenta", icon: Wallet, onClick: () => setCreateAccountOpen(true) }] : []),
-          ...(canEdit ? [{ label: "Nueva tarjeta de crédito", icon: CreditCard, onClick: () => setCreateCardOpen(true) }] : []),
+          ...(canEdit && canManageCreditCards ? [{ label: "Nueva tarjeta de crédito", icon: CreditCard, onClick: () => setCreateCardOpen(true) }] : []),
           ...(canEdit ? [{ label: "Nueva transacción", icon: ArrowLeftRight, onClick: () => setTransactionOpen(true) }] : []),
         ]}
       />
@@ -472,7 +474,7 @@ export default function FinancesPage() {
           open
           onOpenChange={setTransactionOpen}
           accounts={accounts}
-          creditCards={creditCards}
+          creditCards={canManageCreditCards ? creditCards : []}
         />
       )}
       {createAccountOpen && (
@@ -482,7 +484,7 @@ export default function FinancesPage() {
           onSuccess={onAccountSuccess}
         />
       )}
-      {createCardOpen && (
+      {canManageCreditCards && createCardOpen && (
         <CreateCreditCardDialog
           open
           onOpenChange={setCreateCardOpen}

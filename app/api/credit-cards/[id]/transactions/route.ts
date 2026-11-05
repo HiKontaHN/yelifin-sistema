@@ -1,7 +1,7 @@
 // app/api/credit-cards/[id]/transactions/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -10,8 +10,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.credit_cards");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'CREDIT_CARDS');
   if (deny) return deny;
 

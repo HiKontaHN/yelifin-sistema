@@ -55,6 +55,7 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ function ProductActionsMenu({
   onViewDetail,
   canEdit,
   canDelete,
+  canMoveInventory,
 }: {
   item: InventoryItem;
   findProduct: (id: number) => Product | null;
@@ -101,6 +103,7 @@ function ProductActionsMenu({
   onViewDetail: (id: number) => void;
   canEdit: boolean;
   canDelete: boolean;
+  canMoveInventory: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -121,10 +124,12 @@ function ProductActionsMenu({
               <PackagePlus className="size-4 mr-2 text-primary" />
               Agregar stock
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { const p = findProduct(item.product_id); if (p) setAdjustProduct(p); }}>
-              <SlidersHorizontal className="size-4 mr-2 text-muted-foreground" />
-              Ajuste de inventario
-            </DropdownMenuItem>
+            {canMoveInventory && (
+              <DropdownMenuItem onClick={() => { const p = findProduct(item.product_id); if (p) setAdjustProduct(p); }}>
+                <SlidersHorizontal className="size-4 mr-2 text-muted-foreground" />
+                Ajuste de inventario
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => { const p = findProduct(item.product_id); if (p) setVariantProduct(p); }}>
               <Layers className="size-4 mr-2 text-muted-foreground" />
               Agregar variante
@@ -162,6 +167,7 @@ function VariantActionsMenu({
   setDeleteVariantTarget,
   canEdit,
   canDelete,
+  canMoveInventory,
 }: {
   product: Product;
   variant: ProductVariant;
@@ -170,6 +176,7 @@ function VariantActionsMenu({
   setDeleteVariantTarget: (v: { product: Product; variant: ProductVariant } | null) => void;
   canEdit: boolean;
   canDelete: boolean;
+  canMoveInventory: boolean;
 }) {
   if (!canEdit && !canDelete) return null;
   return (
@@ -182,11 +189,15 @@ function VariantActionsMenu({
       <DropdownMenuContent align="end">
         {canEdit && (
           <>
-            <DropdownMenuItem onClick={() => setAdjustVariant({ product, variant })}>
-              <SlidersHorizontal className="size-4 mr-2 text-muted-foreground" />
-              Ajuste de inventario
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {canMoveInventory && (
+              <>
+                <DropdownMenuItem onClick={() => setAdjustVariant({ product, variant })}>
+                  <SlidersHorizontal className="size-4 mr-2 text-muted-foreground" />
+                  Ajuste de inventario
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={() => setEditVariant({ product, variant })}>
               <Pencil className="size-4 mr-2" />
               Editar variante
@@ -264,6 +275,7 @@ function VariantTableRow({
   showCosts,
   canEdit,
   canDelete,
+  canMoveInventory,
   findVariant,
   setAdjustVariant,
   setEditVariant,
@@ -276,6 +288,7 @@ function VariantTableRow({
   showCosts: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canMoveInventory: boolean;
   findVariant: (product: Product, variantId: number) => ProductVariant | null;
   setAdjustVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setEditVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
@@ -345,6 +358,7 @@ function VariantTableRow({
             setDeleteVariantTarget={setDeleteVariantTarget}
             canEdit={canEdit}
             canDelete={canDelete}
+            canMoveInventory={canMoveInventory}
           />
         )}
       </TableCell>
@@ -415,6 +429,7 @@ function VariantCard({
   showCosts,
   canEdit,
   canDelete,
+  canMoveInventory,
   findVariant,
   setAdjustVariant,
   setEditVariant,
@@ -427,6 +442,7 @@ function VariantCard({
   showCosts: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canMoveInventory: boolean;
   findVariant: (product: Product, variantId: number) => ProductVariant | null;
   setAdjustVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
   setEditVariant: (v: { product: Product; variant: ProductVariant } | null) => void;
@@ -480,6 +496,7 @@ function VariantCard({
                   setDeleteVariantTarget={setDeleteVariantTarget}
                   canEdit={canEdit}
                   canDelete={canDelete}
+                  canMoveInventory={canMoveInventory}
                 />
               )}
             </div>
@@ -584,6 +601,7 @@ export default function InventoryPage() {
   const { creditCards, mutate: mutateCreditCards } = useCreditCards();
   const { format } = useCurrency();
   const { show_costs: showCosts, can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY");
+  const { canAdjustInventory, canBulkImport } = useFeatures();
 
   const findProduct = (productId: number): Product | null =>
     products.find((p) => p.id === productId) ?? null;
@@ -690,6 +708,7 @@ export default function InventoryPage() {
           onViewDetail={(id) => push(`/inventory/${id}`)}
           canEdit={canEdit}
           canDelete={canDelete}
+          canMoveInventory={canAdjustInventory}
         />
       ),
     },
@@ -719,6 +738,7 @@ export default function InventoryPage() {
             showCosts={showCosts}
             canEdit={canEdit}
             canDelete={canDelete}
+            canMoveInventory={canAdjustInventory}
             findVariant={findVariant}
             setAdjustVariant={setAdjustVariant}
             setEditVariant={setEditVariant}
@@ -918,7 +938,7 @@ export default function InventoryPage() {
                         <div className="flex shrink-0 items-center gap-1">
                           {getStockBadge(Number(item.stock), item.is_service)}
                           <div onClick={(e) => e.stopPropagation()}>
-                            <ProductActionsMenu item={item} findProduct={findProduct} setInventoryProduct={setInventoryProduct} setAdjustProduct={setAdjustProduct} setVariantProduct={setVariantProduct} setEditProduct={setEditProduct} setDeleteProduct={setDeleteProduct} onViewDetail={(id) => push(`/inventory/${id}`)} canEdit={canEdit} canDelete={canDelete} />
+                            <ProductActionsMenu item={item} findProduct={findProduct} setInventoryProduct={setInventoryProduct} setAdjustProduct={setAdjustProduct} setVariantProduct={setVariantProduct} setEditProduct={setEditProduct} setDeleteProduct={setDeleteProduct} onViewDetail={(id) => push(`/inventory/${id}`)} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canAdjustInventory} />
                           </div>
                         </div>
                       </div>
@@ -939,7 +959,7 @@ export default function InventoryPage() {
                     </button>
                     {isExpanded && <div className="mt-2 space-y-2">
                       {Number(item.base_stock) > 0 && <BaseCard item={item} format={format} showCosts={showCosts} onClick={() => push(`/inventory/${item.product_id}`)} />}
-                      {item.variants_stock.map((vs) => <VariantCard key={vs.variant_id} variantStock={vs} product={product} format={format} showCosts={showCosts} canEdit={canEdit} canDelete={canDelete} findVariant={findVariant} setAdjustVariant={setAdjustVariant} setEditVariant={setEditVariant} setDeleteVariantTarget={setDeleteVariantTarget} onClick={() => push(`/inventory/${item.product_id}`)} />)}
+                      {item.variants_stock.map((vs) => <VariantCard key={vs.variant_id} variantStock={vs} product={product} format={format} showCosts={showCosts} canEdit={canEdit} canDelete={canDelete} canMoveInventory={canAdjustInventory} findVariant={findVariant} setAdjustVariant={setAdjustVariant} setEditVariant={setEditVariant} setDeleteVariantTarget={setDeleteVariantTarget} onClick={() => push(`/inventory/${item.product_id}`)} />)}
                     </div>}
                   </>}
                 </CardContent>
@@ -968,7 +988,9 @@ export default function InventoryPage() {
       {canEdit && (
         <Fab
           actions={[
-            { label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) },
+            ...(canBulkImport
+              ? [{ label: "Importar Excel", icon: FileSpreadsheet, onClick: () => setImportOpen(true) }]
+              : []),
             { label: "Nuevo producto", icon: Plus, onClick: () => setCreateOpen(true) },
           ]}
         />

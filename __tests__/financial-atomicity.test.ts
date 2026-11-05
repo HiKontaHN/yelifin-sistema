@@ -44,7 +44,10 @@ function makeAuthUser(): AuthUser {
     locale: "es-HN",
     emailVerified: true,
     isActive: true,
-    subscription: { status: "ACTIVE", planSlug: "pro" },
+    subscription: {
+      status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
+      graceEndsAt: null, isInGrace: false, isDegraded: false, isTrialExpired: false,
+    },
   };
 }
 
@@ -65,10 +68,11 @@ function statements(): string[] {
 describe("atomicidad de movimientos financieros", () => {
   let verifyAuthSpy: jest.SpyInstance;
   let resourceLimitSpy: jest.SpyInstance;
+  let requireFeatureSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuthAndSubscription").mockResolvedValue({
       error: null,
       status: 200,
       data: makeAuthUser(),
@@ -78,11 +82,13 @@ describe("atomicidad de movimientos financieros", () => {
       status: 200,
       withinLimit: true,
     });
+    requireFeatureSpy = jest.spyOn(authModule, "requireFeature").mockResolvedValue(null);
   });
 
   afterEach(() => {
     verifyAuthSpy.mockRestore();
     resourceLimitSpy.mockRestore();
+    requireFeatureSpy.mockRestore();
   });
 
   it("crea una transferencia y ambos cambios de saldo dentro de withTransaction", async () => {

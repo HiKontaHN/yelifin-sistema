@@ -22,6 +22,7 @@ import { ProductImageUpload } from "./product-image-upload";
 import { ExistingForm, ExistingFormValue, defaultExistingForm } from "./inventory-section/existing-form";
 import { Boxes, ChevronDown, ChevronUp } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useFeatures } from "@/hooks/use-features";
 
 // ── Schema ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ type Props = {
 export function CreateProductVariantDialog({
   open, onOpenChange, productId, productName, basePrice, baseSku, variantCount = 0, baseStock = 0, onSuccess,
 }: Props) {
+  const { canCreateProducts } = useFeatures();
   const { createVariant, isCreating } = useCreateVariant(productId);
   const { symbol, format }            = useCurrency();
 
@@ -488,7 +490,7 @@ export function CreateProductVariantDialog({
             </div>
 
             {/* Inventario inicial */}
-            <div className="rounded-xl border overflow-hidden">
+            {canCreateProducts && <div className="rounded-xl border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setInventoryOpen((v) => !v)}
@@ -522,7 +524,7 @@ export function CreateProductVariantDialog({
                   />
                 </div>
               )}
-            </div>
+            </div>}
 
     </ResponsiveModal>
   );

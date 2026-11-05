@@ -1,7 +1,7 @@
 // app/api/transaction-categories/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -9,8 +9,10 @@ const VALID_TYPES = ["INCOME", "EXPENSE", "TRANSFER"] as const;
 type TransactionType = (typeof VALID_TYPES)[number];
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.transactions");
+  if (feature) return feature;
   // Leer: quien usa transacciones (para el <Select>) o quien administra
   // categorías en /settings/categories.
   const deny = await requireModule(auth.data, 'FINANCES', 'canView', 'TRANSACTIONS')
@@ -77,8 +79,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'ADMIN', 'canEdit', 'CATEGORIES');
   if (deny) return deny;
 

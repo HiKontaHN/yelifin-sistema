@@ -137,12 +137,12 @@ export type WarehouseTransfer = {
   items: WarehouseTransferItem[];
 };
 
-export function useWarehouseTransfers() {
+export function useWarehouseTransfers(enabled = true) {
   const { firebaseUser } = useAuth();
   const authFetch = useAuthFetch();
 
   const { data, isLoading, error, mutate } = useSWR(
-    firebaseUser ? TRANSFERS_KEY : null,
+    firebaseUser && enabled ? TRANSFERS_KEY : null,
     (url: string) => authFetch(url),
     { revalidateOnFocus: false }
   );

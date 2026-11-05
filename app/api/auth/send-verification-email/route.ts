@@ -19,7 +19,7 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { verifyAuth, createErrorResponse, isAuthSuccess } from "@/lib/auth";
 import { sendMail } from "@/lib/mailer";
 import { verifyEmailTemplate } from "@/lib/email-templates";
-import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { sharedRateLimit, getClientIP } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   const auth = await verifyAuth(request, { allowUnverifiedEmail: true });
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   // 5 reenvíos por IP cada 10 minutos — el botón "Reenviar" en
   // /verify-email ya tiene su propio cooldown de 60s en el cliente, esto
   // es solo el límite duro contra abuso.
-  const { allowed, retryAfterSec } = rateLimit(
+  const { allowed, retryAfterSec } = await sharedRateLimit(
     `send-verification-email:${getClientIP(request)}`,
     5,
     10 * 60 * 1000,

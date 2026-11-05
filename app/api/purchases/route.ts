@@ -1,17 +1,21 @@
 // app/api/purchases/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
 
+import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
+
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'INCOMING');
   if (deny) return deny;
 
@@ -32,6 +36,10 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const isCreditCard = !already_paid && !!credit_card_id && !account_id;
+    if (isCreditCard) {
+      const creditCardsFeature = await requireFeature(orgId, "finances.credit_cards");
+      if (creditCardsFeature) return creditCardsFeature.status === 403 ? createErrorResponse(CARDS_NOT_IN_PLAN, 403, true) : creditCardsFeature;
+    }
 
     const wh = await resolveWarehouseId(sql, orgId, warehouse_id);
     if (wh.warehouseId === null) return createErrorResponse(wh.error, 400);
@@ -309,8 +317,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'INCOMING');
   if (deny) return deny;
 

@@ -5,7 +5,7 @@
 // database/migrations/v4.20-warehouses.sql (warehouse_transfers).
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
+import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { consumeFifo, InsufficientStockError } from "@/lib/fifo";
 import { withTransaction } from "@/lib/db-transaction";
 import { todayInTimeZone } from "@/lib/date-utils";
@@ -13,8 +13,12 @@ import { todayInTimeZone } from "@/lib/date-utils";
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const movementsFeature = await requireFeature(auth.data.orgId, "inventory.movements");
+  if (movementsFeature) return movementsFeature;
+  const feature = await requireFeature(auth.data.orgId, "inventory.view");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView', 'STOCK');
   if (deny) return deny;
 
@@ -54,8 +58,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuthAndSubscription(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "inventory.adjust");
+  if (feature) return feature;
   const deny = await requireModule(auth.data, 'INVENTORY', 'canEdit', 'STOCK');
   if (deny) return deny;
 

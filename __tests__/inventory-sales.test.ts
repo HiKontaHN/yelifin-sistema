@@ -96,7 +96,10 @@ function makeAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     displayName: "Test User",
     emailVerified: true,
     isActive: true,
-    subscription: { status: "ACTIVE", planSlug: "pro" },
+    subscription: {
+      status: "ACTIVE", planSlug: "pro", contractedPlanSlug: "pro",
+      graceEndsAt: null, isInGrace: false, isDegraded: false, isTrialExpired: false,
+    },
     ...overrides,
     timezone: overrides.timezone ?? "America/Tegucigalpa",
     locale: overrides.locale ?? "es-HN",
@@ -252,17 +255,22 @@ describe("Tax-inclusive calculation (pure logic)", () => {
 
 describe("PATCH /api/purchases/[id] – validación de correcciones", () => {
   let verifyAuthSpy: jest.SpyInstance;
+  let requireFeatureSpy: jest.SpyInstance;
 
   beforeEach(() => {
     resetSql();
-    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuthAndSubscription").mockResolvedValue({
       error: null,
       status: 200,
       data: makeAuthUser(),
     });
+    requireFeatureSpy = jest.spyOn(authModule, "requireFeature").mockResolvedValue(null);
   });
 
-  afterEach(() => verifyAuthSpy.mockRestore());
+  afterEach(() => {
+    verifyAuthSpy.mockRestore();
+    requireFeatureSpy.mockRestore();
+  });
 
   it("rechaza cantidades no positivas antes de tocar la base", async () => {
     const { PATCH } = await import("@/app/api/purchases/[id]/route");
@@ -323,27 +331,30 @@ describe("POST /api/products", () => {
   // Spy on verifyAuth so we can simulate authenticated / unauthenticated users
   // without hitting Firebase.
   let verifyAuthSpy: jest.SpyInstance;
+  let requireFeatureSpy: jest.SpyInstance;
 
   beforeEach(() => {
     resetSql();
-    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuthAndSubscription").mockResolvedValue({
       error: null,
       status: 200,
       data: makeAuthUser(),
     });
+    requireFeatureSpy = jest.spyOn(authModule, "requireFeature").mockResolvedValue(null);
   });
 
   afterEach(() => {
     verifyAuthSpy.mockRestore();
+    requireFeatureSpy.mockRestore();
   });
 
   it("returns 401 when no auth header is present", async () => {
     // Restore the real spy so the real check fires
     verifyAuthSpy.mockRestore();
 
-    // Re-mock verifyAuth to return 401 (simulates missing Bearer header)
+    // Re-mock the combined guard to return 401 (simulates missing auth)
     verifyAuthSpy = jest
-      .spyOn(authModule, "verifyAuth")
+      .spyOn(authModule, "verifyAuthAndSubscription")
       .mockResolvedValue({ error: "No autorizado", status: 401, data: null });
 
     const { POST } = await import("@/app/api/products/route");
@@ -481,18 +492,21 @@ describe("POST /api/products", () => {
 
 describe("POST /api/products/[id]/variants", () => {
   let verifyAuthSpy: jest.SpyInstance;
+  let requireFeatureSpy: jest.SpyInstance;
 
   beforeEach(() => {
     resetSql();
-    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuthAndSubscription").mockResolvedValue({
       error: null,
       status: 200,
       data: makeAuthUser(),
     });
+    requireFeatureSpy = jest.spyOn(authModule, "requireFeature").mockResolvedValue(null);
   });
 
   afterEach(() => {
     verifyAuthSpy.mockRestore();
+    requireFeatureSpy.mockRestore();
   });
 
   it("returns 404 when parent product does not exist", async () => {
