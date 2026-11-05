@@ -9,9 +9,10 @@ import {
   supportsSaleItemBatchAllocations,
   type FifoTake,
 } from "@/lib/fifo";
-import { getDefaultWarehouseForUser } from "@/lib/warehouses";
+import { getDefaultWarehouseForUser, resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
 import { addCalendarDays, isCalendarDate, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
+import { resolveSupplyUnitCost } from "@/lib/sale-estimate";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -240,6 +241,7 @@ export async function POST(request: NextRequest) {
       status = "COMPLETED",
       credit_sale = false,
       amount_paid,
+      warehouse_id,
     } = body;
 
     const isCreditSale = credit_sale === true;
@@ -291,7 +293,18 @@ export async function POST(request: NextRequest) {
 
     // Bodega de la que descuenta esta venta — la asignada a quien la
     // registra, sin pedir selector (ver lib/warehouses.ts).
-    const warehouseId = await getDefaultWarehouseForUser(sql, orgId, userId);
+    const assignedWarehouseId = await getDefaultWarehouseForUser(sql, orgId, userId);
+    let warehouseId = assignedWarehouseId;
+    if (warehouse_id !== undefined && warehouse_id !== null) {
+      const requestedWarehouseId = Number(warehouse_id);
+      const resolvedWarehouse = await resolveWarehouseId(sql, orgId, warehouse_id);
+      if (resolvedWarehouse.error) return createErrorResponse(resolvedWarehouse.error, 400);
+      if (requestedWarehouseId !== assignedWarehouseId) {
+        const denyWarehouses = await requireModule(auth.data, "ADMIN", "canEdit", "WAREHOUSES");
+        if (denyWarehouses) return createErrorResponse("No tienes permiso para vender desde otra bodega", 403);
+      }
+      warehouseId = resolvedWarehouse.warehouseId!;
+    }
 
     // ── Validar evento ──────────────────────────────────────────────────
     const eventIdNum = event_id ? Number(event_id) : null;
@@ -429,17 +442,19 @@ export async function POST(request: NextRequest) {
       for (const s of supplies_used) {
         const supply_id = Number(s.supply_id);
         const quantity = Number(s.quantity);
-        const unit_cost = Number(s.unit_cost);
         if (!supply_id || quantity <= 0)
           return createErrorResponse("Datos de suministro inválidos", 400);
         const [supply] = await sql`
-          SELECT id FROM supplies WHERE id = ${supply_id} AND org_id = ${orgId}
+          SELECT id, unit_cost FROM supplies WHERE id = ${supply_id} AND org_id = ${orgId}
         `;
         if (!supply)
           return createErrorResponse(
             `Suministro #${supply_id} no encontrado`,
             404,
           );
+        const unit_cost = resolveSupplyUnitCost(s.unit_cost, supply.unit_cost);
+        if (unit_cost == null)
+          return createErrorResponse("Costo de suministro desconocido", 400);
         normalizedSupplies.push({
           supply_id,
           quantity,

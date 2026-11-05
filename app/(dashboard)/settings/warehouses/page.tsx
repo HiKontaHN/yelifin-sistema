@@ -18,6 +18,7 @@ import {
 } from "@/hooks/swr/use-warehouses";
 
 import { Button }   from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
 import { Badge }    from "@/components/ui/badge";
@@ -31,7 +32,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
-import { CreateProductDialog } from "@/components/products/create-product-dialog";
+import {
+  DATA_TABLE_PAGE_SIZE_OPTIONS,
+  DEFAULT_DATA_TABLE_PAGE_SIZE,
+  DataTableTimeSection,
+  type DataTableTimeSectionColumn,
+} from "@/components/shared/data-table-time-section";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -147,34 +153,44 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
   const [fromId,    setFromId]    = useState("");
   const [toId,      setToId]      = useState("");
-  const [productKey, setProductKey] = useState(""); // "p123" o "v456"
-  const [quantity,  setQuantity]  = useState("1");
+  const [lines, setLines] = useState<{ id: number; productKey: string; quantity: string }[]>([
+    { id: 1, productKey: "", quantity: "1" },
+  ]);
   const [notes,     setNotes]     = useState("");
-  const [createProductOpen, setCreateProductOpen] = useState(false);
 
   const { stock, mutate: mutateStock } = useWarehouseStock(fromId ? Number(fromId) : null);
   const keyOf = (s: { product_id: number; variant_id: number | null }) =>
     s.variant_id ? `v${s.variant_id}` : `p${s.product_id}`;
-  const selectedItem = stock.find((s) => keyOf(s) === productKey);
+  const resetLines = () => setLines([{ id: 1, productKey: "", quantity: "1" }]);
 
   const reset = () => {
-    setProductKey(""); setQuantity("1"); setNotes("");
+    resetLines(); setNotes("");
   };
 
   const handleSubmit = async () => {
     if (!fromId || !toId) { toast.error("Elegí ambas bodegas"); return; }
     if (fromId === toId)  { toast.error("Las bodegas deben ser diferentes"); return; }
-    if (!selectedItem) { toast.error("Elegí un producto"); return; }
-    const qty = Number(quantity);
-    if (!qty || qty < 1)  { toast.error("La cantidad debe ser al menos 1"); return; }
-    if (qty > selectedItem.stock) { toast.error(`Solo hay ${selectedItem.stock} disponibles en la bodega de origen`); return; }
+    const selectedLines = lines.filter((line) => line.productKey);
+    if (!selectedLines.length) { toast.error("Elegí al menos un producto"); return; }
+    const items = [];
+    for (const line of selectedLines) {
+      const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
+      const qty = Number(line.quantity);
+      if (!selectedItem) { toast.error("Elegí un producto válido"); return; }
+      if (!Number.isInteger(qty) || qty < 1) { toast.error("La cantidad debe ser al menos 1"); return; }
+      if (qty > selectedItem.stock) {
+        toast.error(`Solo hay ${selectedItem.stock} disponibles en la bodega de origen`);
+        return;
+      }
+      items.push({ product_id: selectedItem.product_id, variant_id: selectedItem.variant_id, quantity: qty });
+    }
 
     try {
       await createTransfer({
         from_warehouse_id: Number(fromId),
         to_warehouse_id:   Number(toId),
         notes: notes.trim() || undefined,
-        items: [{ product_id: selectedItem.product_id, variant_id: selectedItem.variant_id, quantity: qty }],
+        items,
       });
       toast.success("Transferencia registrada");
       reset();
@@ -216,7 +232,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
         <div className="grid items-end gap-3 md:grid-cols-[1fr_auto_1fr]">
           <div className="space-y-1.5">
             <Label className="text-xs">Bodega de origen</Label>
-            <Select value={fromId} onValueChange={(v) => { setFromId(v); setProductKey(""); setQuantity("1"); }} disabled={isCreating}>
+            <Select value={fromId} onValueChange={(v) => { setFromId(v); resetLines(); }} disabled={isCreating}>
               <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Selecciona una bodega" /></SelectTrigger>
               <SelectContent>
                 {warehouses.map((w) => <SelectItem key={w.id} value={String(w.id)} disabled={String(w.id) === toId}>{w.name}</SelectItem>)}
@@ -229,7 +245,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
             size="icon"
             className="size-9 border-primary text-primary"
             aria-label="Intercambiar bodegas"
-            onClick={() => { setFromId(toId); setToId(fromId); setProductKey(""); }}
+            onClick={() => { setFromId(toId); setToId(fromId); resetLines(); }}
             disabled={isCreating || !fromId || !toId}
           >
             <ArrowLeftRight className="size-4" />
@@ -247,28 +263,48 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
         <div className="border-t pt-5">
           <Label className="text-xs">Producto</Label>
-          <div className="mt-3 grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto_auto]">
-            <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
-              <button type="button" className="text-muted-foreground" onClick={() => setQuantity(String(Math.max(1, Number(quantity) - 1)))} disabled={isCreating || Number(quantity) <= 1}>−</button>
-              <span className="text-sm tabular-nums">{quantity}</span>
-              <button type="button" className="text-muted-foreground" onClick={() => setQuantity(String(Math.min(selectedItem?.stock ?? 1, Number(quantity) + 1)))} disabled={isCreating || !selectedItem || Number(quantity) >= selectedItem.stock}>+</button>
-            </div>
-            <SearchableSelect
-              value={productKey}
-              onValueChange={(value) => { setProductKey(value); setQuantity("1"); }}
-              disabled={isCreating || !fromId}
-              placeholder={fromId ? "Agregar producto..." : "Selecciona primero el origen"}
-              searchPlaceholder="Buscar producto..."
-              className="h-10 w-full"
-              items={stock.map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }))}
-            />
-            <span className="text-sm text-muted-foreground">{selectedItem ? `${selectedItem.stock} disponibles` : "—"}</span>
-            <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => { setProductKey(""); setQuantity("1"); }} disabled={isCreating || !productKey}>
-              <Trash2 className="size-4 text-muted-foreground" />
-            </Button>
-            <Button type="button" variant="outline" className="h-10 gap-1.5 whitespace-nowrap" onClick={() => setCreateProductOpen(true)} disabled={isCreating}>
-              <Plus className="size-3.5" /> Agregar producto
-            </Button>
+          <div className="mt-3 space-y-3">
+            {lines.map((line, index) => {
+              const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
+              const selectedElsewhere = new Set(lines.filter((other) => other.id !== line.id).map((other) => other.productKey));
+              const availableItems = stock
+                .filter((s) => !selectedElsewhere.has(keyOf(s)))
+                .map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }));
+              return (
+                <div key={line.id} className="grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto_auto]">
+                  <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
+                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.max(1, Number(item.quantity) - 1)) } : item))} disabled={isCreating || Number(line.quantity) <= 1}>−</button>
+                    <span className="text-sm tabular-nums">{line.quantity}</span>
+                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.min(selectedItem?.stock ?? 1, Number(item.quantity) + 1)) } : item))} disabled={isCreating || !selectedItem || Number(line.quantity) >= selectedItem.stock}>+</button>
+                  </div>
+                  <SearchableSelect
+                    value={line.productKey}
+                    onValueChange={(value) => setLines((current) => current.map((item) => item.id === line.id ? { ...item, productKey: value, quantity: "1" } : item))}
+                    disabled={isCreating || !fromId}
+                    placeholder={fromId ? "Agregar producto..." : "Selecciona primero el origen"}
+                    searchPlaceholder="Buscar producto..."
+                    className="h-10 w-full"
+                    items={availableItems}
+                  />
+                  <span className="text-sm text-muted-foreground">{selectedItem ? `${selectedItem.stock} disponibles` : "—"}</span>
+                  <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => setLines((current) => current.length === 1 ? [{ ...current[0], productKey: "", quantity: "1" }] : current.filter((item) => item.id !== line.id))} disabled={isCreating}>
+                    <Trash2 className="size-4 text-muted-foreground" />
+                  </Button>
+                  {/* El boton vive en la ultima fila; en las demas queda un hueco invisible para alinear columnas */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn("h-10 gap-1.5 whitespace-nowrap", index !== lines.length - 1 && "hidden md:inline-flex md:invisible")}
+                    aria-hidden={index !== lines.length - 1}
+                    tabIndex={index !== lines.length - 1 ? -1 : undefined}
+                    onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((item) => item.id), 0) + 1, productKey: "", quantity: "1" }])}
+                    disabled={isCreating || !fromId}
+                  >
+                    <Plus className="size-3.5" /> Agregar producto
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -282,11 +318,6 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
           Transferir
         </Button>
       </CardContent>
-      <CreateProductDialog
-        open={createProductOpen}
-        onOpenChange={setCreateProductOpen}
-        onSuccess={() => { mutateStock(); }}
-      />
     </Card>
   );
 }
@@ -305,6 +336,8 @@ export default function WarehousesPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const [transferPage, setTransferPage] = useState(1);
+  const [transferPageSize, setTransferPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const isLoading = meLoading || whLoading || permLoading;
 
@@ -338,6 +371,34 @@ export default function WarehousesPage() {
   }
 
   const activeWarehouses = warehouses.filter((w) => w.is_active);
+  const paginatedTransfers = transfers.slice(
+    (transferPage - 1) * transferPageSize,
+    transferPage * transferPageSize,
+  );
+  const transferColumns: DataTableTimeSectionColumn<(typeof transfers)[number]>[] = [
+    {
+      id: "time", header: "Hora", width: 90,
+      cell: (transfer) => formatInTZ(transfer.created_at, timezone, { hour: "2-digit", minute: "2-digit" }),
+    },
+    {
+      id: "route", header: "Origen → Destino", width: "clamp(12rem, 24vw, 18rem)",
+      cell: (transfer) => <span className="inline-flex items-center gap-1 font-medium">{transfer.from_warehouse_name}<ArrowRightLeft className="size-3 shrink-0 text-muted-foreground" />{transfer.to_warehouse_name}</span>,
+    },
+    {
+      id: "items", header: "Productos",
+      cell: (transfer) => <div className="space-y-0.5 text-xs text-muted-foreground">{transfer.items.map((item, index) => <p key={index}>{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}</div>,
+    },
+    {
+      id: "units", header: "Unidades", width: 90, align: "right", className: "font-medium tabular-nums",
+      cell: (transfer) => transfer.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+    },
+    {
+      id: "notes", header: "Notas", width: "clamp(8rem, 18vw, 14rem)",
+      cell: (transfer) => <span className="block truncate" title={transfer.notes ?? undefined}>{transfer.notes || "-"}</span>,
+    },
+  ];
+  const transferDateKey = (transfer: (typeof transfers)[number]) => formatInTZ(transfer.created_at, timezone, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const renderTransferDate = (_key: string, rows: readonly (typeof transfers)[number][]) => formatInTZ(rows[0].created_at, timezone, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:h-full lg:min-h-0 md:gap-6">
@@ -401,18 +462,45 @@ export default function WarehousesPage() {
 
         {(canAdjustInventory || canViewMovements) && <main className="h-full space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           {canAdjustInventory && <TransferStockCard warehouses={activeWarehouses} />}
-          {canViewMovements && <Card>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</CardTitle></CardHeader>
-            <CardContent className="divide-y divide-border p-0">
-              {transfersLoading ? <div className="p-6"><Skeleton className="h-16 rounded-lg" /></div> : transfers.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">Sin transferencias todavía.</div> : transfers.map((t) => (
-                <div key={t.id} className="space-y-1 px-6 py-3">
-                  <div className="flex items-center justify-between gap-2 text-sm"><span className="font-medium">{t.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {t.to_warehouse_name}</span><span className="shrink-0 text-xs text-muted-foreground">{formatInTZ(t.created_at, timezone, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
-                  {t.items.map((item, i) => <p key={i} className="text-xs text-muted-foreground">{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}
-                  {t.notes && <p className="text-xs italic text-muted-foreground">"{t.notes}"</p>}
-                </div>
-              ))}
-            </CardContent>
-          </Card>}
+          {canViewMovements && <section>
+            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Package className="size-4 text-muted-foreground" /> Transferencias recientes</h2>
+            <DataTableTimeSection
+              columns={transferColumns}
+              data={paginatedTransfers}
+              getRowKey={(transfer) => transfer.id}
+              getGroupKey={transferDateKey}
+              renderGroupHeader={renderTransferDate}
+              renderMobileRow={(transfer) => (
+                <Card key={transfer.id}>
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium">{transfer.from_warehouse_name} <ArrowRightLeft className="mx-1 inline size-3 text-muted-foreground" /> {transfer.to_warehouse_name}</p>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatInTZ(transfer.created_at, timezone, { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
+                      {transfer.items.map((item, index) => <p key={index}>{item.quantity} × {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ""}</p>)}
+                    </div>
+                    <p className="truncate text-xs italic text-muted-foreground">{transfer.notes || "-"}</p>
+                  </CardContent>
+                </Card>
+              )}
+              isLoading={transfersLoading}
+              emptyState="Sin transferencias todavía."
+              recordLabel="transferencias"
+              ariaLabel="Transferencias recientes"
+              minWidth={760}
+              stickyOffset="0px"
+              showFooterPagination={false}
+              pagination={{
+                page: transferPage,
+                pageSize: transferPageSize,
+                total: transfers.length,
+                onPageChange: setTransferPage,
+                onPageSizeChange: (size) => { setTransferPage(1); setTransferPageSize(size); },
+                pageSizeOptions: DATA_TABLE_PAGE_SIZE_OPTIONS,
+              }}
+            />
+          </section>}
         </main>}
       </div>
 

@@ -175,6 +175,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
           currency:      d.currency,
           exchange_rate: d.exchange_rate,
           shipping:      d.shipping,
+          status:        d.is_pending ? "PENDING" : "COMPLETED",
           notes:         d.notes || undefined,
           purchased_at:  d.purchased_at,
           items: [{
@@ -183,7 +184,11 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
             unit_cost_usd: d.unit_cost,
           }],
         });
-        toast.success("Producto e inventario registrados exitosamente");
+        toast.success(
+          d.is_pending
+            ? "Producto creado — compra pendiente de llegada"
+            : "Producto e inventario registrados exitosamente"
+        );
 
       } else if (!data.is_service && inventory?.mode === "existing") {
         const d = inventory.data;

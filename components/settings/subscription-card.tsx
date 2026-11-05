@@ -34,7 +34,7 @@ export function SubscriptionCard({ title }: { title: string }) {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           {title}
         </CardTitle>

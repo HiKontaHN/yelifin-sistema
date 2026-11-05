@@ -15,24 +15,28 @@ export type CartItem = {
   quantity:     number;
   unit_price:   number;
   discount:     number;
+  // Costo unitario estimado (promedio de inventario o service_cost).
+  // null si todavía no hay visibilidad de costos. El FIFO real se calcula al guardar.
+  unit_cost?:   number | null;
 };
 
 export type SaleStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
 
 export type CreateSaleInput = {
   customer_id?:    number | null;
-  items:           { product_id: number; quantity: number; unit_price: number; discount: number }[];
+  items:           { product_id: number; variant_id?: number | null; quantity: number; unit_price: number; discount: number }[];
   discount?:       number;
   shipping_cost?:  number;
   payment_method:  string;
   account_id?:     number | null;
   notes?:          string;
   tax_rate?:       number;
-  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number }[];
+  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number | null }[];
   event_id?:       number;
   status?:         SaleStatus;
   credit_sale?:    boolean;
   amount_paid?:    number;
+  warehouse_id?:   number;
 };
 
 export type ConfirmSaleInput = { action: 'confirm'; confirmed_at?: string; confirmed_date?: string; amount_paid?: number };
@@ -49,7 +53,7 @@ export type EditSaleInput = {
   customer_id?:    number | null;
   account_id:      number;
   status?:         SaleStatus;
-  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number }[];
+  supplies_used?:  { supply_id: number; quantity: number; unit_cost: number | null }[];
 };
 
 export type PatchSaleInput = ConfirmSaleInput | CancelSaleInput | EditSaleInput;

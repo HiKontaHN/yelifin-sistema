@@ -4,6 +4,11 @@
 import { useState, useMemo, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, AlertTriangle,
@@ -27,7 +32,10 @@ import { MobileCartSheet } from "@/components/sales/pos/mobile-cart-sheet";
 
 import { VariantPickerSheet } from "@/components/sales/pos/variant-picker-sheet";
 import { useInventory }        from "@/hooks/swr/use-inventory";
+import { applyEstimatedUnitCosts, estimateUnitCost, resolveSupplyUnitCost } from "@/lib/sale-estimate";
 import { useMe } from "@/hooks/swr/use-me";
+import { useWarehouses } from "@/hooks/swr/use-warehouses";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { Product, ProductVariant } from "@/types";
 
 const ACCOUNT_TYPE_TO_PAYMENT: Record<string, string> = {
@@ -48,10 +56,12 @@ function NewSaleContent() {
   const eventIdParam = searchParams.get("event_id");
   const eventId = eventIdParam ? Number(eventIdParam) : null;
   const backHref = eventId ? "/events" : "/sales";
+  const [warehouseSelection, setWarehouseSelection] = useState("assigned");
+  const [pendingWarehouseSelection, setPendingWarehouseSelection] = useState<string | null>(null);
 
   const { inventory, mutate: mutateInventory } = useInventory({
     limit: 500,
-    warehouse: "assigned",
+    warehouse: warehouseSelection === "assigned" ? "assigned" : Number(warehouseSelection),
   });
   const { products } = useProducts();
   const { createSale, isCreating } = useCreateSale();
@@ -60,7 +70,9 @@ function NewSaleContent() {
   const { policies: loyaltyPolicies } = useLoyaltyPolicies();
   const { supplies } = useSupplies();
   const { mutate: mutateEvents } = useEvents();
-  const { hasFeature } = useMe();
+  const { hasFeature, isOwner } = useMe();
+  const { can_edit: canEditWarehouses } = useModulePermissions("ADMIN", "WAREHOUSES");
+  const { activeWarehouses } = useWarehouses();
 
 
   // ── Estado principal ───────────────────────────────────────────────
@@ -86,6 +98,13 @@ function NewSaleContent() {
 
   const hasCart = cart.length > 0;
   const hasSupplies = supplies.length > 0;
+  const canChooseWarehouse = activeWarehouses.length > 1 && (isOwner || canEditWarehouses);
+
+  const handleWarehouseChange = (value: string) => {
+    if (value === warehouseSelection) return;
+    if (hasCart) setPendingWarehouseSelection(value);
+    else setWarehouseSelection(value);
+  };
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -184,6 +203,7 @@ function NewSaleContent() {
         quantity:     1,
         unit_price:   price,
         discount:     0,
+        unit_cost:    estimateUnitCost(product, variantId, inventory),
       }];
     });
   };
@@ -222,6 +242,11 @@ function NewSaleContent() {
       )
     );
  
+
+  const cartCostKey = cart.map((item) => `${item.product_id}:${item.variant_id ?? ""}`).join("|");
+  useEffect(() => {
+    setCart((prev) => applyEstimatedUnitCosts(prev, products, inventory));
+  }, [products, inventory, cartCostKey]);
 
   const updateSupplyQty = (id: number, qty: number) =>
     setSuppliesUsed((prev) => prev.map((s) => s.supply_id === id ? { ...s, quantity: qty } : s));
@@ -283,8 +308,16 @@ function NewSaleContent() {
         amount_paid: isCreditSale ? amountPaid : undefined,
         notes: notes || undefined,
         status: isPending ? "PENDING" : "COMPLETED",
+        ...(warehouseSelection !== "assigned" && { warehouse_id: Number(warehouseSelection) }),
         supplies_used: suppliesUsed.length > 0
-          ? suppliesUsed.map((s) => ({ supply_id: s.supply_id, quantity: s.quantity, unit_cost: s.unit_cost }))
+          ? suppliesUsed.map((s) => ({
+              supply_id: s.supply_id,
+              quantity: s.quantity,
+              unit_cost: resolveSupplyUnitCost(
+                s.unit_cost,
+                supplies.find((row) => row.id === s.supply_id)?.unit_cost,
+              ),
+            }))
           : undefined,
         ...(eventId && { event_id: eventId }),
       });
@@ -365,6 +398,17 @@ function NewSaleContent() {
             )}
           </div>
           <SearchBar value={search} onChange={setSearch} />
+          {canChooseWarehouse && (
+            <Select value={warehouseSelection} onValueChange={handleWarehouseChange}>
+              <SelectTrigger><SelectValue placeholder="Bodega" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assigned">Mi bodega</SelectItem>
+                {activeWarehouses.map((warehouse) => (
+                  <SelectItem key={warehouse.id} value={String(warehouse.id)}>{warehouse.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
@@ -397,6 +441,18 @@ function NewSaleContent() {
               {isPending && " · pendiente"}
             </p>
           </div>
+
+          {canChooseWarehouse && (
+            <Select value={warehouseSelection} onValueChange={handleWarehouseChange}>
+              <SelectTrigger className="w-48"><SelectValue placeholder="Bodega" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assigned">Mi bodega</SelectItem>
+                {activeWarehouses.map((warehouse) => (
+                  <SelectItem key={warehouse.id} value={String(warehouse.id)}>{warehouse.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <div className="flex items-center gap-2 text-sm">
             <button
@@ -480,6 +536,23 @@ function NewSaleContent() {
         onConfirm={setSuppliesUsed}
         initialSupplies={suppliesUsed}
       />
+
+      <AlertDialog open={pendingWarehouseSelection !== null} onOpenChange={(open) => { if (!open) setPendingWarehouseSelection(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cambiar de bodega?</AlertDialogTitle>
+            <AlertDialogDescription>Al cambiar de bodega se vaciará el carrito.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingWarehouseSelection) setWarehouseSelection(pendingWarehouseSelection);
+              setCart([]);
+              setPendingWarehouseSelection(null);
+            }}>Cambiar bodega</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {exitDialog && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4" onClick={cancelExit}>

@@ -9,7 +9,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, CreditCard, Wallet } from "lucide-react";
+import { Calculator, CreditCard, Wallet, Clock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCreditCards } from "@/hooks/swr/use-credit-cards";
 import { DEFAULT_TIMEZONE, formatCalendarDate, todayInTimeZone } from "@/lib/date-utils";
@@ -38,6 +39,7 @@ export type PurchaseFormValue = {
   shipping:      number;
   purchased_at:  string;
   notes:         string;
+  is_pending?:   boolean;
 };
 
 export const defaultPurchaseForm = (timezone = DEFAULT_TIMEZONE): PurchaseFormValue => ({
@@ -51,6 +53,7 @@ export const defaultPurchaseForm = (timezone = DEFAULT_TIMEZONE): PurchaseFormVa
   shipping:      0,
   purchased_at:  todayInTimeZone(timezone),
   notes:         "",
+  is_pending:    false,
 });
 
 type Props = {
@@ -73,6 +76,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
     onChange({ ...value, ...patch });
 
   const isCreditCardMode = paymentMode === "credit_card";
+  const isPending = value.is_pending ?? false;
 
   useEffect(() => {
     setPaymentMode(value.payment_mode);
@@ -348,8 +352,35 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
         )}
       </div>
 
-      {/* Envío */}
-      <div className="space-y-1.5">
+      {/* Toggle pendiente */}
+      <div className="flex items-start justify-between gap-3 rounded-xl border p-3.5">
+        <div className="space-y-0.5 min-w-0">
+          <Label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+            <Clock className="size-3.5 text-amber-500 shrink-0" />
+            Stock pendiente de llegada
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {isPending
+              ? "El stock se acredita al confirmar la llegada. El dinero se debita ahora."
+              : "El stock entra al inventario de inmediato al guardar."}
+          </p>
+        </div>
+        <Switch
+          checked={isPending}
+          onCheckedChange={(checked) => set({ is_pending: checked, ...(checked ? { shipping: 0 } : {}) })}
+          disabled={disabled}
+          className="shrink-0 mt-0.5"
+        />
+      </div>
+
+      {isPending && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+          El costo de envío se podrá registrar al confirmar la llegada, una vez sepas cuánto costó.
+        </div>
+      )}
+
+      {/* Envío — oculto en modo pendiente */}
+      {!isPending && <div className="space-y-1.5">
         <Label className="text-sm font-medium">
           Gastos de envío ({symbol})
           <span className="text-xs text-muted-foreground font-normal ml-1">
@@ -371,7 +402,7 @@ export function PurchaseForm({ value, onChange, disabled }: Props) {
             disabled={disabled}
           />
         </div>
-      </div>
+      </div>}
 
       {/* Resumen */}
       {showSummary && (
