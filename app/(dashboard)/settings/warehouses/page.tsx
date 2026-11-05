@@ -31,7 +31,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
-import { CreateProductDialog } from "@/components/products/create-product-dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -147,34 +146,44 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
   const [fromId,    setFromId]    = useState("");
   const [toId,      setToId]      = useState("");
-  const [productKey, setProductKey] = useState(""); // "p123" o "v456"
-  const [quantity,  setQuantity]  = useState("1");
+  const [lines, setLines] = useState<{ id: number; productKey: string; quantity: string }[]>([
+    { id: 1, productKey: "", quantity: "1" },
+  ]);
   const [notes,     setNotes]     = useState("");
-  const [createProductOpen, setCreateProductOpen] = useState(false);
 
   const { stock, mutate: mutateStock } = useWarehouseStock(fromId ? Number(fromId) : null);
   const keyOf = (s: { product_id: number; variant_id: number | null }) =>
     s.variant_id ? `v${s.variant_id}` : `p${s.product_id}`;
-  const selectedItem = stock.find((s) => keyOf(s) === productKey);
+  const resetLines = () => setLines([{ id: 1, productKey: "", quantity: "1" }]);
 
   const reset = () => {
-    setProductKey(""); setQuantity("1"); setNotes("");
+    resetLines(); setNotes("");
   };
 
   const handleSubmit = async () => {
     if (!fromId || !toId) { toast.error("Elegí ambas bodegas"); return; }
     if (fromId === toId)  { toast.error("Las bodegas deben ser diferentes"); return; }
-    if (!selectedItem) { toast.error("Elegí un producto"); return; }
-    const qty = Number(quantity);
-    if (!qty || qty < 1)  { toast.error("La cantidad debe ser al menos 1"); return; }
-    if (qty > selectedItem.stock) { toast.error(`Solo hay ${selectedItem.stock} disponibles en la bodega de origen`); return; }
+    const selectedLines = lines.filter((line) => line.productKey);
+    if (!selectedLines.length) { toast.error("Elegí al menos un producto"); return; }
+    const items = [];
+    for (const line of selectedLines) {
+      const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
+      const qty = Number(line.quantity);
+      if (!selectedItem) { toast.error("Elegí un producto válido"); return; }
+      if (!Number.isInteger(qty) || qty < 1) { toast.error("La cantidad debe ser al menos 1"); return; }
+      if (qty > selectedItem.stock) {
+        toast.error(`Solo hay ${selectedItem.stock} disponibles en la bodega de origen`);
+        return;
+      }
+      items.push({ product_id: selectedItem.product_id, variant_id: selectedItem.variant_id, quantity: qty });
+    }
 
     try {
       await createTransfer({
         from_warehouse_id: Number(fromId),
         to_warehouse_id:   Number(toId),
         notes: notes.trim() || undefined,
-        items: [{ product_id: selectedItem.product_id, variant_id: selectedItem.variant_id, quantity: qty }],
+        items,
       });
       toast.success("Transferencia registrada");
       reset();
@@ -216,7 +225,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
         <div className="grid items-end gap-3 md:grid-cols-[1fr_auto_1fr]">
           <div className="space-y-1.5">
             <Label className="text-xs">Bodega de origen</Label>
-            <Select value={fromId} onValueChange={(v) => { setFromId(v); setProductKey(""); setQuantity("1"); }} disabled={isCreating}>
+            <Select value={fromId} onValueChange={(v) => { setFromId(v); resetLines(); }} disabled={isCreating}>
               <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Selecciona una bodega" /></SelectTrigger>
               <SelectContent>
                 {warehouses.map((w) => <SelectItem key={w.id} value={String(w.id)} disabled={String(w.id) === toId}>{w.name}</SelectItem>)}
@@ -229,7 +238,7 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
             size="icon"
             className="size-9 border-primary text-primary"
             aria-label="Intercambiar bodegas"
-            onClick={() => { setFromId(toId); setToId(fromId); setProductKey(""); }}
+            onClick={() => { setFromId(toId); setToId(fromId); resetLines(); }}
             disabled={isCreating || !fromId || !toId}
           >
             <ArrowLeftRight className="size-4" />
@@ -247,26 +256,37 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
 
         <div className="border-t pt-5">
           <Label className="text-xs">Producto</Label>
-          <div className="mt-3 grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto_auto]">
-            <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
-              <button type="button" className="text-muted-foreground" onClick={() => setQuantity(String(Math.max(1, Number(quantity) - 1)))} disabled={isCreating || Number(quantity) <= 1}>−</button>
-              <span className="text-sm tabular-nums">{quantity}</span>
-              <button type="button" className="text-muted-foreground" onClick={() => setQuantity(String(Math.min(selectedItem?.stock ?? 1, Number(quantity) + 1)))} disabled={isCreating || !selectedItem || Number(quantity) >= selectedItem.stock}>+</button>
-            </div>
-            <SearchableSelect
-              value={productKey}
-              onValueChange={(value) => { setProductKey(value); setQuantity("1"); }}
-              disabled={isCreating || !fromId}
-              placeholder={fromId ? "Agregar producto..." : "Selecciona primero el origen"}
-              searchPlaceholder="Buscar producto..."
-              className="h-10 w-full"
-              items={stock.map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }))}
-            />
-            <span className="text-sm text-muted-foreground">{selectedItem ? `${selectedItem.stock} disponibles` : "—"}</span>
-            <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => { setProductKey(""); setQuantity("1"); }} disabled={isCreating || !productKey}>
-              <Trash2 className="size-4 text-muted-foreground" />
-            </Button>
-            <Button type="button" variant="outline" className="h-10 gap-1.5 whitespace-nowrap" onClick={() => setCreateProductOpen(true)} disabled={isCreating}>
+          <div className="mt-3 space-y-3">
+            {lines.map((line) => {
+              const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
+              const selectedElsewhere = new Set(lines.filter((other) => other.id !== line.id).map((other) => other.productKey));
+              const availableItems = stock
+                .filter((s) => !selectedElsewhere.has(keyOf(s)))
+                .map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }));
+              return (
+                <div key={line.id} className="grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto]">
+                  <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
+                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.max(1, Number(item.quantity) - 1)) } : item))} disabled={isCreating || Number(line.quantity) <= 1}>−</button>
+                    <span className="text-sm tabular-nums">{line.quantity}</span>
+                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.min(selectedItem?.stock ?? 1, Number(item.quantity) + 1)) } : item))} disabled={isCreating || !selectedItem || Number(line.quantity) >= selectedItem.stock}>+</button>
+                  </div>
+                  <SearchableSelect
+                    value={line.productKey}
+                    onValueChange={(value) => setLines((current) => current.map((item) => item.id === line.id ? { ...item, productKey: value, quantity: "1" } : item))}
+                    disabled={isCreating || !fromId}
+                    placeholder={fromId ? "Agregar producto..." : "Selecciona primero el origen"}
+                    searchPlaceholder="Buscar producto..."
+                    className="h-10 w-full"
+                    items={availableItems}
+                  />
+                  <span className="text-sm text-muted-foreground">{selectedItem ? `${selectedItem.stock} disponibles` : "—"}</span>
+                  <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => setLines((current) => current.length === 1 ? [{ ...current[0], productKey: "", quantity: "1" }] : current.filter((item) => item.id !== line.id))} disabled={isCreating}>
+                    <Trash2 className="size-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              );
+            })}
+            <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((line) => line.id), 0) + 1, productKey: "", quantity: "1" }])} disabled={isCreating || !fromId}>
               <Plus className="size-3.5" /> Agregar producto
             </Button>
           </div>
@@ -282,11 +302,6 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
           Transferir
         </Button>
       </CardContent>
-      <CreateProductDialog
-        open={createProductOpen}
-        onOpenChange={setCreateProductOpen}
-        onSuccess={() => { mutateStock(); }}
-      />
     </Card>
   );
 }
