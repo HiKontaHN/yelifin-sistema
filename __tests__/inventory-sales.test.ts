@@ -932,6 +932,83 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
   });
 });
 
+describe("POST /api/sales - warehouse selection", () => {
+  let verifyAuthSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    resetSql();
+    verifyAuthSpy = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+      error: null, status: 200, data: makeAuthUser(),
+    });
+  });
+
+  afterEach(() => verifyAuthSpy.mockRestore());
+
+  const body = {
+    items: [{ product_id: 2, quantity: 1, unit_price: 500 }],
+    payment_method: "CASH", account_id: 1, status: "COMPLETED",
+  };
+
+  it("denies another warehouse without warehouse-admin permission", async () => {
+    verifyAuthSpy.mockResolvedValueOnce({
+      error: null, status: 200, data: makeAuthUser({ isOwner: false }),
+    });
+    mockSqlImpl.mockResolvedValueOnce([{ can_edit: true }]); // SALES permission
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 2 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ can_edit: false }]);
+
+    const { POST } = await import("@/app/api/sales/route");
+    const res = await POST(makeRequest("http://localhost/api/sales", {
+      method: "POST", body: { ...body, warehouse_id: 2 },
+    }) as never);
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("No tienes permiso para vender desde otra bodega");
+  });
+
+  it("returns 400 for an invalid explicit warehouse", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([]);
+
+    const { POST } = await import("@/app/api/sales/route");
+    const res = await POST(makeRequest("http://localhost/api/sales", {
+      method: "POST", body: { ...body, warehouse_id: 999 },
+    }) as never);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("allows the owner to sell from another warehouse", async () => {
+    mockSqlImpl.mockResolvedValueOnce([{ max_sales_per_month: null }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ warehouse_id: 1 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 2 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 2, name: "Servicio", is_service: true }]);
+    mockSqlImpl.mockResolvedValueOnce([]); // BEGIN
+    mockSqlImpl.mockResolvedValueOnce([]); // lock
+    mockSqlImpl.mockResolvedValueOnce([{ last_num: 0 }]);
+    mockSqlImpl.mockResolvedValueOnce([{ id: 901 }]);
+    mockSqlImpl.mockResolvedValueOnce([]); // sale item
+    mockSqlImpl.mockResolvedValueOnce([]); // transaction
+    mockSqlImpl.mockResolvedValueOnce([]); // account
+    mockSqlImpl.mockResolvedValueOnce([]); // COMMIT
+
+    const { POST } = await import("@/app/api/sales/route");
+    const res = await POST(makeRequest("http://localhost/api/sales", {
+      method: "POST", body: { ...body, warehouse_id: 2 },
+    }) as never);
+
+    expect(res.status).toBe(201);
+    const saleInsert = mockSqlImpl.mock.calls.find((call: unknown[]) => call.slice(1).includes(2));
+    expect(saleInsert).toBeDefined();
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. POST /api/sales – PENDING sale reserves stock without posting income
 // ─────────────────────────────────────────────────────────────────────────────

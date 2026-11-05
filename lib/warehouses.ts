@@ -54,7 +54,7 @@ export async function getDefaultWarehouseForUser(
 export async function resolveWarehouseId(
   sql: any, orgId: number, requestedWarehouseId?: number | string | null
 ): Promise<{ warehouseId: number; error: null } | { warehouseId: null; error: string }> {
-  if (requestedWarehouseId) {
+  if (requestedWarehouseId !== undefined && requestedWarehouseId !== null && requestedWarehouseId !== "") {
     const [w] = await sql`
       SELECT id FROM warehouses
       WHERE id = ${Number(requestedWarehouseId)} AND org_id = ${orgId} AND is_active = TRUE
