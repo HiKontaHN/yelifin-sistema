@@ -765,7 +765,8 @@ export default function ProductDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Movimientos recientes */}
+      {/* Movimientos recientes (no aplica a servicios: no manejan inventario) */}
+      {!product.is_service && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -819,6 +820,7 @@ export default function ProductDetailPage({ params }: Props) {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Separator />
 
