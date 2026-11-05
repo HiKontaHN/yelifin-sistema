@@ -351,9 +351,11 @@ export default function ProductDetailPage({ params }: Props) {
   const profitMarginP = product.sales_stats.total_revenue > 0
     ? (Number(product.sales_stats.total_profit ?? 0) / product.sales_stats.total_revenue) * 100
     : 0;
-  const baseStock = product.batches
-    .filter((batch) => batch.variant_id === null)
-    .reduce((sum, batch) => sum + batch.qty_available, 0);
+  // El detalle solo trae los ultimos 8 lotes: el stock base sale del total menos el de las variantes.
+  const baseStock = Math.max(
+    0,
+    Number(product.total_stock ?? 0) - product.variants.reduce((sum, v) => sum + Number(v.stock ?? 0), 0),
+  );
   const handleDialogSuccess = () => {
     void Promise.all([mutateDetail(), mutateDialogProduct()]);
   };
