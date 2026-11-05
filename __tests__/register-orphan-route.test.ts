@@ -13,6 +13,7 @@ jest.mock("@/lib/firebase-admin", () => ({
 }));
 jest.mock("@/lib/rate-limit", () => ({
   rateLimit: jest.fn(async () => ({ allowed: true, retryAfterSec: 0 })),
+  sharedRateLimit: jest.fn(async () => ({ allowed: true, retryAfterSec: 0 })),
   getClientIP: jest.fn(() => "1.1.1.1"),
 }));
 jest.mock("@/lib/auth", () => ({ ensureOrgExists: mockEnsureOrg }));
