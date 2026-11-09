@@ -647,6 +647,14 @@ export async function ensureOrgExists(
 
     if (!ownedOrg) throw new Error("No se pudo crear la organización");
 
+    await tx`
+      INSERT INTO warehouses (org_id, name, is_active, is_default)
+      SELECT ${ownedOrg.id}, 'Local Principal', TRUE, TRUE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM warehouses WHERE org_id = ${ownedOrg.id}
+      )
+    `;
+
     const [ownerRole] = await tx`
       INSERT INTO org_roles (org_id, name, is_owner)
       VALUES (${ownedOrg.id}, 'Dueño', TRUE)
