@@ -38,6 +38,7 @@ import { GET as getMovements } from "@/app/api/inventory/movements/route";
 import {
   GET as getCategories,
   POST as createCategory,
+  DELETE as bulkDeleteCategories,
 } from "@/app/api/transaction-categories/route";
 import {
   PATCH as updateCategory,
@@ -93,15 +94,99 @@ describe("features de movimientos y categorías personalizadas", () => {
       "http://localhost/api/transaction-categories/3",
       { method: "DELETE" },
     ), { params: Promise.resolve({ id: "3" }) });
+    const bulkDeleteResponse = await bulkDeleteCategories(new NextRequest(
+      "http://localhost/api/transaction-categories",
+      { method: "DELETE", body: JSON.stringify({ ids: [3, 4] }) },
+    ));
 
     expect(createResponse.status).toBe(403);
     expect(updateResponse.status).toBe(403);
     expect(deleteResponse.status).toBe(403);
-    expect(mockRequireFeature).toHaveBeenCalledTimes(3);
+    expect(bulkDeleteResponse.status).toBe(403);
+    expect(mockRequireFeature).toHaveBeenCalledTimes(4);
     expect(mockRequireFeature).toHaveBeenNthCalledWith(1, 7, "finances.custom_categories");
     expect(mockRequireFeature).toHaveBeenNthCalledWith(2, 7, "finances.custom_categories");
     expect(mockRequireFeature).toHaveBeenNthCalledWith(3, 7, "finances.custom_categories");
+    expect(mockRequireFeature).toHaveBeenNthCalledWith(4, 7, "finances.custom_categories");
     expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("desactiva varias categorías en una sola solicitud", async () => {
+    mockRequireFeature.mockResolvedValue(null);
+    mockSql.mockResolvedValue([{ id: 11 }, { id: 12 }]);
+
+    const response = await bulkDeleteCategories(new NextRequest(
+      "http://localhost/api/transaction-categories",
+      { method: "DELETE", body: JSON.stringify({ ids: [11, 12] }) },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      results: [
+        { id: 11, success: true, message: "Categoría desactivada correctamente" },
+        { id: 12, success: true, message: "Categoría desactivada correctamente" },
+      ],
+    });
+    expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
+  it("reporta el resultado parcial sin ocultar la categoría fallida", async () => {
+    mockRequireFeature.mockResolvedValue(null);
+    mockSql.mockResolvedValue([{ id: 21 }, { id: 23 }]);
+
+    const response = await bulkDeleteCategories(new NextRequest(
+      "http://localhost/api/transaction-categories",
+      { method: "DELETE", body: JSON.stringify({ ids: [21, 22, 23] }) },
+    ));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.results).toEqual([
+      { id: 21, success: true, message: "Categoría desactivada correctamente" },
+      { id: 22, success: false, message: "Categoría no encontrada" },
+      { id: 23, success: true, message: "Categoría desactivada correctamente" },
+    ]);
+  });
+
+  it("limita el borrado en lote a la organización autenticada", async () => {
+    mockRequireFeature.mockResolvedValue(null);
+    // La base solo devuelve el ID 31; el 99 simula una categoría de otra organización.
+    mockSql.mockResolvedValue([{ id: 31 }]);
+
+    const response = await bulkDeleteCategories(new NextRequest(
+      "http://localhost/api/transaction-categories",
+      { method: "DELETE", body: JSON.stringify({ ids: [31, 99] }) },
+    ));
+    const body = await response.json();
+    const [strings, ...values] = mockSql.mock.calls[0];
+
+    expect(strings.join(" ")).toContain("AND org_id  =");
+    expect(values).toContain(7);
+    expect(body.results).toContainEqual({ id: 99, success: false, message: "Categoría no encontrada" });
+  });
+
+  it("usa el mismo soft-delete en el borrado individual y en lote", async () => {
+    mockRequireFeature.mockResolvedValue(null);
+    mockSql.mockResolvedValue([{ id: 41 }]);
+
+    await deleteCategory(new NextRequest(
+      "http://localhost/api/transaction-categories/41",
+      { method: "DELETE" },
+    ), { params: Promise.resolve({ id: "41" }) });
+    await bulkDeleteCategories(new NextRequest(
+      "http://localhost/api/transaction-categories",
+      { method: "DELETE", body: JSON.stringify({ ids: [41] }) },
+    ));
+
+    const individualSql = mockSql.mock.calls[0][0].join(" ");
+    const bulkSql = mockSql.mock.calls[1][0].join(" ");
+    for (const statement of [individualSql, bulkSql]) {
+      expect(statement).toContain("UPDATE transaction_categories SET");
+      expect(statement).toContain("is_active  = FALSE");
+      expect(statement).toContain("updated_by =");
+      expect(statement).toContain("AND org_id  =");
+      expect(statement).not.toContain("DELETE FROM transaction_categories");
+    }
   });
 
   it("asigna ambas features a los planes decididos y las apaga en free/trial", () => {

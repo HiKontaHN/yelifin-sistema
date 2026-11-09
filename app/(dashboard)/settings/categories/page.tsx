@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ import {
   useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
+  useBulkDeleteCategories,
   TransactionCategory,
 } from "@/hooks/swr/use-transaction-categories";
 
@@ -108,10 +110,13 @@ function CategoriesPageContent() {
   const { create } = useCreateCategory();
   const { update } = useUpdateCategory();
   const { remove } = useDeleteCategory();
+  const { removeMany } = useBulkDeleteCategories();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<TransactionCategory | null>(null);
   const [deleteCategory, setDeleteCategory] = useState<TransactionCategory | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -123,6 +128,11 @@ function CategoriesPageContent() {
     if (isFirstFilterRun.current) { isFirstFilterRun.current = false; return; }
     setPage(1);
   }, [selectedType, statusFilter, debouncedSearch]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkDeleteOpen(false);
+  }, [selectedType, statusFilter, search, page, pageSize, canMutate]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -191,6 +201,58 @@ function CategoriesPageContent() {
       toast.success("Categoría eliminada");
       mutate();
       setDeleteCategory(null);
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const activeCategories = categories.filter((category) => category.is_active);
+  const selectedCategories = activeCategories.filter((category) => selectedIds.has(category.id));
+  const allActiveSelected = activeCategories.length > 0
+    && activeCategories.every((category) => selectedIds.has(category.id));
+  const someActiveSelected = activeCategories.some((category) => selectedIds.has(category.id));
+
+  const toggleCategory = (id: number, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleAllActive = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(activeCategories.map((category) => category.id)) : new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedCategories.length === 0) return;
+
+    const categoryById = new Map(selectedCategories.map((category) => [category.id, category]));
+    setIsSubmitting(true);
+    try {
+      const results = await removeMany(selectedCategories.map((category) => category.id));
+      const succeeded = results.filter((result) => result.success);
+      const failed = results.filter((result) => !result.success);
+
+      setSelectedIds(new Set());
+      setBulkDeleteOpen(false);
+      await mutate();
+
+      if (failed.length === 0) {
+        toast.success(`${succeeded.length} ${succeeded.length === 1 ? "categoría eliminada" : "categorías eliminadas"}`);
+      } else {
+        const description = failed
+          .map((result) => `${categoryById.get(result.id)?.name ?? `ID ${result.id}`}: ${result.message}`)
+          .join("; ");
+        if (succeeded.length > 0) {
+          toast.warning(`Se eliminaron ${succeeded.length} de ${results.length} categorías`, { description });
+        } else {
+          toast.error("No se pudo eliminar ninguna categoría", { description });
+        }
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -270,8 +332,52 @@ function CategoriesPageContent() {
         </Select>
       </div>
 
+      {canMutate && activeCategories.length > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-2.5 sm:px-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={allActiveSelected ? true : someActiveSelected ? "indeterminate" : false}
+              onCheckedChange={(checked) => toggleAllActive(checked === true)}
+              aria-label="Seleccionar todas las categorías activas de esta página"
+            />
+            Seleccionar esta página
+          </label>
+          {selectedCategories.length > 0 && (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 className="size-4" />
+              Eliminar ({selectedCategories.length})
+            </Button>
+          )}
+        </div>
+      )}
+
       <DataTableTimeSection
         columns={[
+          ...(canMutate ? [{
+            id: "selection",
+            header: (
+              <Checkbox
+                checked={allActiveSelected ? true : someActiveSelected ? "indeterminate" : false}
+                onCheckedChange={(checked) => toggleAllActive(checked === true)}
+                aria-label="Seleccionar todas las categorías activas de esta página"
+              />
+            ),
+            cell: (cat: TransactionCategory) => cat.is_active ? (
+              <Checkbox
+                checked={selectedIds.has(cat.id)}
+                onCheckedChange={(checked) => toggleCategory(cat.id, checked === true)}
+                aria-label={`Seleccionar ${cat.name}`}
+              />
+            ) : null,
+            width: "48px",
+            stopRowClick: true,
+          }] : []),
           {
             id: "name",
             header: "Nombre",
@@ -334,6 +440,14 @@ function CategoriesPageContent() {
         showFooterPagination={false}
         renderMobileRow={(cat) => (
           <div className={cn("flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-3", !cat.is_active && "opacity-60")}>
+            {canMutate && cat.is_active && (
+              <Checkbox
+                className="shrink-0"
+                checked={selectedIds.has(cat.id)}
+                onCheckedChange={(checked) => toggleCategory(cat.id, checked === true)}
+                aria-label={`Seleccionar ${cat.name}`}
+              />
+            )}
             <div className="min-w-0">
               <p className="truncate font-medium">{cat.name}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -628,6 +742,79 @@ function CategoriesPageContent() {
                 </>
               ) : (
                 "Eliminar"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Eliminar varias */}
+      <Dialog open={bulkDeleteOpen} onOpenChange={(open) => !open && setBulkDeleteOpen(false)}>
+        <DialogContent
+          className={cn(
+            "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
+            "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+            "max-h-[92dvh] flex flex-col p-0",
+            "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
+            "sm:-translate-x-1/2 sm:-translate-y-1/2",
+            "sm:w-full sm:max-w-md",
+            "sm:rounded-2xl sm:border",
+            "sm:max-h-[88vh]",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
+            "data-[state=closed]:slide-out-to-bottom sm:data-[state=closed]:slide-out-to-bottom-[48%]",
+            "duration-300",
+          )}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={() => !isSubmitting && setBulkDeleteOpen(false)}
+        >
+          <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+          </div>
+
+          <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-destructive">
+              <Trash2 className="size-4" />
+              Eliminar {selectedCategories.length} {selectedCategories.length === 1 ? "categoría" : "categorías"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            <p className="text-sm text-muted-foreground">
+              ¿Estás seguro que deseas eliminar {selectedCategories.length === 1 ? "esta categoría" : "estas categorías"}?
+              Quedarán inactivas y podrán reactivarse después.
+            </p>
+            {selectedCategories.length > 0 && selectedCategories.length <= 5 && (
+              <ul className="list-disc space-y-1 pl-5 text-sm font-medium">
+                {selectedCategories.map((category) => <li key={category.id}>{category.name}</li>)}
+              </ul>
+            )}
+          </div>
+
+          <div className="shrink-0 px-5 py-4 border-t bg-transparent xl:bg-transparent md:bg-transparent sm:bg-background flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+              disabled={isSubmitting}
+              className="flex-1 h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={isSubmitting || selectedCategories.length === 0}
+              className="flex-1 h-11 gap-2"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Eliminando…
+                </>
+              ) : (
+                `Eliminar (${selectedCategories.length})`
               )}
             </Button>
           </div>
