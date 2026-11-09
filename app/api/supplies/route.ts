@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*)::int AS count
       FROM supplies
       WHERE org_id = ${orgId}
+        AND is_active = TRUE
         AND (${search} = '' OR LOWER(name) LIKE ${"%" + search + "%"})
     `;
 
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
         created_at
       FROM supplies
       WHERE org_id = ${orgId}
+        AND is_active = TRUE
         AND (${search} = '' OR LOWER(name) LIKE ${"%" + search + "%"})
       ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}

@@ -519,7 +519,7 @@ export async function verifyResourceLimit(
         countQuery: async () => {
           const [r] = await sql`
             SELECT COUNT(*) AS count FROM supplies
-            WHERE org_id = ${orgId}
+            WHERE org_id = ${orgId} AND is_active = TRUE
           `;
           return Number(r.count);
         },

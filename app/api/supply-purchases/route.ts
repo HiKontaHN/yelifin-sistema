@@ -138,7 +138,8 @@ export async function POST(request: NextRequest) {
       // 2. Items + actualizar stock
       for (const it of normalizedItems) {
         const [exists] = await sql`
-          SELECT id FROM supplies WHERE id = ${it.supply_id} AND org_id = ${orgId}
+          SELECT id FROM supplies
+          WHERE id = ${it.supply_id} AND org_id = ${orgId} AND is_active = TRUE
         `;
         if (!exists) {
           await sql`ROLLBACK`;
