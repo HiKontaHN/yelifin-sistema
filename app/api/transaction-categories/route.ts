@@ -124,3 +124,47 @@ export async function POST(request: NextRequest) {
     return createErrorResponse("Error al crear categoría", 500);
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const auth = await verifyAuthAndSubscription(request);
+  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
+  if (feature) return feature;
+  const deny = await requireModule(auth.data, 'ADMIN', 'canDelete', 'CATEGORIES');
+  if (deny) return deny;
+
+  try {
+    const { userId, orgId } = auth.data;
+    const body = await request.json();
+    const rawIds = body?.ids;
+
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      return createErrorResponse("Selecciona al menos una categoría", 400);
+    }
+
+    const ids = [...new Set(rawIds)];
+    if (ids.length > 100 || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+      return createErrorResponse("La lista de categorías no es válida", 400);
+    }
+
+    const updated = await sql`
+      UPDATE transaction_categories SET
+        is_active  = FALSE,
+        updated_at = NOW(),
+        updated_by = ${userId}
+      WHERE id      = ANY(${ids})
+        AND org_id  = ${orgId}
+      RETURNING id
+    `;
+
+    const updatedIds = new Set(updated.map((category) => Number(category.id)));
+    const results = ids.map((id) => updatedIds.has(id)
+      ? { id, success: true, message: "Categoría desactivada correctamente" }
+      : { id, success: false, message: "Categoría no encontrada" });
+
+    return Response.json({ results });
+  } catch (error) {
+    console.error("DELETE /api/transaction-categories:", error);
+    return createErrorResponse("Error al eliminar categorías", 500);
+  }
+}
