@@ -54,7 +54,6 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
 
     const qty = Number(quantity);
     if (!qty || qty < 1)  { toast.error("La cantidad debe ser al menos 1"); return; }
-    if (!notes.trim())    { toast.error("El motivo del ajuste es requerido"); return; }
 
     try {
       setIsLoading(true);
@@ -66,7 +65,7 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
           variant_id: variant?.id ?? undefined,
           type,
           quantity:   qty,
-          notes:      notes.trim(),
+          notes:      notes.trim() || undefined,
           unit_cost:  type === "in" ? unitCost : 0,
           ...(warehouseId ? { warehouse_id: warehouseId } : {}),
         }),
@@ -235,11 +234,9 @@ export function AdjustInventoryDialog({ product, variant, open, onOpenChange, on
               </div>
             )}
 
-            {/* Motivo — requerido */}
+            {/* Motivo */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                Motivo <span className="text-destructive text-xs">*</span>
-              </Label>
+              <Label className="text-sm font-medium">Motivo</Label>
               <Input
                 placeholder={type === "in"
                   ? "Ej: Corrección de conteo, devolución de cliente..."

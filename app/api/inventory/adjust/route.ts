@@ -34,11 +34,10 @@ export async function POST(request: NextRequest) {
       return createErrorResponse("El tipo debe ser 'in' o 'out'", 400);
     if (!quantity || quantity < 1)
       return createErrorResponse("La cantidad debe ser al menos 1", 400);
-    if (!notes?.trim())
-      return createErrorResponse("El motivo del ajuste es requerido", 400);
 
     const unitCost  = Number(unit_cost) || 0;
     const variantId = variant_id ? Number(variant_id) : null;
+    const trimmedNotes = typeof notes === "string" ? notes.trim() || null : null;
 
     if (type === "in" && unitCost < 0)
       return createErrorResponse("El costo unitario no puede ser negativo", 400);
@@ -123,7 +122,7 @@ export async function POST(request: NextRequest) {
             quantity, reference_type, reference_id, notes, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${movementType}, ${product_id}, ${variantId},
-            ${quantity}, 'ADJUSTMENT', ${batch.id}, ${notes.trim()}, ${warehouseId}
+            ${quantity}, 'ADJUSTMENT', ${batch.id}, ${trimmedNotes}, ${warehouseId}
           )
         `;
 
@@ -143,7 +142,7 @@ export async function POST(request: NextRequest) {
             quantity, reference_type, reference_id, notes, warehouse_id
           ) VALUES (
             ${orgId}, ${userId}, ${movementType}, ${product_id}, ${variantId},
-            ${quantity}, 'ADJUSTMENT', ${null}, ${notes.trim()}, ${warehouseId}
+            ${quantity}, 'ADJUSTMENT', ${null}, ${trimmedNotes}, ${warehouseId}
           )
         `;
       }
