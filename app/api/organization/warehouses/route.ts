@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, verifyResourceLimit, requireFeature, requireModule } from "@/lib/auth";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -60,11 +61,27 @@ export async function POST(request: NextRequest) {
 
     if (!name?.trim()) return createErrorResponse("El nombre de la bodega es requerido", 400);
 
-    const [warehouse] = await sql`
-      INSERT INTO warehouses (org_id, name, created_by, updated_by)
-      VALUES (${orgId}, ${name.trim()}, ${userId}, ${userId})
-      RETURNING id, name, is_active, is_default, created_at
-    `;
+    const warehouse = await withTransaction(async (tx) => {
+      // Serializa las altas de bodegas de una misma organización para que
+      // dos solicitudes concurrentes no intenten crear ambas como default.
+      await tx`SELECT id FROM organizations WHERE id = ${orgId} FOR UPDATE`;
+
+      const [created] = await tx`
+        INSERT INTO warehouses (org_id, name, is_default, created_by, updated_by)
+        SELECT
+          ${orgId},
+          ${name.trim()},
+          NOT EXISTS (
+            SELECT 1
+            FROM warehouses
+            WHERE org_id = ${orgId} AND is_default = TRUE
+          ),
+          ${userId},
+          ${userId}
+        RETURNING id, name, is_active, is_default, created_at
+      `;
+      return created;
+    });
 
     return Response.json({ data: warehouse }, { status: 201 });
   } catch (error) {

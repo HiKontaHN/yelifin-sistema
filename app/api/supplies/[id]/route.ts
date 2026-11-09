@@ -26,11 +26,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     if (!name) return createErrorResponse("El nombre es requerido", 400);
 
-    await sql`
+    const [updated] = await sql`
       UPDATE supplies
       SET name = ${name}, unit = ${unit}, min_stock = ${min_stock}, updated_by = ${userId}
-      WHERE id = ${supplyId} AND org_id = ${orgId}
+      WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
+      RETURNING id
     `;
+    if (!updated) return createErrorResponse("Suministro no encontrado", 404);
 
     return Response.json({ message: "Suministro actualizado" });
   } catch (error: any) {
@@ -53,7 +55,28 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const supplyId = Number(id);
     if (!supplyId || isNaN(supplyId)) return createErrorResponse("ID inválido", 400);
 
-    await sql`DELETE FROM supplies WHERE id = ${supplyId} AND org_id = ${orgId}`;
+    const [usage] = await sql`
+      SELECT
+        EXISTS (SELECT 1 FROM sale_supplies WHERE supply_id = ${supplyId})
+        OR EXISTS (SELECT 1 FROM supply_purchase_items WHERE supply_id = ${supplyId})
+        OR EXISTS (SELECT 1 FROM supply_movements WHERE supply_id = ${supplyId})
+        AS is_used
+    `;
+
+    const [deleted] = usage?.is_used
+      ? await sql`
+          UPDATE supplies
+          SET is_active = FALSE, updated_by = ${userId}
+          WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
+          RETURNING id
+        `
+      : await sql`
+          DELETE FROM supplies
+          WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
+          RETURNING id
+        `;
+
+    if (!deleted) return createErrorResponse("Suministro no encontrado", 404);
 
     return Response.json({ message: "Suministro eliminado" });
   } catch (error) {
