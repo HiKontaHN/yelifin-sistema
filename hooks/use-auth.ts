@@ -25,6 +25,7 @@ async function fetchAuthContext(url: string): Promise<AuthFetchResult> {
   if (response.status === 401) {
     const publicAuthPages = ['/', '/login', '/register', '/forgot-password'];
     if (typeof window !== 'undefined' && !publicAuthPages.includes(window.location.pathname)) {
+      posthog.reset();
       window.location.replace('/login');
     }
     return null;

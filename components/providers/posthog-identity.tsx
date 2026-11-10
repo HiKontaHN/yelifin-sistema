@@ -10,12 +10,17 @@ export function PostHogIdentity() {
   const identifiedOrganizationId = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!user || process.env.NODE_ENV === "test") return
+    if (!user) return
 
     const userId = String(user.user.id)
     const organizationId = String(user.org.id)
 
     if (identifiedUserId.current !== userId) {
+      // Otro usuario en el mismo navegador: no mezclar identidades.
+      if (identifiedUserId.current !== null) {
+        posthog.reset()
+        identifiedOrganizationId.current = null
+      }
       posthog.identify(userId, {
         email: user.user.email,
         name: user.user.display_name,
