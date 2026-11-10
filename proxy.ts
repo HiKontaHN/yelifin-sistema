@@ -147,6 +147,7 @@ export async function proxy(request: NextRequest) {
 
   if (
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/ingest") ||
     pathname.startsWith("/auth/action") ||
     pathname.includes(".")
   ) {

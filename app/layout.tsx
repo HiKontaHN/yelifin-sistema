@@ -55,9 +55,10 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body
         className={`${geist.variable} ${geistMono.variable} font-sans antialiased`}
-        // PostHog masks all inputs and rendered text in session replay.
-        // Keep equivalent privacy markers for any other replay tooling.
-        data-session-replay="masked"
+        // Session replay is intentionally disabled (PostHog included).
+        // These whole-page privacy markers keep the safe default explicit
+        // for the most common replay providers.
+        data-session-replay="disabled"
         data-private
         data-hj-suppress
         data-clarity-mask="true"

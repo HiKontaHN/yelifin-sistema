@@ -17,9 +17,10 @@ if (
     capture_performance: {
       web_vitals: true,
     },
-    session_recording: {
-      maskAllInputs: true,
-      maskTextSelector: "*",
-    },
+    // Grabación de sesiones desactivada a propósito (privacidad, app financiera).
+    disable_session_recording: true,
+    // Autocapture sin texto ni atributos de los elementos (evita montos y nombres).
+    mask_all_text: true,
+    mask_all_element_attributes: true,
   })
 }
