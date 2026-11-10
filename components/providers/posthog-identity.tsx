@@ -22,8 +22,6 @@ export function PostHogIdentity() {
         identifiedOrganizationId.current = null
       }
       posthog.identify(userId, {
-        email: user.user.email,
-        name: user.user.display_name,
         role: user.role.name,
       })
       identifiedUserId.current = userId
@@ -31,7 +29,6 @@ export function PostHogIdentity() {
 
     if (identifiedOrganizationId.current !== organizationId) {
       posthog.group("organization", organizationId, {
-        name: user.org.name,
         plan: user.subscription.plan.slug,
       })
       identifiedOrganizationId.current = organizationId
