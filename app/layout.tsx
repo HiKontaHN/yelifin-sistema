@@ -55,10 +55,9 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body
         className={`${geist.variable} ${geistMono.variable} font-sans antialiased`}
-        // Session replay is not installed or initialized. These whole-page
-        // privacy markers also make the safe default explicit for the most
-        // common replay providers if one is introduced later.
-        data-session-replay="disabled"
+        // PostHog masks all inputs and rendered text in session replay.
+        // Keep equivalent privacy markers for any other replay tooling.
+        data-session-replay="masked"
         data-private
         data-hj-suppress
         data-clarity-mask="true"

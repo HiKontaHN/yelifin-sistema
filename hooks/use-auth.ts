@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import useSWR from 'swr';
+import posthog from 'posthog-js';
 import type { AuthContextResponse, SessionUser } from '@/types';
 import { authReady } from '@/lib/firebase';
 
@@ -76,6 +77,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     const response = await fetch(SESSION_KEY, { method: 'DELETE' });
     if (!response.ok) throw new Error('No se pudo cerrar la sesión');
+    posthog.reset();
     await mutateAuthContext(null, { revalidate: false });
   }, [mutateAuthContext]);
 
