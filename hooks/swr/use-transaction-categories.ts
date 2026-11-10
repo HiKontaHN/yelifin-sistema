@@ -29,6 +29,12 @@ interface CategoryResponse {
   data: TransactionCategory;
 }
 
+export interface BulkDeleteCategoryResult {
+  id: number;
+  success: boolean;
+  message: string;
+}
+
 function useAuthFetch() {
   return async (url: string) => {
     const res = await fetch(url);
@@ -149,4 +155,30 @@ export function useDeleteCategory() {
   };
 
   return { remove };
+}
+
+export function useBulkDeleteCategories() {
+  const { firebaseUser } = useAuth();
+
+  const removeMany = async (ids: number[]): Promise<BulkDeleteCategoryResult[]> => {
+    if (!firebaseUser) throw new Error("No autenticado");
+
+    const res = await fetch("/api/transaction-categories", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ids }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Error al eliminar categorías");
+    }
+
+    const result: { results: BulkDeleteCategoryResult[] } = await res.json();
+    return result.results;
+  };
+
+  return { removeMany };
 }

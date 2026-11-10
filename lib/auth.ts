@@ -519,7 +519,7 @@ export async function verifyResourceLimit(
         countQuery: async () => {
           const [r] = await sql`
             SELECT COUNT(*) AS count FROM supplies
-            WHERE org_id = ${orgId}
+            WHERE org_id = ${orgId} AND is_active = TRUE
           `;
           return Number(r.count);
         },
@@ -646,6 +646,14 @@ export async function ensureOrgExists(
       : await tx`SELECT id FROM organizations WHERE owner_user_id = ${userId} AND is_active = TRUE LIMIT 1`;
 
     if (!ownedOrg) throw new Error("No se pudo crear la organización");
+
+    await tx`
+      INSERT INTO warehouses (org_id, name, is_active, is_default)
+      SELECT ${ownedOrg.id}, 'Local Principal', TRUE, TRUE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM warehouses WHERE org_id = ${ownedOrg.id}
+      )
+    `;
 
     const [ownerRole] = await tx`
       INSERT INTO org_roles (org_id, name, is_owner)

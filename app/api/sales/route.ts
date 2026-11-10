@@ -445,7 +445,8 @@ export async function POST(request: NextRequest) {
         if (!supply_id || quantity <= 0)
           return createErrorResponse("Datos de suministro inválidos", 400);
         const [supply] = await sql`
-          SELECT id, unit_cost FROM supplies WHERE id = ${supply_id} AND org_id = ${orgId}
+          SELECT id, unit_cost FROM supplies
+          WHERE id = ${supply_id} AND org_id = ${orgId} AND is_active = TRUE
         `;
         if (!supply)
           return createErrorResponse(

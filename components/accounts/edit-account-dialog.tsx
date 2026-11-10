@@ -41,7 +41,7 @@ export function EditAccountDialog({ account, open, onOpenChange, onSuccess }: Pr
   const { updateAccount, isUpdating } = useUpdateAccount();
 
   const {
-    register, handleSubmit, reset, setValue,
+    register, handleSubmit, reset, setValue, watch,
     formState: { errors },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
@@ -118,7 +118,7 @@ export function EditAccountDialog({ account, open, onOpenChange, onSuccess }: Pr
               Tipo <span className="text-destructive text-xs">*</span>
             </Label>
             <Select
-              value={account.type}
+              value={watch("type")}
               onValueChange={(v) => setValue("type", v as FormData["type"])}
               disabled={isUpdating}
             >
