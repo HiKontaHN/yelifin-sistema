@@ -1,0 +1,39 @@
+"use client"
+
+import { useEffect, useRef } from "react"
+import posthog from "posthog-js"
+import { useAuth } from "@/hooks/use-auth"
+
+export function PostHogIdentity() {
+  const { user } = useAuth()
+  const identifiedUserId = useRef<string | null>(null)
+  const identifiedOrganizationId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+
+    const userId = String(user.user.id)
+    const organizationId = String(user.org.id)
+
+    if (identifiedUserId.current !== userId) {
+      // Otro usuario en el mismo navegador: no mezclar identidades.
+      if (identifiedUserId.current !== null) {
+        posthog.reset()
+        identifiedOrganizationId.current = null
+      }
+      posthog.identify(userId, {
+        role: user.role.name,
+      })
+      identifiedUserId.current = userId
+    }
+
+    if (identifiedOrganizationId.current !== organizationId) {
+      posthog.group("organization", organizationId, {
+        plan: user.subscription.plan.slug,
+      })
+      identifiedOrganizationId.current = organizationId
+    }
+  }, [user])
+
+  return null
+}
