@@ -168,6 +168,18 @@ export async function verifyAuth(
     };
   } catch (error) {
     console.error("Error en verifyAuth:", error);
+    const connectionError = error as {
+      sourceError?: { cause?: { code?: string } };
+      cause?: { code?: string };
+    } | null;
+    const connectionCode = connectionError?.sourceError?.cause?.code ?? connectionError?.cause?.code;
+    if (connectionCode && ["UND_ERR_CONNECT_TIMEOUT", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(connectionCode)) {
+      return {
+        error: "No se pudo conectar con la base de datos para verificar tu sesión. La solicitud no llegó a procesarse. Intentá nuevamente en unos momentos.",
+        status: 503,
+        data: null,
+      };
+    }
     return { error: "Error interno del servidor", status: 500, data: null };
   }
 }

@@ -67,9 +67,8 @@ export type ImportSummary = {
 
 // ── Parseo ──────────────────────────────────────────────────────────────
 
-const normalizeHeader = (s: string) =>
-  s
-    .toString()
+const normalizeHeader = (s: unknown) =>
+  String(s ?? "")
     .trim()
     .toLowerCase()
     .normalize("NFD")
@@ -153,7 +152,7 @@ export async function parseWorkbook(
     if (canonical) headers.set(column, canonical);
   });
 
-  const rawRows: Record<string, unknown>[] = [];
+  const rawRows: { record: Record<string, unknown>; rowNumber: number }[] = [];
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
     const raw: Record<string, unknown> = {};
@@ -161,7 +160,7 @@ export async function parseWorkbook(
       raw[key] = excelCellValue(row.getCell(column).value);
     });
     if (Object.values(raw).some((value) => value !== null && value !== undefined && String(value).trim() !== ""))
-      rawRows.push(raw);
+      rawRows.push({ record: raw, rowNumber });
   });
 
   if (rawRows.length === 0)
@@ -169,7 +168,7 @@ export async function parseWorkbook(
   if (rawRows.length > MAX_IMPORT_ROWS)
     return { rows: [], error: `El archivo supera el máximo de ${MAX_IMPORT_ROWS} filas.` };
 
-  const rows: ImportRow[] = rawRows.map((record, index) => {
+  const rows: ImportRow[] = rawRows.map(({ record, rowNumber }) => {
     const errors: string[] = [];
 
     const precio = cellToNumber(record.precio);
@@ -200,7 +199,7 @@ export async function parseWorkbook(
     const cuentaRef = cuentaRaw ? parseAccountLabel(cuentaRaw) : null;
 
     return {
-      rowNumber: index + 2,
+      rowNumber,
       sku: cellToString(record.sku),
       nombre: cellToString(record.nombre),
       descripcion: cellToString(record.descripcion),

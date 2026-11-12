@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   FileSpreadsheet, Download, Upload, ArrowLeft, CheckCircle2,
-  XCircle, AlertTriangle, Clock, ExternalLink, Warehouse as WarehouseIcon,
+  XCircle, AlertTriangle, Clock, ExternalLink, Loader2, Warehouse as WarehouseIcon,
 } from "lucide-react";
 
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
@@ -110,6 +110,8 @@ export function ImportExcelModal({
   const [results, setResults] = useState<RowResult[]>([]);
   const [previewPage, setPreviewPage] = useState(1);
   const [isWorking, setIsWorking] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -203,11 +205,17 @@ export function ImportExcelModal({
       body: formData,
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Error al procesar el archivo");
+    if (!res.ok) throw new Error(
+      opts.dryRun && res.status >= 500
+        ? "El servidor no pudo completar el análisis. Puede haber un problema de conexión con la base de datos. No se importó ninguna fila; intentá nuevamente."
+        : json.error || "Error al procesar el archivo"
+    );
     return json;
   };
 
   const handleFile = async (selectedFile: File) => {
+    if (isWorking) return;
+    setAnalysisError(null);
     setIsWorking(true);
     try {
       const json = await postImport(selectedFile, { dryRun: true });
@@ -217,6 +225,7 @@ export function ImportExcelModal({
       setPreviewPage(1);
       setStep("preview");
     } catch (error: any) {
+      setAnalysisError(error.message);
       toast.error(error.message);
     } finally {
       setIsWorking(false);
@@ -228,6 +237,7 @@ export function ImportExcelModal({
   // para archivos grandes (hasta MAX_IMPORT_ROWS filas).
   const handleImport = async () => {
     if (!file) return;
+    setImportError(null);
     setIsWorking(true);
     const total = previewRows.length;
     const showProgress = total > IMPORT_EXECUTE_CHUNK_SIZE;
@@ -249,6 +259,7 @@ export function ImportExcelModal({
       onSuccess();
     } catch (error: any) {
       if (toastId) toast.dismiss(toastId);
+      setImportError(error.message);
       toast.error(error.message);
       setConfirmOpen(false);
     } finally {
@@ -257,6 +268,7 @@ export function ImportExcelModal({
   };
 
   const handleClose = (nextOpen: boolean) => {
+    if (isWorking) return;
     if (!nextOpen) {
       setStep("template");
       setShowSelector(false);
@@ -266,6 +278,8 @@ export function ImportExcelModal({
       setPreviewRows([]);
       setSummary(null);
       setResults([]);
+      setAnalysisError(null);
+      setImportError(null);
     }
     onOpenChange(nextOpen);
   };
@@ -297,6 +311,7 @@ export function ImportExcelModal({
         icon={FileSpreadsheet}
         width="2xl"
         height="tall"
+        dragToClose={!isWorking}
         footer={
           step === "preview" ? (
             <>
@@ -396,7 +411,21 @@ export function ImportExcelModal({
 
           {/* ── Paso 2: subir ─────────────────────────────────────────── */}
           {step === "upload" && (
-            <div className="space-y-3">
+            <fieldset disabled={isWorking} aria-busy={isWorking} className="min-w-0 space-y-3">
+              {analysisError && (
+                <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                  {analysisError}
+                </div>
+              )}
+              {isWorking && (
+                <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border bg-muted/40 p-4">
+                  <Loader2 aria-hidden="true" className="size-5 shrink-0 animate-spin text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Analizando archivo...</p>
+                    <p className="text-xs text-muted-foreground">Esperá mientras revisamos las filas. Las acciones estarán disponibles al terminar.</p>
+                  </div>
+                </div>
+              )}
               {activeWarehouses.length > 1 && (
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium flex items-center gap-1.5">
@@ -404,6 +433,7 @@ export function ImportExcelModal({
                     Bodega de destino
                   </Label>
                   <Select
+                    disabled={isWorking}
                     value={warehouseId ? String(warehouseId) : ""}
                     onValueChange={(val) => setWarehouseId(Number(val))}
                   >
@@ -424,7 +454,9 @@ export function ImportExcelModal({
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-10 hover:bg-muted/40 transition-colors disabled:opacity-60"
               >
-                <Upload className="size-8 text-muted-foreground" />
+                {isWorking
+                  ? <Loader2 aria-hidden="true" className="size-8 animate-spin text-primary" />
+                  : <Upload className="size-8 text-muted-foreground" />}
                 <p className="text-sm font-medium">
                   {isWorking ? "Analizando archivo..." : "Tocá para elegir tu archivo .xlsx"}
                 </p>
@@ -433,6 +465,7 @@ export function ImportExcelModal({
               <input
                 ref={fileInputRef}
                 type="file"
+                disabled={isWorking}
                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="hidden"
                 onChange={(e) => {
@@ -441,21 +474,38 @@ export function ImportExcelModal({
                   e.target.value = "";
                 }}
               />
-              <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setStep("template")}>
+              <Button disabled={isWorking} variant="ghost" className="w-full text-muted-foreground" onClick={() => setStep("template")}>
                 <ArrowLeft className="size-4 mr-1.5" /> Volver a la plantilla
               </Button>
-            </div>
+            </fieldset>
           )}
 
           {/* ── Paso 3: preview ───────────────────────────────────────── */}
           {step === "preview" && summary && (
             <div className="space-y-3">
+              {importError && (
+                <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                  {importError}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {summary.newProducts > 0 && <Badge className="bg-blue-100 text-blue-700 border-blue-200">{summary.newProducts} producto{summary.newProducts !== 1 ? "s" : ""} nuevo{summary.newProducts !== 1 ? "s" : ""}</Badge>}
                 {summary.readyBatches > 0 && <Badge className="bg-green-100 text-green-700 border-green-200">{summary.readyBatches} lote{summary.readyBatches !== 1 ? "s" : ""} listo{summary.readyBatches !== 1 ? "s" : ""}</Badge>}
                 {summary.pendingPurchases > 0 && <Badge className="bg-amber-100 text-amber-700 border-amber-200">{summary.pendingPurchases} pendiente{summary.pendingPurchases !== 1 ? "s" : ""} de llegar</Badge>}
                 {summary.errorRows > 0 && <Badge variant="destructive">{summary.errorRows} con error</Badge>}
               </div>
+
+              {summary.errorRows > 0 && (
+                <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                  <p className="font-medium">Hay {summary.errorRows} fila(s) con error. Estas filas no se importarán.</p>
+                  <p className="mt-1 text-muted-foreground">Corregí las filas indicadas en el Excel y volvé a subirlo, o continuá con las filas válidas.</p>
+                  <ul className="mt-2 space-y-1">
+                    {previewRows.filter((row) => row.errors.length > 0).map((row) => (
+                      <li key={row.rowNumber}>Fila {row.rowNumber}: {row.errors.join("; ")}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {summary.financial.length > 0 && (
                 <div className="rounded-xl border p-3 space-y-1.5">
