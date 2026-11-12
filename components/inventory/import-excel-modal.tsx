@@ -14,6 +14,7 @@ import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { SearchBar } from "@/components/shared/search-bar";
 import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +110,8 @@ export function ImportExcelModal({
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [results, setResults] = useState<RowResult[]>([]);
   const [previewPage, setPreviewPage] = useState(1);
+  const [errorPage, setErrorPage] = useState(1);
+  const [errorPageSize, setErrorPageSize] = useState(10);
   const [isWorking, setIsWorking] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -223,6 +226,7 @@ export function ImportExcelModal({
       setPreviewRows(json.data.rows);
       setSummary(json.data.summary);
       setPreviewPage(1);
+      setErrorPage(1);
       setStep("preview");
     } catch (error: any) {
       setAnalysisError(error.message);
@@ -288,6 +292,12 @@ export function ImportExcelModal({
   const totalToDebit = summary?.financial.reduce((acc, f) => acc + f.total, 0) ?? 0;
   const failedResults = results.filter((r) => r.status === "failed");
   const pendingCreated = results.some((r) => r.purchaseId && (r.action === "crear_pendiente" || r.action === "agregar_pendiente"));
+
+  const errorRows = useMemo(() => previewRows.filter((row) => row.errors.length > 0), [previewRows]);
+  const errorColumns: DataTableTimeSectionColumn<DryRunRow>[] = [
+    { id: "row", header: "Fila", width: 70, cell: (row) => row.rowNumber },
+    { id: "error", header: "Error", cell: (row) => row.errors.join("; ") },
+  ];
 
   const pagedPreview = previewRows.slice(
     (previewPage - 1) * PREVIEW_PAGE_SIZE,
@@ -499,11 +509,22 @@ export function ImportExcelModal({
                 <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm">
                   <p className="font-medium">Hay {summary.errorRows} fila(s) con error. Estas filas no se importarán.</p>
                   <p className="mt-1 text-muted-foreground">Corregí las filas indicadas en el Excel y volvé a subirlo, o continuá con las filas válidas.</p>
-                  <ul className="mt-2 space-y-1">
-                    {previewRows.filter((row) => row.errors.length > 0).map((row) => (
-                      <li key={row.rowNumber}>Fila {row.rowNumber}: {row.errors.join("; ")}</li>
-                    ))}
-                  </ul>
+                  <DataTableTimeSection
+                    className="mt-2"
+                    columns={errorColumns}
+                    data={errorRows.slice((errorPage - 1) * errorPageSize, errorPage * errorPageSize)}
+                    getRowKey={(row) => row.rowNumber}
+                    recordLabel="filas con error"
+                    ariaLabel="Filas con error"
+                    stickyHeader={false}
+                    pagination={{
+                      page: errorPage,
+                      pageSize: errorPageSize,
+                      total: errorRows.length,
+                      onPageChange: setErrorPage,
+                      onPageSizeChange: (size) => { setErrorPage(1); setErrorPageSize(size); },
+                    }}
+                  />
                 </div>
               )}
 
