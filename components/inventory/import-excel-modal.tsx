@@ -517,6 +517,7 @@ export function ImportExcelModal({
                     recordLabel="filas con error"
                     ariaLabel="Filas con error"
                     stickyHeader={false}
+                    showFooterPagination={false}
                     pagination={{
                       page: errorPage,
                       pageSize: errorPageSize,
