@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { zodFormResolver } from "@/lib/zod-form-resolver";
 import * as z from "zod";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
@@ -25,10 +25,13 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { useFeatures } from "@/hooks/use-features";
 
 const schema = z.object({
-  name:        z.string().min(1, "El nombre es requerido"),
+  name:        z.string().trim().min(1, "El nombre es requerido"),
   description: z.string().optional(),
   sku:         z.string().optional(),
-  price:       z.coerce.number().min(0, "El precio debe ser mayor o igual a 0"),
+  price:       z.union([
+    z.string().trim().min(1, "El precio de venta es requerido"),
+    z.number(),
+  ]).transform(Number).pipe(z.number().finite("El precio debe ser un número válido").min(0, "El precio debe ser mayor o igual a 0")),
   is_service:  z.boolean().optional(),
   service_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0").optional(),
 }).superRefine((data, ctx) => {
@@ -63,7 +66,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     register, handleSubmit, reset, watch, setValue,
     formState: { errors },
   } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodFormResolver(schema),
     defaultValues: { is_service: false, service_cost: 0 },
   });
 
@@ -265,6 +268,10 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                     : isService         ? "Crear servicio"
                     : "Crear producto";
 
+  const submitForm = handleSubmit(onSubmit, () => {
+    toast.error("Completá los campos obligatorios y revisá los campos marcados");
+  });
+
   return (
     <ResponsiveModal
       open={open}
@@ -272,7 +279,11 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       title={isService ? "Nuevo servicio" : "Nuevo producto"}
       width="wide"
       as="form"
-      formProps={{ id: "create-product-form", onSubmit: handleSubmit(onSubmit) }}
+      formProps={{
+        id: "create-product-form",
+        noValidate: true,
+        onSubmit: submitForm,
+      }}
       bodyClassName="space-y-5"
       footer={
         <>
@@ -286,8 +297,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
             Cancelar
           </Button>
           <Button
-            type="submit"
-            form="create-product-form"
+            type="button"
+            onClick={submitForm}
             disabled={isLoading}
             className="flex-1 h-11 gap-2"
           >
@@ -299,6 +310,16 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
         </>
       }
     >
+            {Object.keys(errors).length > 0 && (
+              <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                <p className="font-medium">Revisá los siguientes campos antes de crear:</p>
+                <ul className="mt-1 list-inside list-disc">
+                  {Object.entries(errors).map(([field, error]) => (
+                    <li key={field}>{error?.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {/* Toggle de servicio — va primero para que cambie el contexto del form */}
             <div className={cn(
               "flex items-start justify-between gap-4 rounded-xl border p-4 transition-colors",
@@ -338,11 +359,13 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
               <FieldLabel icon={<FileText className="size-3.5" />} label="Nombre" required />
               <Input
                 {...register("name")}
+                aria-invalid={!!errors.name}
+                aria-describedby={errors.name ? "create-product-name-error" : undefined}
                 placeholder={isService ? "Ej: Mantenimiento de equipo" : "Ej: Camiseta negra talla M"}
                 disabled={isLoading}
-                className="h-11 text-base"
+                className={cn("h-11 text-base", errors.name && "border-destructive")}
               />
-              {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+              {errors.name && <p id="create-product-name-error" role="alert" className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
 
             {/* SKU — opcional para servicios */}
@@ -355,11 +378,13 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
               />
               <Input
                 {...register("sku", { required: !isService })}
+                aria-invalid={!!errors.sku}
+                aria-describedby={errors.sku ? "create-product-sku-error" : undefined}
                 placeholder={isService ? "Ej: SERV-001 (opcional)" : "Ej: CAM-NEG-M"}
                 disabled={isLoading}
-                className="h-11 text-base font-mono"
+                className={cn("h-11 text-base font-mono", errors.sku && "border-destructive")}
               />
-              {errors.sku && <p className="text-xs text-destructive">{errors.sku.message}</p>}
+              {errors.sku && <p id="create-product-sku-error" role="alert" className="text-xs text-destructive">{errors.sku.message}</p>}
               {!errors.sku && skuStatus === "taken" && (
                 <p className="text-xs text-destructive">Este SKU ya está ocupado</p>
               )}
@@ -390,11 +415,13 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                 <Input
                   type="number" step="0.01" min="0" placeholder="0.00"
                   {...register("price")}
+                  aria-invalid={!!errors.price}
+                  aria-describedby={errors.price ? "create-product-price-error" : undefined}
                   disabled={isLoading}
-                  className="h-11 pl-8 text-base"
+                  className={cn("h-11 pl-8 text-base", errors.price && "border-destructive")}
                 />
               </div>
-              {errors.price && <p className="text-xs text-destructive">{errors.price.message}</p>}
+              {errors.price && <p id="create-product-price-error" role="alert" className="text-xs text-destructive">{errors.price.message}</p>}
             </div>
 
             {/* Descripción */}
