@@ -593,8 +593,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         const delta      = data.quantity - currentQty;
 
         const [product] = await sql`
-          SELECT is_service, service_cost FROM products
-          WHERE id = ${data.product_id} AND org_id = ${orgId}
+          SELECT p.name, p.is_service, p.service_cost, pv.variant_name
+          FROM products p
+          LEFT JOIN product_variants pv
+            ON pv.id = ${data.variant_id}
+            AND pv.product_id = p.id AND pv.org_id = p.org_id
+          WHERE p.id = ${data.product_id} AND p.org_id = ${orgId}
         `;
         const isService = Boolean(product?.is_service);
 
@@ -645,6 +649,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         }
 
         processedItems.push({
+          label: product?.variant_name
+            ? `${product.name} (${product.variant_name})`
+            : product?.name ?? "Producto no disponible",
           product_id: data.product_id,
           variant_id: data.variant_id,
           quantity:   data.quantity,
@@ -799,7 +806,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             );
             if (!consumed) {
               throw new InsufficientStockError(
-                `Producto #${item.product_id}`,
+                item.label,
               );
             }
             item.unit_cost = consumed.totalCost / item.quantity;
@@ -828,7 +835,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
               );
               if (!consumed) {
                 throw new InsufficientStockError(
-                  `Producto #${item.product_id}`,
+                  item.label,
                 );
               }
               const previousCost = current

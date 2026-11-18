@@ -200,8 +200,8 @@ function EditSaleContent() {
 
     const mappedCart: CartItem[] = sale.items.map(
       (i: any) => ({
-        product_id:   i.product_id,
-        variant_id:   i.variant_id ?? null,
+        product_id:   Number(i.product_id),
+        variant_id:   i.variant_id == null ? null : Number(i.variant_id),
         product_name: i.product_name,
         variant_name: i.variant_name ?? null,
         image_url:    i.image_url,
@@ -282,7 +282,7 @@ function EditSaleContent() {
       products
       .map((product) => {
         const scopedInventory = inventory.find(
-          (item) => item.product_id === product.id,
+          (item) => Number(item.product_id) === Number(product.id),
         );
         return {
           ...product,
@@ -314,16 +314,16 @@ function EditSaleContent() {
   };
 
   const addItemToCart = (product: Product, variant: ProductVariant | null) => {
-    const variantId  = variant?.id ?? null;
+    const variantId  = variant == null ? null : Number(variant.id);
     const key        = cartKey(product.id, variantId);
     const price      = variant?.price_override != null
       ? Number(variant.price_override)
       : product.price;
     const image      = variant?.image_url ?? product.image_url;
 
-    const invItem    = inventory.find((i) => i.product_id === product.id);
+    const invItem    = inventory.find((i) => Number(i.product_id) === Number(product.id));
     const stockAvail = variantId
-      ? Number(invItem?.variants_stock.find((v) => v.variant_id === variantId)?.stock ?? 0)
+      ? Number(invItem?.variants_stock.find((v) => Number(v.variant_id) === Number(variantId))?.stock ?? 0)
       : Number(invItem?.base_stock ?? product.stock ?? 0);
 
     setCart((prev) => {
@@ -353,7 +353,7 @@ function EditSaleContent() {
       return [
         ...prev,
         {
-          product_id:   product.id,
+          product_id:   Number(product.id),
           variant_id:   variantId,
           product_name: product.name,
           variant_name: variant?.variant_name ?? null,
@@ -373,9 +373,9 @@ function EditSaleContent() {
   const updateQuantity = (id: number, delta: number, variantId?: number | null) => {
     if (delta > 0) {
       const key      = cartKey(id, variantId);
-      const invItem  = inventory.find((i) => i.product_id === id);
+      const invItem  = inventory.find((i) => Number(i.product_id) === Number(id));
       const stockAvail = variantId
-        ? Number(invItem?.variants_stock.find((v) => v.variant_id === variantId)?.stock ?? 0)
+        ? Number(invItem?.variants_stock.find((v) => Number(v.variant_id) === Number(variantId))?.stock ?? 0)
         : Number(invItem?.base_stock ?? 0);
       const initialQty   = initialQuantities.get(key) ?? 0;
       const effectiveMax = stockAvail + initialQty;
@@ -869,11 +869,11 @@ function EditSaleContent() {
         onOpenChange={(v) => !v && setVariantPickerProduct(null)}
         product={variantPickerProduct}
         variantsStock={
-          inventory.find((i) => i.product_id === variantPickerProduct?.id)
+          inventory.find((i) => Number(i.product_id) === Number(variantPickerProduct?.id))
             ?.variants_stock ?? []
         }
         baseStock={
-          inventory.find((i) => i.product_id === variantPickerProduct?.id)
+          inventory.find((i) => Number(i.product_id) === Number(variantPickerProduct?.id))
             ?.base_stock ?? 0
         }
         onSelect={(product, variant) => {
