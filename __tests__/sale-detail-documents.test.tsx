@@ -103,7 +103,7 @@ describe("sale detail document actions", () => {
   it("shows Ticket PDF and Ticket when the sale is completed", () => {
     const html = render("COMPLETED");
     expect(html).toContain("Ticket PDF");
-    expect(html).toContain("Factura PDF");
+    expect(html).not.toContain("Factura PDF");
     expect(html).toContain('href="/sales/7/invoice"');
     expect(html).toContain('href="/sales/7/receipt"');
     expect(html).toContain('href="/sales/7/edit"');
@@ -111,14 +111,14 @@ describe("sale detail document actions", () => {
     expect(html).not.toContain("Estado del pago");
   });
 
-  it("hides document buttons on a pending sale and keeps Editar", () => {
+  it("shows document buttons on a pending sale and keeps Editar", () => {
     const html = render("PENDING");
-    expect(html).not.toContain("Ticket PDF");
+    expect(html).toContain("Ticket PDF");
     expect(html).not.toContain("Factura PDF");
-    expect(html).not.toContain('href="/sales/7/invoice"');
-    expect(html).not.toContain('href="/sales/7/receipt"');
+    expect(html).toContain('href="/sales/7/invoice"');
+    expect(html).toContain('href="/sales/7/receipt"');
     expect(html).toContain('href="/sales/7/edit"');
-    expect(html).toContain("grid gap-2 sm:hidden grid-cols-1");
+    expect(html).toContain("grid gap-2 sm:hidden grid-cols-3");
     expect(html).toContain("Editar venta");
     expect(html).toContain("Estado del pago");
     expect(html).toContain("Saldo pendiente");

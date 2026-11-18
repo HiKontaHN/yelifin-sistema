@@ -80,7 +80,7 @@ export default function SaleDetailPage({ params }: Props) {
   const isCompleted = sale.status === "COMPLETED";
   const isCancelled = sale.status === "CANCELLED";
   const showEdit      = canEdit && !isCancelled;
-  const showDocuments = isCompleted;
+  const showDocuments = isCompleted || isPending;
   const paymentStatus = sale.payment_status ?? (isPending ? "PENDING" : "PAID");
   const amountPaid = Number(sale.amount_paid ?? (paymentStatus === "PAID" ? sale.total : 0));
   const amountDue = Number(sale.amount_due ?? 0);
@@ -123,15 +123,15 @@ export default function SaleDetailPage({ params }: Props) {
 
       {/* Header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => back()}>
             <ArrowLeft className="size-4" />
           </Button>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-40">
+            <h2 className="text-2xl font-semibold tracking-tight font-mono break-words">
+              {sale.sale_number || `Venta #${sale.id}`}
+            </h2>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-semibold tracking-tight font-mono">
-                {sale.sale_number}
-              </h1>
               {isCompleted && (
                 <Badge className="bg-green-100 text-green-700 border-green-200 gap-1" variant="outline">
                   <CheckCircle className="size-3" />
@@ -220,7 +220,7 @@ export default function SaleDetailPage({ params }: Props) {
                 <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>
                   <Link href={`/sales/${sale.id}/invoice`}>
                     <FileText className="size-3.5" />
-                    Factura PDF
+                    Ticket PDF
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" asChild>

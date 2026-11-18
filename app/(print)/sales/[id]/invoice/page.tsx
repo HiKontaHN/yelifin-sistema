@@ -33,7 +33,7 @@ export default function InvoicePage({ params }: Props) {
   if (saleLoading || profileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-sm text-gray-500">Cargando factura…</p>
+        <p className="text-sm text-gray-500">Cargando ticket…</p>
       </div>
     );
   }
@@ -121,7 +121,7 @@ export default function InvoicePage({ params }: Props) {
               </div>
 
               <div className="text-right">
-                <h1 className="text-3xl font-bold tracking-tight text-gray-900">FACTURA</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-gray-900">TICKET</h1>
                 <p className="text-base font-mono text-gray-500 mt-0.5">{sale.sale_number}</p>
                 <span className={`inline-block mt-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${statusInfo.color}`}>
                   {statusInfo.label}
