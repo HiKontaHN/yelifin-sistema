@@ -73,7 +73,7 @@ function resolveRange(params: URLSearchParams, tz: string) {
 
 // ── GET /api/sales ─────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const deny = await requireModule(auth.data, 'SALES', 'canView');
   if (deny) return deny;

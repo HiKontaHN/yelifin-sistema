@@ -8,7 +8,7 @@ import { todayInTimeZone } from "@/lib/date-utils";
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   // Resumen cruza cuentas y transacciones — basta con ver alguno de los dos.
   const deny = await requireAnySubitem(auth.data, 'FINANCES', ['ACCOUNTS', 'TRANSACTIONS'], 'canView');

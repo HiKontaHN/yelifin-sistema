@@ -7,7 +7,7 @@ import { getDefaultWarehouseForUser, resolveWarehouseId } from "@/lib/warehouses
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const deny = await requireModule(auth.data, 'INVENTORY', 'canView');
   if (deny) return deny;

@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 const mockSql = jest.fn();
 const mockRequireFeature = jest.fn();
+const mockPermissions = jest.fn();
 
 const authSuccess = {
   error: null,
@@ -28,6 +29,7 @@ jest.mock("@/lib/auth", () => ({
   requireFeature: (...args: unknown[]) => mockRequireFeature(...args),
   requireModule: jest.fn(async () => null),
   getOrgTimezone: jest.fn(async () => "America/Tegucigalpa"),
+  getModulePermissions: (...args: unknown[]) => mockPermissions(...args),
   createErrorResponse: jest.fn((message: string, status: number, needsUpgrade = false) =>
     Response.json({ error: message, needs_upgrade: needsUpgrade }, { status }),
   ),
@@ -54,6 +56,7 @@ describe("features de movimientos y categorías personalizadas", () => {
   beforeEach(() => {
     mockSql.mockReset();
     mockRequireFeature.mockReset();
+    mockPermissions.mockReset().mockResolvedValue({ canEdit: false, showCosts: false, showProfit: false });
   });
 
   it("bloquea consultar movimientos sin inventory.movements", async () => {
@@ -64,6 +67,33 @@ describe("features de movimientos y categorías personalizadas", () => {
     expect(response.status).toBe(403);
     expect(mockRequireFeature).toHaveBeenCalledWith(7, "inventory.movements");
     expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("aplica los permisos de costos, ganancias y edición en móvil (%s)", async (allowed) => {
+    mockRequireFeature.mockResolvedValue(null);
+    mockPermissions.mockResolvedValue({ canEdit: allowed, showCosts: allowed, showProfit: allowed });
+    mockSql.mockImplementation(async (query: TemplateStringsArray) => {
+      const sql = query.join(" ");
+      if (sql.includes("SELECT COUNT(*)")) return [{ count: 1 }];
+      if (sql.includes("ORDER BY im.created_at DESC")) {
+        return [{
+          id: 12, product_name: "Producto", image_url: "https://example.test/a.png",
+          reference_type: "SALE", reference_id: 9, quantity: 2, unit_cost: 58, profit: 22,
+        }];
+      }
+      return [];
+    });
+
+    const response = await getMovements(new NextRequest("http://localhost/api/inventory/movements", {
+      headers: { authorization: "Bearer mobile-token" },
+    }));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toEqual([{
+      id: 12, product_name: "Producto", image_url: "https://example.test/a.png", reference_type: "SALE", quantity: 2,
+      edit_path: allowed ? "/sales/9/edit" : null,
+      ...(allowed ? { unit_cost: 58, profit: 22 } : {}),
+    }]);
   });
 
   it("mantiene legibles las categorías con finances.transactions", async () => {

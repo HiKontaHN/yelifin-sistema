@@ -8,7 +8,7 @@ const sql = neon(process.env.DATABASE_URL!);
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { mobileWriteMethod: "PATCH" });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "finances.accounts");
   if (feature) return feature;
@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { mobileWriteMethod: "DELETE" });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "finances.accounts");
   if (feature) return feature;

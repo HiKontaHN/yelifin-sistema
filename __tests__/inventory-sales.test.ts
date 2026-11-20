@@ -80,6 +80,7 @@ jest.mock("@/lib/db-transaction", () => ({
 // 1. Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { NextRequest } from "next/server";
 import { createErrorResponse, isAuthSuccess } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
 
@@ -109,14 +110,15 @@ function makeAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
 /** Build a NextRequest-compatible object the API handlers accept */
 function makeRequest(
   url: string,
-  options: { method?: string; body?: unknown; token?: string } = {}
-): Request {
-  const { method = "GET", body, token = "Bearer fake-token" } = options;
-  return new Request(url, {
+  options: { method?: string; body?: unknown; token?: string; mobile?: boolean } = {}
+): NextRequest {
+  const { method = "GET", body, token = "Bearer fake-token", mobile = false } = options;
+  return new NextRequest(url, {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: token,
+      ...(!mobile && token ? { Cookie: "hikonta_auth=test-session" } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -1142,7 +1144,40 @@ describe("POST /api/sales – PENDING (stock reserved, no income)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. PATCH /api/sales/[id] – confirm action
+// 8. GET /api/sales/[id] – mobile detail
+// ─────────────────────────────────────────────────────────────────────────────
+
+it("hides costs and profit in a mobile sale detail when the role lacks both permissions", async () => {
+  resetSql();
+  const auth = jest.spyOn(authModule, "verifyAuth").mockResolvedValue({
+    error: null, status: 200, data: makeAuthUser({ isOwner: true }),
+  });
+  const permissions = jest.spyOn(authModule, "getModulePermissions").mockResolvedValue({
+    canView: true, canEdit: false, canDelete: false, showCosts: false, showProfit: false,
+  });
+  try {
+    mockSqlImpl.mockResolvedValueOnce([{ id: 100, subtotal: 150, tax: 0, discount: 0 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 1, quantity: 2, unit_cost: 20, line_total: 150 }])
+      .mockResolvedValueOnce([{ id: 1, unit_cost: 10, line_total: 10 }]);
+    const { GET } = await import("@/app/api/sales/[id]/route");
+    const request = makeRequest("http://localhost/api/sales/100", { mobile: true });
+    const response = await GET(request, { params: Promise.resolve({ id: "100" }) });
+    expect(auth).toHaveBeenCalledWith(request, { allowMobileRead: true });
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toMatchObject({
+      products_cost: null, supplies_cost: null, net_profit: null, margin_pct: null,
+      items: [{ unit_cost: null, item_profit: null, item_margin: null, line_total: 150 }],
+      supplies: [{ unit_cost: null, line_total: null }],
+    });
+  } finally {
+    auth.mockRestore();
+    permissions.mockRestore();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. PATCH /api/sales/[id] – confirm action
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PATCH /api/sales/[id] – confirm", () => {
@@ -1159,6 +1194,28 @@ describe("PATCH /api/sales/[id] – confirm", () => {
 
   afterEach(() => {
     verifyAuthSpy.mockRestore();
+  });
+
+  it("allows mobile confirmation but keeps full editing on the web", async () => {
+    const mobileAuth = jest.spyOn(authModule, "verifyAuthAndSubscription").mockResolvedValue({
+      error: null, status: 200, data: makeAuthUser(),
+    });
+    try {
+      const { PATCH } = await import("@/app/api/sales/[id]/route");
+      const url = "http://localhost/api/sales/100";
+      const params = Promise.resolve({ id: "100" });
+      const edit = makeRequest(url, { method: "PATCH", mobile: true, body: { action: "edit" } });
+      expect((await PATCH(edit, { params }))?.status).toBe(403);
+      expect(mockSqlImpl).not.toHaveBeenCalled();
+
+      mockSqlImpl.mockResolvedValueOnce([{ id: 100, status: "COMPLETED" }]);
+      const confirm = makeRequest(url, { method: "PATCH", mobile: true, body: { action: "confirm" } });
+      expect((await PATCH(confirm, { params }))?.status).toBe(400);
+      expect(mobileAuth).toHaveBeenCalledWith(confirm, { mobileWriteMethod: "PATCH" });
+      expect(mockSqlImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      mobileAuth.mockRestore();
+    }
   });
 
   it("returns 400 when trying to confirm a non-PENDING sale", async () => {

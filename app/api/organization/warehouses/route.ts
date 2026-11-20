@@ -7,7 +7,7 @@ import { withTransaction } from "@/lib/db-transaction";
 const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "inventory.view");
   if (feature) return feature;

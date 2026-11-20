@@ -23,6 +23,8 @@ jest.mock("@/lib/auth", () => ({
 
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/auth/me/route";
+import { verifyAuth } from "@/lib/auth";
+import type { AuthUser } from "@/lib/auth";
 
 const profileRow = {
   id: 1,
@@ -85,6 +87,38 @@ describe("GET /api/auth/me", () => {
     mockSql.mockReset();
     mockVerifySessionCookie.mockReset();
     mockGetUser.mockReset();
+    jest.mocked(verifyAuth).mockReset();
+  });
+
+  it("devuelve al móvil el permiso de cada submódulo y las funciones del plan", async () => {
+    jest.mocked(verifyAuth).mockResolvedValue({
+      error: null, status: 200,
+      data: { firebaseUid: "firebase-1", emailVerified: true } as AuthUser,
+    });
+    mockGetUser.mockResolvedValue({ uid: "firebase-1", emailVerified: true, disabled: false });
+    mockSql.mockResolvedValue([{
+      ...profileRow,
+      role_is_owner: false,
+      owner_user_id: 2,
+      plan_features: [{ key: "inventory.movements", name: "Movimientos", category: "INVENTORY" }],
+      role_permissions: [{
+        module: "INVENTORY", subitem: "MOVEMENTS", can_view: true, can_edit: false,
+        can_delete: false, show_costs: false, show_profit: false,
+      }],
+    }]);
+    const request = new NextRequest("http://localhost/api/auth/me", {
+      headers: { authorization: "Bearer mobile-token" },
+    });
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(verifyAuth).toHaveBeenCalledWith(request, { allowMobileRead: true });
+    expect(mockVerifySessionCookie).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      permissions: { INVENTORY: { MOVEMENTS: { can_view: true, show_costs: false, show_profit: false } } },
+      features: { INVENTORY: [{ key: "inventory.movements" }] },
+    });
   });
 
   it("devuelve sesión y perfil con una sola consulta a Neon", async () => {

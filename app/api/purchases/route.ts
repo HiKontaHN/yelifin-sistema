@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "inventory.purchases");
   if (feature) return feature;

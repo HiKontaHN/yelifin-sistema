@@ -11,22 +11,29 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function GET(request: NextRequest) {
   try {
     const sessionCookie = request.cookies.get("hikonta_auth")?.value;
-    if (!sessionCookie) {
-      return createErrorResponse("No autorizado", 401);
-    }
-
-    let decoded;
-    try {
-      decoded = await adminAuth.verifySessionCookie(sessionCookie);
-    } catch {
-      return createErrorResponse("Token inválido o expirado", 401);
+    let firebaseUid: string;
+    let sessionEmailVerified: boolean;
+    if (sessionCookie) {
+      try {
+        const decoded = await adminAuth.verifySessionCookie(sessionCookie);
+        firebaseUid = decoded.uid;
+        sessionEmailVerified = decoded.email_verified === true;
+      } catch {
+        return createErrorResponse("Token inválido o expirado", 401);
+      }
+    } else {
+      if (!request.headers.has("authorization")) return createErrorResponse("No autorizado", 401);
+      const auth = await verifyAuth(request, { allowMobileRead: true });
+      if (auth.error !== null) return createErrorResponse(auth.error, auth.status, auth.needsUpgrade);
+      firebaseUid = auth.data.firebaseUid;
+      sessionEmailVerified = auth.data.emailVerified;
     }
 
     // La cuenta de Firebase y el perfil consolidado se consultan en paralelo.
     // Esto conserva la detección de usuarios deshabilitados y evita el viaje
     // adicional a Neon que antes realizaba verifyAuth antes de esta consulta.
     const [firebaseUser, rows] = await Promise.all([
-      adminAuth.getUser(decoded.uid).catch(() => null),
+      adminAuth.getUser(firebaseUid).catch(() => null),
       sql`
       SELECT
         u.id,
@@ -123,7 +130,7 @@ export async function GET(request: NextRequest) {
       JOIN  org_effective_subscriptions os ON os.org_id = o.id
       JOIN  subscription_plans    sp ON sp.id       = os.effective_plan_id
       JOIN  subscription_plans    contracted ON contracted.id = os.contracted_plan_id
-      WHERE u.firebase_uid = ${decoded.uid}
+      WHERE u.firebase_uid = ${firebaseUid}
       ORDER BY om.joined_at ASC
       LIMIT 1
       `,
@@ -191,7 +198,7 @@ export async function GET(request: NextRequest) {
         email:                firebaseUser.email ?? null,
         displayName:          firebaseUser.displayName ?? null,
         emailVerified:        firebaseUser.emailVerified,
-        sessionEmailVerified: decoded.email_verified === true,
+        sessionEmailVerified,
       },
       user: {
         id:           row.id,

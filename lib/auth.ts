@@ -58,19 +58,32 @@ type AuthResult =
   | { error: string; status: number; data: null; needsUpgrade?: boolean }
   | { error: null; status: 200; data: AuthUser; needsUpgrade?: never };
 
+type MobileAuthOptions = {
+  allowMobileRead?: boolean;
+  mobileWriteMethod?: "POST" | "PATCH" | "DELETE";
+};
+
 // ── verifyAuth ─────────────────────────────────────────────────────────
 
 export async function verifyAuth(
   request: NextRequest,
-  options: { allowUnverifiedEmail?: boolean } = {},
+  options: MobileAuthOptions & { allowUnverifiedEmail?: boolean } = {},
 ): Promise<AuthResult> {
   let decodedToken;
   const sessionCookie = request.cookies.get("hikonta_auth")?.value;
   try {
-    if (!sessionCookie) {
+    const allowMobile = (options.allowMobileRead && request.method === "GET") ||
+      request.method === options.mobileWriteMethod;
+    const mobileToken = allowMobile
+      ? /^Bearer ([^\s]+)$/i.exec(request.headers.get("authorization") ?? "")?.[1]
+      : undefined;
+    if (sessionCookie) {
+      decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
+    } else if (mobileToken) {
+      decodedToken = await adminAuth.verifyIdToken(mobileToken, true);
+    } else {
       return { error: "No autorizado", status: 401, data: null };
     }
-    decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
   } catch {
     return { error: "Token inválido o expirado", status: 401, data: null };
   }
@@ -115,6 +128,9 @@ export async function verifyAuth(
       JOIN subscription_plans effective ON effective.id = os.effective_plan_id
       JOIN subscription_plans contracted ON contracted.id = os.contracted_plan_id
       WHERE u.firebase_uid = ${decodedToken.uid}
+        AND (${!sessionCookie} = FALSE OR NOT EXISTS (
+          SELECT 1 FROM partners p WHERE p.user_id = u.id
+        ))
       ORDER BY om.joined_at ASC
       LIMIT 1
     `;
@@ -601,8 +617,11 @@ export async function getOrgTimezone(orgId: number): Promise<string> {
 
 // ── verifyAuthAndSubscription (helper combinado) ───────────────────────
 
-export async function verifyAuthAndSubscription(request: NextRequest): Promise<AuthResult> {
-  const authResult = await verifyAuth(request);
+export async function verifyAuthAndSubscription(
+  request: NextRequest,
+  options: MobileAuthOptions = {},
+): Promise<AuthResult> {
+  const authResult = await verifyAuth(request, options);
   if (authResult.error !== null) return authResult;
 
   const subResult = await verifySubscription(authResult.data.orgId);

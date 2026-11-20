@@ -1,5 +1,6 @@
 const mockSql = jest.fn();
 const mockVerifySessionCookie = jest.fn();
+const mockVerifyIdToken = jest.fn();
 
 jest.mock("@neondatabase/serverless", () => ({
   neon: jest.fn(() => mockSql),
@@ -8,12 +9,13 @@ jest.mock("@neondatabase/serverless", () => ({
 }));
 
 jest.mock("@/lib/firebase-admin", () => ({
-  adminAuth: { verifySessionCookie: mockVerifySessionCookie },
+  adminAuth: { verifySessionCookie: mockVerifySessionCookie, verifyIdToken: mockVerifyIdToken },
 }));
 
 import { NextRequest } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { GET as getProducts } from "@/app/api/products/route";
+import { GET as getProductDetail } from "@/app/api/products/[id]/detail/route";
 
 function request() {
   return new NextRequest("http://localhost/api/products", {
@@ -53,9 +55,93 @@ describe("subscription guard", () => {
   beforeEach(() => {
     mockSql.mockReset();
     mockVerifySessionCookie.mockReset();
+    mockVerifyIdToken.mockReset();
     mockVerifySessionCookie.mockResolvedValue({
       uid: "firebase-1",
       email_verified: true,
+    });
+  });
+
+  it("acepta tokens móviles verificados solo en lecturas habilitadas", async () => {
+    const headers = { authorization: "Bearer firebase-token" };
+    const url = "http://localhost/api/inventory";
+    const read = new NextRequest(url, { headers });
+    const write = new NextRequest(url, { headers, method: "POST" });
+    expect((await verifyAuth(read)).status).toBe(401);
+    expect((await verifyAuth(write, { allowMobileRead: true })).status).toBe(401);
+    expect(mockVerifyIdToken).not.toHaveBeenCalled();
+
+    mockVerifyIdToken.mockResolvedValue({ uid: "firebase-1", email_verified: true });
+    mockSql.mockResolvedValue([authRow("ACTIVE")]);
+    expect((await verifyAuth(read, { allowMobileRead: true })).data?.orgId).toBe(7);
+    expect(mockVerifyIdToken).toHaveBeenCalledWith("firebase-token", true);
+  });
+
+  it("bloquea una lectura móvil si el correo sigue sin verificar", async () => {
+    mockVerifyIdToken.mockResolvedValue({ uid: "firebase-1", email_verified: false });
+    const read = new NextRequest("http://localhost/api/inventory", {
+      headers: { authorization: "Bearer firebase-token" },
+    });
+    expect((await verifyAuth(read, { allowMobileRead: true })).status).toBe(403);
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("solo acepta un token móvil en el método de escritura habilitado", async () => {
+    mockVerifyIdToken.mockResolvedValue({ uid: "firebase-1", email_verified: true });
+    mockSql.mockResolvedValue([authRow("ACTIVE")]);
+    const headers = { authorization: "Bearer firebase-token" };
+    const url = "http://localhost/api/accounts/2";
+    const update = new NextRequest(url, { headers, method: "PATCH" });
+    const remove = new NextRequest(url, { headers, method: "DELETE" });
+
+    expect((await verifyAuth(remove, { mobileWriteMethod: "PATCH" })).status).toBe(401);
+    expect(mockVerifyIdToken).not.toHaveBeenCalled();
+    expect((await verifyAuth(update, { mobileWriteMethod: "PATCH" })).data?.orgId).toBe(7);
+    expect(mockVerifyIdToken).toHaveBeenCalledWith("firebase-token", true);
+  });
+
+  it("mantiene la suscripción como requisito del detalle móvil", async () => {
+    mockVerifyIdToken.mockResolvedValue({ uid: "firebase-1", email_verified: true });
+    mockSql.mockResolvedValueOnce([authRow("EXPIRED")]).mockResolvedValueOnce([{ status: "EXPIRED" }]);
+    const req = new NextRequest("http://localhost/api/products/42/detail", {
+      headers: { authorization: "Bearer firebase-token" },
+    });
+
+    const response = await getProductDetail(req, { params: Promise.resolve({ id: "42" }) });
+
+    expect(response.status).toBe(403);
+    expect(mockSql).toHaveBeenCalledTimes(2);
+  });
+
+  it("sirve el detalle móvil dentro de la organización y oculta costos privados", async () => {
+    mockVerifyIdToken.mockResolvedValue({ uid: "firebase-1", email_verified: true });
+    mockSql
+      .mockResolvedValueOnce([authRow("ACTIVE", { role_is_owner: false, owner_user_id: 2 })])
+      .mockResolvedValueOnce([{ status: "ACTIVE" }])
+      .mockResolvedValueOnce([{ enabled: true }])
+      .mockResolvedValueOnce([{ can_view: true }])
+      .mockResolvedValueOnce([{ id: 42, is_service: true, service_cost: 9, price: 50 }])
+      .mockResolvedValueOnce([{ total_stock: 0 }])
+      .mockResolvedValueOnce([{ avg_cost: 0 }])
+      .mockResolvedValueOnce([]) // Último costo
+      .mockResolvedValueOnce([]) // Variantes
+      .mockResolvedValueOnce([]) // Lotes
+      .mockResolvedValueOnce([]) // Evolución de costo de inventario
+      .mockResolvedValueOnce([{ id: 1, cost: 9 }]) // Evolución del costo del servicio
+      .mockResolvedValueOnce([{ total_units_sold: 0, total_revenue: 0, total_profit: 0 }])
+      .mockResolvedValueOnce([]) // Compras
+      .mockResolvedValueOnce([]) // Movimientos
+      .mockResolvedValueOnce([{ can_view: true, show_costs: false, show_profit: false }]);
+    const req = new NextRequest("http://localhost/api/products/42/detail", {
+      headers: { authorization: "Bearer firebase-token" },
+    });
+
+    const response = await getProductDetail(req, { params: Promise.resolve({ id: "42" }) });
+
+    expect(response.status).toBe(200);
+    expect(mockSql).toHaveBeenNthCalledWith(5, expect.anything(), 42, 7);
+    expect((await response.json()).data).toMatchObject({
+      id: 42, service_cost: null, avg_cost: null, margin_pct: null, service_cost_history: [],
     });
   });
 

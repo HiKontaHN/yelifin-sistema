@@ -15,13 +15,19 @@ const sql = neon(process.env.DATABASE_URL!);
 const ACCOUNT_SELECTOR_MODULES: OrgModule[] = ["FINANCES", "SALES", "INVENTORY", "PRODUCTS", "EVENTS"];
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "finances.accounts");
   if (feature) return feature;
 
-  const canList = await verifyAnyModuleAccess(auth.data, ACCOUNT_SELECTOR_MODULES, "canView");
-  if (!canList) return createErrorResponse("Sin acceso a este módulo", 403);
+  const mobile = !request.cookies.get("hikonta_auth")?.value;
+  const mobileDetails = mobile && request.nextUrl.searchParams.get("details") === "true";
+  if (mobileDetails) {
+    const deny = await requireModule(auth.data, "FINANCES", "canView", "ACCOUNTS");
+    if (deny) return deny;
+  } else if (!(await verifyAnyModuleAccess(auth.data, ACCOUNT_SELECTOR_MODULES, "canView"))) {
+    return createErrorResponse("Sin acceso a este módulo", 403);
+  }
 
   try {
     const { orgId } = auth.data;
@@ -32,6 +38,14 @@ export async function GET(request: NextRequest) {
       WHERE org_id = ${orgId} AND is_active = TRUE
       ORDER BY name ASC
     `;
+
+    if (mobileDetails) return Response.json({ data: accounts, total: accounts.length });
+    if (mobile) {
+      return Response.json({
+        data: accounts.map(({ id, name }) => ({ id, name })),
+        total: accounts.length,
+      });
+    }
 
     // El saldo es información financiera: solo se expone si el rol tiene
     // acceso a FINANZAS. Roles de SALES/INVENTORY/EVENTS igual reciben la
@@ -48,7 +62,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { mobileWriteMethod: "POST" });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "finances.accounts");
   if (feature) return feature;

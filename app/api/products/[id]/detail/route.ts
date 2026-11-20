@@ -8,7 +8,7 @@ const sql = neon(process.env.DATABASE_URL!);
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuthAndSubscription(request);
+  const auth = await verifyAuthAndSubscription(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "inventory.view");
   if (feature) return feature;
@@ -323,7 +323,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     if (!perms.showCosts) {
       nullifyKeysDeep(data, new Set([
-        "avg_cost", "last_cost", "unit_cost", "unit_cost_usd", "avg_unit_cost",
+        "service_cost", "avg_cost", "last_cost", "unit_cost", "unit_cost_usd", "avg_unit_cost",
       ]));
       // El gráfico de evolución de precio de entrada se basa 100% en costo:
       // se vacía el arreglo en vez de anular cada campo, así el frontend

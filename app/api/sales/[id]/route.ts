@@ -1,7 +1,7 @@
 // app/api/sales/[id]/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
+import { verifyAuth, verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireModule, requireFeature, getModulePermissions, nullifyKeysDeep } from "@/lib/auth";
 import {
   consumeFifo,
   InsufficientStockError,
@@ -32,7 +32,7 @@ function itemKey(productId: number, variantId: number | null) {
 
 // ── GET /api/sales/[id] ────────────────────────────────────────────────
 export async function GET(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const deny = await requireModule(auth.data, 'SALES', 'canView');
   if (deny) return deny;
@@ -161,7 +161,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 // ── PATCH /api/sales/[id] ──────────────────────────────────────────────
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const auth = await verifyAuth(request);
+  const mobile = !request.cookies.get("hikonta_auth")?.value;
+  const auth = mobile
+    ? await verifyAuthAndSubscription(request, { mobileWriteMethod: "PATCH" })
+    : await verifyAuth(request);
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const deny = await requireModule(auth.data, 'SALES', 'canEdit');
   if (deny) return deny;
@@ -179,6 +182,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (!["confirm", "cancel", "edit"].includes(action))
       return createErrorResponse("Acción inválida. Usar: confirm | cancel | edit", 400);
+    if (mobile && action === "edit")
+      return createErrorResponse("Abre la versión web para editar la venta", 403);
 
     const [sale] = await sql`
       SELECT * FROM sales WHERE id = ${saleId} AND org_id = ${orgId}

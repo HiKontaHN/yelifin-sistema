@@ -1,7 +1,7 @@
 // app/api/inventory/movements/route.ts
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getOrgTimezone } from "@/lib/auth";
+import { verifyAuth, createErrorResponse, isAuthSuccess, requireFeature, requireModule, getOrgTimezone, getModulePermissions } from "@/lib/auth";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -17,7 +17,7 @@ function monthKey(year: number, month: number): string {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAuth(request);
+  const auth = await verifyAuth(request, { allowMobileRead: true });
   if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
   const feature = await requireFeature(auth.data.orgId, "inventory.movements");
   if (feature) return feature;
@@ -238,8 +238,38 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.ceil(count / limit);
 
+    let data = movements;
+    if (!request.cookies.get("hikonta_auth")?.value) {
+      const [inventory, sales, purchases] = await Promise.all([
+        getModulePermissions(auth.data, "INVENTORY"),
+        getModulePermissions(auth.data, "SALES"),
+        getModulePermissions(auth.data, "INVENTORY", "INCOMING"),
+      ]);
+      data = movements.map((m) => {
+        let editPath: string | null = null;
+        if (sales.canEdit && m.reference_id && ["SALE", "SALE_EDITED"].includes(m.reference_type)) {
+          editPath = `/sales/${m.reference_id}/edit`;
+        } else if (purchases.canEdit && m.reference_id && m.purchase_item_id &&
+          ["PURCHASE", "PURCHASE_EDITED"].includes(m.reference_type)) {
+          editPath = `/purchases/${m.reference_id}/edit?item=${m.purchase_item_id}`;
+        }
+        return {
+          id: m.id, product_name: m.product_name, image_url: m.image_url, variant_name: m.variant_name,
+          quantity: m.quantity, movement_type: m.movement_type, reference_type: m.reference_type,
+          created_at: m.created_at, notes: m.notes, customer_name: m.customer_name, sale_number: m.sale_number,
+          unit_price: m.unit_price, purchase_currency: m.purchase_currency,
+          ...(inventory.showCosts ? {
+            unit_cost: m.unit_cost, unit_cost_usd: m.unit_cost_usd, unit_cost_hnl: m.unit_cost_hnl,
+            unit_cost_purchase: m.unit_cost_purchase, total_cost: m.total_cost, shipping_per_unit: m.shipping_per_unit,
+          } : {}),
+          ...(inventory.showProfit ? { profit: m.profit } : {}),
+          edit_path: editPath,
+        };
+      });
+    }
+
     return Response.json({
-      data:       movements,
+      data,
       total:      count,
       page,
       totalPages,
