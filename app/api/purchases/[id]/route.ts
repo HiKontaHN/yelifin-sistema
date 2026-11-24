@@ -5,7 +5,7 @@ import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireF
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { withTransaction } from "@/lib/db-transaction";
 import { recalculatePurchaseItems } from "@/lib/purchase-edit";
-import { isCalendarDate } from "@/lib/date-utils";
+import { resolveBusinessDateInput } from "@/lib/date-utils";
 
 import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
 
@@ -155,15 +155,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
         return createErrorResponse("El costo unitario no es válido", 400);
 
-      const requestedPurchaseDate = body.purchase_date
-        ?? (typeof body.purchased_at === "string" ? body.purchased_at.slice(0, 10) : null);
-      if (requestedPurchaseDate && !isCalendarDate(requestedPurchaseDate))
-        return createErrorResponse("La fecha de compra no es válida", 400);
-      const purchasedAt = typeof body.purchased_at === "string" && !isCalendarDate(body.purchased_at)
-        ? new Date(body.purchased_at)
-        : null;
-      if (purchasedAt && Number.isNaN(purchasedAt.getTime()))
-        return createErrorResponse("La fecha de compra no es válida", 400);
+      const purchaseTime = resolveBusinessDateInput(body.purchase_date, body.purchased_at, auth.data.timezone);
+      if (!purchaseTime) return createErrorResponse("La fecha de compra no es válida", 400);
 
       const [cardFunding] = await sql`
         SELECT EXISTS (
@@ -245,8 +238,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           for (const item of nextItems) {
             item.consumed = Number(item.qty_in) - Number(item.qty_available);
           }
-          const nextPurchasedAt = purchasedAt?.toISOString() ?? purchase.purchased_at;
-          const nextPurchaseDate = requestedPurchaseDate ?? purchase.purchase_date;
+          const nextPurchasedAt = purchaseTime.timestamp ?? purchase.purchased_at;
+          const nextPurchaseDate = purchaseTime.date ?? purchase.purchase_date;
           const nextNotes = body.notes !== undefined
             ? (typeof body.notes === "string" ? body.notes.trim() || null : null)
             : purchase.notes;

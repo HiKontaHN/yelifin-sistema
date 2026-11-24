@@ -4,6 +4,7 @@
 import useSWR, { useSWRConfig } from "swr";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import type { OrganizationSocialLinks } from "@/lib/organization-social-links";
 import type { OrgInfo, OrgMember, OrgModule, ModulePermissions } from "@/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -74,6 +75,33 @@ export function useUpdateOrganization() {
   };
 
   return { updateOrg, isSaving };
+}
+
+const SOCIAL_LINKS_PATH = "/api/organization/social-links";
+
+export function useOrganizationSocialLinks(orgId: number) {
+  const authFetch = useAuthFetch();
+  const [isSaving, setIsSaving] = useState(false);
+  const { data, isLoading, error, mutate } = useSWR<{ data: OrganizationSocialLinks }>(
+    [SOCIAL_LINKS_PATH, orgId],
+    ([url]: [string, number]) => authFetch(url),
+    { revalidateOnFocus: false },
+  );
+
+  const saveLinks = async (links: OrganizationSocialLinks) => {
+    setIsSaving(true);
+    try {
+      const response = await authFetch(SOCIAL_LINKS_PATH, {
+        method: "PUT",
+        body: JSON.stringify(links),
+      });
+      await mutate(response, { revalidate: false });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return { links: data?.data, isLoading, isSaving, error, retry: mutate, saveLinks };
 }
 
 // ── Vincular con un partner ─────────────────────────────────────────────────

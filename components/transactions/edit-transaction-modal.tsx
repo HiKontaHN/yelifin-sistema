@@ -3,7 +3,6 @@
 
 import { useReducer, useEffect } from "react";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
-import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +15,7 @@ import { toast } from "sonner";
 import { useUpdateTransaction, Transaction } from "@/hooks/swr/use-transactions";
 import { toLocalDateInput } from "@/lib/date-utils";
 import { useCurrency } from "@/hooks/swr/use-currency";
-import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
+import { TransactionCategoryField } from "./transaction-category-field";
 
 type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
 
@@ -74,9 +73,6 @@ export function EditTransactionModal({
   useEffect(() => {
     dispatch(txFromTransaction(transaction));
   }, [transaction]);
-
-  const { categories } = useTransactionCategories(type);
-  const activeCategories = categories.filter((c) => c.is_active);
 
   const handleClose = () => onOpenChange(false);
 
@@ -226,25 +222,7 @@ export function EditTransactionModal({
             />
           </div>
 
-          {/* Categoría */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">
-              Categoría{" "}
-              <span className="text-xs text-muted-foreground font-normal">opcional</span>
-            </Label>
-            <SearchableSelect
-              value={category}
-              onValueChange={(value) => dispatch({ category: value })}
-              items={activeCategories.map((cat) => ({
-                value: cat.name,
-                label: cat.name,
-              }))}
-              placeholder="Sin categoría"
-              searchPlaceholder="Buscar categoría..."
-              defaultOption={{ value: "", label: "Sin categoría" }}
-              className="h-11 w-full"
-            />
-          </div>
+          <TransactionCategoryField type={type} value={category} onChange={(value) => dispatch({ category: value })} disabled={isUpdating} />
 
           {/* Descripción */}
           <div className="space-y-1.5">

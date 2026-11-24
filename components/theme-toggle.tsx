@@ -24,8 +24,10 @@ export function ThemeToggle({ isCollapsed = false }: ThemeToggleProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <button
+            type="button"
+            aria-label={label}
             onClick={toggle}
-            className="flex size-8 items-center justify-center rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring"
           >
             {mounted
               ? isDark

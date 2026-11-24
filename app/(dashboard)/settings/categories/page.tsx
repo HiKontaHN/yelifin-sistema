@@ -14,6 +14,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FeatureGate } from "@/components/shared/feature-gate";
+import { ProductCategoriesSettings } from "@/components/settings/product-categories-settings";
 import {
   Select,
   SelectContent,
@@ -34,7 +37,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Fab } from "@/components/ui/fab";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
 import { useFeatures } from "@/hooks/use-features";
 import { SearchBar } from "@/components/shared/search-bar";
@@ -68,7 +70,26 @@ const TYPE_CONFIG = {
 };
 
 export default function CategoriesPage() {
-  return <CategoriesPageContent />;
+  const { push } = useRouter();
+  const section = useSearchParams().get("section") === "products" ? "products" : "transactions";
+
+  return (
+    <Tabs
+      value={section}
+      activationMode="manual"
+      onValueChange={(value) => push(value === "products" ? "/settings/categories?section=products" : "/settings/categories")}
+      className="gap-4"
+    >
+      <TabsList aria-label="Tipo de categorías">
+        <TabsTrigger value="transactions">Transacciones</TabsTrigger>
+        <TabsTrigger value="products">Productos</TabsTrigger>
+      </TabsList>
+      <TabsContent value="transactions"><CategoriesPageContent /></TabsContent>
+      <TabsContent value="products">
+        <FeatureGate feature="inventory.view"><ProductCategoriesSettings /></FeatureGate>
+      </TabsContent>
+    </Tabs>
+  );
 }
 
 const pageLimit = 15;
@@ -276,7 +297,7 @@ function CategoriesPageContent() {
   return (
     <div className="space-y-4 pb-24 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Categorías de Transacciones
@@ -285,6 +306,18 @@ function CategoriesPageContent() {
             Administra las categorías para clasificar tus transacciones
           </p>
         </div>
+        {canMutate && (
+          <Button
+            type="button"
+            onClick={() => {
+              setFormName("");
+              setFormType(selectedType);
+              setCreateOpen(true);
+            }}
+          >
+            <Plus className="size-4" /> Registrar categoría
+          </Button>
+        )}
       </div>
 
       {/* Filtro de tipo — mismo estilo que "Tipo" en la modal de transacciones */}
@@ -471,20 +504,6 @@ function CategoriesPageContent() {
         )}
       />
 
-      {/* FAB */}
-      {canMutate && <Fab
-        actions={[
-          {
-            label: "Nueva categoría",
-            icon: Plus,
-            onClick: () => {
-              setFormType(selectedType);
-              setCreateOpen(true);
-            },
-          },
-        ]}
-      />}
-
       {/* Dialog Crear */}
       <Dialog open={createOpen} onOpenChange={(v) => !v && setCreateOpen(false)}>
         <DialogContent
@@ -512,7 +531,7 @@ function CategoriesPageContent() {
           <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
             <DialogTitle className="flex items-center gap-2 text-lg font-bold">
               <Tags className="size-4 text-primary" />
-              Nueva Categoría
+              Registrar categoría
             </DialogTitle>
           </DialogHeader>
 

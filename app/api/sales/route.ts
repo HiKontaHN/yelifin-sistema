@@ -11,7 +11,7 @@ import {
 } from "@/lib/fifo";
 import { getDefaultWarehouseForUser, resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
-import { addCalendarDays, isCalendarDate, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
+import { addCalendarDays, isCalendarDate, resolveBusinessDateInput, todayInTimeZone, type CalendarDate } from "@/lib/date-utils";
 import { resolveSupplyUnitCost } from "@/lib/sale-estimate";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -494,14 +494,11 @@ export async function POST(request: NextRequest) {
       (acc, s) => acc + s.line_total,
       0,
     );
-    const legacyDatePrefix = typeof sold_at === "string" ? sold_at.slice(0, 10) : null;
-    const saleDate = sale_date
-      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-      ?? todayInTimeZone(auth.data.timezone);
-    if (!isCalendarDate(saleDate)) return createErrorResponse("Fecha de venta inválida", 400);
-    const occurredAt = typeof sold_at === "string" && !isCalendarDate(sold_at)
-      ? sold_at
-      : new Date().toISOString();
+    const saleTime = resolveBusinessDateInput(sale_date, sold_at, auth.data.timezone);
+    if (!saleTime) return createErrorResponse("Fecha de venta inválida", 400);
+    const now = new Date();
+    const saleDate = saleTime.date ?? todayInTimeZone(auth.data.timezone, now);
+    const occurredAt = saleTime.timestamp ?? now.toISOString();
 
     // ══════════════════════════════════════════════════════════════════
     try {

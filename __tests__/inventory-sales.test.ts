@@ -829,7 +829,7 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     expect(body.error).toContain("Stock insuficiente");
   });
 
-  it("creates a COMPLETED sale and returns 201", async () => {
+  it("creates a COMPLETED sale using the organization's calendar day and returns 201", async () => {
     mockCompletedSaleSequence({ batchQty: 10, unitCost: 50 });
 
     const { POST } = await import("@/app/api/sales/route");
@@ -840,6 +840,7 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
         payment_method: "CASH",
         account_id: 1,
         status: "COMPLETED",
+        sold_at: "2026-11-25T02:30:00Z",
       },
     });
     const res = await POST(req as never);
@@ -850,6 +851,8 @@ describe("POST /api/sales – COMPLETED (stock reduction)", () => {
     };
     expect(body.data.status).toBe("COMPLETED");
     expect(body.message).toContain("exitosamente");
+    const saleInsert = mockSqlImpl.mock.calls.find(([strings]) => strings.join("").includes("INSERT INTO sales"));
+    expect(saleInsert?.slice(-3, -1)).toEqual(["2026-11-24", "2026-11-25T02:30:00.000Z"]);
   });
 
   it("COMPLETED sale calls UPDATE inventory_batches (stock is deducted)", async () => {
@@ -1265,7 +1268,7 @@ describe("PATCH /api/sales/[id] – confirm", () => {
     const { PATCH } = await import("@/app/api/sales/[id]/route");
     const req = makeRequest("http://localhost/api/sales/200", {
       method: "PATCH",
-      body: { action: "confirm" },
+      body: { action: "confirm", confirmed_at: "2026-11-25T02:30:00Z" },
     });
     const params = Promise.resolve({ id: "200" });
     const res = (await PATCH(req as never, { params })) as Response;
@@ -1273,6 +1276,8 @@ describe("PATCH /api/sales/[id] – confirm", () => {
     const body = await json(res) as { data: { status: string }; message: string };
     expect(body.data.status).toBe("COMPLETED");
     expect(body.message).toContain("confirmada");
+    const saleUpdate = mockSqlImpl.mock.calls.find(([strings]) => strings.join("").includes("sale_date ="));
+    expect(saleUpdate?.slice(2, 4)).toEqual(["2026-11-24", "2026-11-25T02:30:00.000Z"]);
   });
 
   it("confirms a PENDING sale with a customer: also updates customer stats", async () => {

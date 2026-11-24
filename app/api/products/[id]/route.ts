@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
+import { isProductCategoryReferenceError, productCategoryId } from "@/lib/product-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         p.id,
         p.org_id,
         p.name,
+        p.product_category_id,
         p.description,
         p.is_service,
         p.service_cost,
@@ -102,6 +104,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const body = await request.json();
     const { name, description, sku, price, image_url, is_active, is_service, service_cost } = body;
+    const category = productCategoryId.nullish().safeParse(body.product_category_id);
+    if (!category.success) return createErrorResponse("Categoría de producto inválida", 400);
 
     if (service_cost !== undefined && (isNaN(Number(service_cost)) || Number(service_cost) < 0)) {
       return createErrorResponse(
@@ -134,6 +138,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         is_active   = COALESCE(${is_active  !== undefined ? is_active   : null}, is_active),
         is_service  = COALESCE(${is_service !== undefined ? is_service  : null}, is_service),
         service_cost = COALESCE(${service_cost !== undefined ? Number(service_cost) : null}, service_cost),
+        product_category_id = CASE
+          WHEN ${category.data !== undefined} THEN ${category.data ?? null}::bigint
+          ELSE product_category_id
+        END,
         updated_at  = CURRENT_TIMESTAMP,
         updated_by  = ${userId}
       WHERE id     = ${productId}
@@ -156,6 +164,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     return Response.json({ data: updated });
   } catch (error) {
+    if (isProductCategoryReferenceError(error)) {
+      return createErrorResponse("La categoría no existe en este negocio", 400);
+    }
     console.error("PATCH /api/products/[id]:", error);
     return createErrorResponse("Error al actualizar producto", 500);
   }

@@ -28,7 +28,7 @@ const schema = z.object({
   currency:      z.string().min(1, "Selecciona la moneda"),
   amount:        z.coerce.number().positive("El monto debe ser mayor a 0"),
   exchange_rate: z.coerce.number().positive().optional(),
-  occurred_at:   z.string().min(1, "La fecha es requerida"),
+  occurred_at:   z.string().min(1, "La fecha es requerida").optional(),
   category:      z.string().optional(),
   description:   z.string().optional(),
 });
@@ -58,7 +58,7 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
 
   const { register, handleSubmit, reset, setValue, watch, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { currency: nativeCurrency, occurred_at: todayLocal },
+    defaultValues: { currency: nativeCurrency },
   });
 
   const watchCurrency = watch("currency", nativeCurrency);
@@ -80,7 +80,7 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
   }, [isUsd, suggestedRate, nativeCurrency]);
 
   const handleClose = () => {
-    reset({ currency: nativeCurrency, occurred_at: todayLocal });
+    reset({ currency: nativeCurrency });
     setSelectedCurrency(nativeCurrency);
     setPickedCardId("");
     onOpenChange(false);
@@ -205,12 +205,19 @@ export function PayCreditCardDialog({ open, onOpenChange, card: cardProp, cards 
             <Label className="text-sm font-medium">
               Fecha del pago <span className="text-destructive text-xs">*</span>
             </Label>
-            <Input
-              type="date"
-              max={todayLocal}
-              {...register("occurred_at")}
-              disabled={isPaying}
-              className="h-11 text-base"
+            <Controller
+              name="occurred_at"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  type="date"
+                  value={field.value ?? todayLocal}
+                  max={todayLocal}
+                  disabled={isPaying}
+                  className="h-11 text-base"
+                />
+              )}
             />
             {errors.occurred_at && <p className="text-xs text-destructive">{errors.occurred_at.message}</p>}
           </div>

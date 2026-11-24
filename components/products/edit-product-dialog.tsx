@@ -21,12 +21,14 @@ import { deleteProductImage, uploadProductImage } from "@/lib/product-image";
 import { Product } from "@/types";
 import Image from "next/image";
 import { is } from "date-fns/locale";
+import { ProductCategoryField } from "./product-category-field";
 
 // ── Schema condicional según tipo ──────────────────────────────────────
 
 const createSchema = (isService: boolean) =>
   z.object({
     name:        z.string().min(1, "El nombre es requerido"),
+    product_category_id: z.number().int().positive().nullable().optional(),
     description: z.string().optional(),
     sku:         isService
                    ? z.string().optional()
@@ -102,7 +104,7 @@ export function EditProductDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
-    register, handleSubmit, reset,
+    register, handleSubmit, reset, watch, setValue,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(createSchema(is_service)),
@@ -112,6 +114,7 @@ export function EditProductDialog({
     if (product && open) {
       reset({
         name:        product.name,
+        product_category_id: product.product_category_id == null ? null : Number(product.product_category_id),
         description: product.description ?? "",
         sku:         product.sku ?? "",
         price:       product.price,
@@ -334,6 +337,13 @@ export function EditProductDialog({
                 <p className="text-xs text-destructive">{errors.sku.message}</p>
               )}
             </div>
+
+            <ProductCategoryField
+              value={watch("product_category_id")}
+              onChange={(value) => setValue("product_category_id", value, { shouldDirty: true })}
+              open={open}
+              disabled={isLoading}
+            />
 
             {/* Precio */}
             <div className="space-y-2">

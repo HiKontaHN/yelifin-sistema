@@ -4,7 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuth, createErrorResponse, isAuthSuccess, requireModule } from "@/lib/auth";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -59,17 +59,11 @@ export async function POST(request: NextRequest) {
     }
 
     const unitCost   = Number(unit_cost) || 0;
-    const legacyDatePrefix = typeof purchased_at === "string" ? purchased_at.slice(0, 10) : null;
-    const receivedDate = legacyDatePrefix && isCalendarDate(legacyDatePrefix)
-      ? legacyDatePrefix
-      : todayInTimeZone(auth.data.timezone);
-    let receivedAt = new Date().toISOString();
-    if (typeof purchased_at === "string" && !isCalendarDate(purchased_at)) {
-      const parsedPurchasedAt = new Date(purchased_at);
-      if (Number.isNaN(parsedPurchasedAt.getTime()))
-        return createErrorResponse("La fecha de compra no es válida", 400);
-      receivedAt = parsedPurchasedAt.toISOString();
-    }
+    const reception = resolveBusinessDateInput(undefined, purchased_at, auth.data.timezone);
+    if (!reception) return createErrorResponse("La fecha de compra no es válida", 400);
+    const now = new Date();
+    const receivedDate = reception.date ?? todayInTimeZone(auth.data.timezone, now);
+    const receivedAt = reception.timestamp ?? now.toISOString();
     const finalNotes = notes?.trim() || "Inventario inicial";
 
     // ── Transacción atómica ────────────────────────────────────────

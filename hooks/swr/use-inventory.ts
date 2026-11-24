@@ -22,6 +22,7 @@ export type VariantStock = {
 export type InventoryItem = {
   product_id:       number;
   product_name:     string;
+  category_name?:   string | null;
   sku:              string | null;
   image_url:        string | null;
   price:            number;

@@ -14,6 +14,7 @@ export const DEFAULT_TIMEZONE = "UTC";
 export const DEFAULT_LOCALE = "es-HN";
 
 const CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LEGACY_TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2})[T ]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?)(Z|[+-]\d{2}(?::?\d{2})?)?$/i;
 
 export function isValidTimeZone(value: unknown): value is string {
   if (typeof value !== "string" || value.trim() === "") return false;
@@ -66,6 +67,36 @@ export function todayInTimeZone(
   now: Date = new Date(),
 ): CalendarDate {
   return datePartsInTimeZone(now, timeZone);
+}
+
+/** Resolve the explicit business date or the date in a legacy timestamp field. */
+export function resolveBusinessDateInput(
+  calendarDate: unknown,
+  legacyTimestamp: unknown,
+  timeZone: string,
+): { date?: CalendarDate; timestamp?: string } | null {
+  if (calendarDate != null && !isCalendarDate(calendarDate)) return null;
+  const date = calendarDate ?? undefined;
+  if (legacyTimestamp == null) return { date };
+  if (typeof legacyTimestamp !== "string") return null;
+
+  const value = legacyTimestamp.trim();
+  if (isCalendarDate(value)) return { date: date ?? value };
+
+  const match = LEGACY_TIMESTAMP_RE.exec(value);
+  if (!match) return null;
+  const [, day, time, offset] = match;
+  if (!isCalendarDate(day)) return null;
+  // An older timestamp without an offset already represents a local time.
+  if (!offset) return { date: date ?? day, timestamp: value };
+
+  const normalizedOffset = offset.length === 3 ? `${offset}:00` : offset;
+  const instant = new Date(`${day}T${time}${normalizedOffset}`);
+  if (Number.isNaN(instant.getTime())) return null;
+  return {
+    date: date ?? instantToCalendarDate(instant, timeZone),
+    timestamp: instant.toISOString(),
+  };
 }
 
 /**

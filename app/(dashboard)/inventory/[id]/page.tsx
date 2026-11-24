@@ -115,6 +115,7 @@ type CostHistoryRow = {
 };
 
 type ProductDetail = {
+  category_name?: string | null;
   id: number;
   name: string;
   description: string | null;
@@ -399,6 +400,7 @@ export default function ProductDetailPage({ params }: Props) {
             {product.sku && (
               <Badge variant="outline" className="font-mono text-xs">{product.sku}</Badge>
             )}
+            {product.category_name && <Badge variant="secondary">{product.category_name}</Badge>}
             {product.barcode && (
               <Badge variant="outline" className="font-mono text-xs">{product.barcode}</Badge>
             )}

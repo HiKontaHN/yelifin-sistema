@@ -11,7 +11,7 @@ import {
   type FifoTake,
 } from "@/lib/fifo";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 import { resolveSupplyUnitCost } from "@/lib/sale-estimate";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -196,12 +196,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     // ── CONFIRM ──────────────────────────────────────────────────────
     if (action === "confirm") {
-      const confirmedAt = body.confirmed_at ?? new Date().toISOString();
-      const legacyDatePrefix = typeof body.confirmed_at === "string" ? body.confirmed_at.slice(0, 10) : null;
-      const confirmedDate = body.confirmed_date
-        ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-        ?? todayInTimeZone(auth.data.timezone);
-      if (!isCalendarDate(confirmedDate)) return createErrorResponse("Fecha de confirmación inválida", 400);
+      const confirmation = resolveBusinessDateInput(body.confirmed_date, body.confirmed_at, auth.data.timezone);
+      if (!confirmation) return createErrorResponse("Fecha de confirmación inválida", 400);
+      const now = new Date();
+      const confirmedDate = confirmation.date ?? todayInTimeZone(auth.data.timezone, now);
+      const confirmedAt = confirmation.timestamp ?? now.toISOString();
       const hasPartialPayment = body.amount_paid !== undefined;
       const requestedAmountPaid = hasPartialPayment ? Number(body.amount_paid) : Number(sale.total);
 

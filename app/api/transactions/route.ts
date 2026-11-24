@@ -4,7 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, verifyResourceLimit } from "@/lib/auth";
 import { getCalendarBounds } from "@/lib/date-bounds";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 
 import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
 
@@ -138,15 +138,11 @@ export async function POST(request: NextRequest) {
     if (type === "TRANSFER" && sourceAccountId === destinationAccountId)
       return createErrorResponse("Las cuentas deben ser diferentes", 400);
 
-    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : null;
-    const effectiveDate = effective_date
-      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-      ?? todayInTimeZone(auth.data.timezone);
-    if (!isCalendarDate(effectiveDate))
-      return createErrorResponse("Fecha inválida", 400);
-    const occurredAt = typeof occurred_at === "string" && !isCalendarDate(occurred_at)
-      ? occurred_at
-      : new Date().toISOString();
+    const transactionTime = resolveBusinessDateInput(effective_date, occurred_at, auth.data.timezone);
+    if (!transactionTime) return createErrorResponse("Fecha inválida", 400);
+    const now = new Date();
+    const effectiveDate = transactionTime.date ?? todayInTimeZone(auth.data.timezone, now);
+    const occurredAt = transactionTime.timestamp ?? now.toISOString();
     const createReceivable = create_receivable === true;
     const receivablePersonId = Number(person_id);
     if (createReceivable && type !== "EXPENSE")

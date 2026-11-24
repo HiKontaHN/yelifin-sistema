@@ -673,6 +673,7 @@ export default function InventoryPage() {
             </div>
             <div className="min-w-0">
               <span className="block truncate font-medium">{item.product_name}</span>
+              {item.category_name && <p className="truncate text-xs text-muted-foreground">{item.category_name}</p>}
               {hasVariants && (
                 <p className="text-xs text-muted-foreground">
                   {item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""}
@@ -959,6 +960,7 @@ export default function InventoryPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{item.product_name}</p>
+                          {item.category_name && <p className="truncate text-xs text-muted-foreground">{item.category_name}</p>}
                           {hasVariants && <p className="text-xs text-muted-foreground">{item.variants_stock.length} variante{item.variants_stock.length !== 1 ? "s" : ""} · {item.stock} uds total</p>}
                         </div>
                         <div className="flex shrink-0 items-center gap-1">

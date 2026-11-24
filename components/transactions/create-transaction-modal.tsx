@@ -34,7 +34,7 @@ import { useTimezone } from "@/hooks/swr/use-timezone";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useSuggestedExchangeRate } from "@/hooks/swr/use-exchange-rate";
 import { SuggestedRateHint } from "@/components/shared/suggested-rate-hint";
-import { useTransactionCategories } from "@/hooks/swr/use-transaction-categories";
+import { TransactionCategoryField } from "./transaction-category-field";
 import { CreditCard as CreditCardType } from "@/hooks/swr/use-credit-cards";
 
 type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
@@ -75,9 +75,8 @@ export function CreateTransactionModal({
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [occurredAt, setOccurredAt] = useState<string>(
-    () => todayInTimeZone(timezone),
-  );
+  const [dateOverride, setDateOverride] = useState<string>();
+  const occurredAt = dateOverride ?? todayInTimeZone(timezone);
   const [createReceivable, setCreateReceivable] = useState(false);
   const [personId, setPersonId] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -101,10 +100,6 @@ export function CreateTransactionModal({
     }
   }, [isCcUsd, suggestedRate, nativeCurrency]);
 
-  // Obtener categorías dinámicas filtradas por tipo
-  const { categories } = useTransactionCategories(type);
-  const activeCategories = categories.filter((c) => c.is_active);
-
   const resetForm = () => {
     setType(defaultType);
     setSourceMode("account");
@@ -116,7 +111,7 @@ export function CreateTransactionModal({
     setAmount("");
     setCategory("");
     setDescription("");
-    setOccurredAt(todayInTimeZone(timezone));
+    setDateOverride(undefined);
     setCreateReceivable(false);
     setPersonId("");
     setDueDate("");
@@ -151,6 +146,8 @@ export function CreateTransactionModal({
   const onSubmit = async () => {
     if (!amount || Number(amount) <= 0)
       return toast.error("El monto debe ser mayor a 0");
+    if (dateOverride === "")
+      return toast.error("Selecciona una fecha");
 
     if (createReceivable && type !== "EXPENSE")
       return toast.error("La cuenta por cobrar desde transacciones debe ser un egreso");
@@ -180,7 +177,7 @@ export function CreateTransactionModal({
         amount: Number(amount),
         category: category || undefined,
         description: description || undefined,
-        effective_date: occurredAt,
+        effective_date: dateOverride,
         create_receivable: createReceivable,
         person_id: createReceivable ? Number(personId) : undefined,
         due_date: createReceivable && dueDate ? dueDate : undefined,
@@ -238,7 +235,15 @@ export function CreateTransactionModal({
                   <button
                     key={t}
                     type="button"
-                  onClick={() => { setType(t); if (t !== "EXPENSE") { setCreateReceivable(false); setPersonId(""); setDueDate(""); } }}
+                    onClick={() => {
+                      if (t !== type) setCategory("");
+                      setType(t);
+                      if (t !== "EXPENSE") {
+                        setCreateReceivable(false);
+                        setPersonId("");
+                        setDueDate("");
+                      }
+                    }}
                     className={cn(
                       "flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-all duration-200",
                       type === t
@@ -438,31 +443,12 @@ export function CreateTransactionModal({
             <Input
               type="date"
               value={occurredAt}
-              onChange={(e) => setOccurredAt(e.target.value)}
+              onChange={(e) => setDateOverride(e.target.value)}
               className="h-11 text-base"
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">
-              Categoría{" "}
-              <span className="text-xs text-muted-foreground font-normal">
-                opcional
-              </span>
-            </Label>
-            <SearchableSelect
-              value={category}
-              onValueChange={setCategory}
-              items={activeCategories.map((cat) => ({
-                value: cat.name,
-                label: cat.name,
-              }))}
-              placeholder="Sin categoría"
-              searchPlaceholder="Buscar categoría..."
-              defaultOption={{ value: "", label: "Sin categoría" }}
-              className="h-11 w-full"
-            />
-          </div>
+          <TransactionCategoryField type={type} value={category} onChange={setCategory} disabled={isCreating} />
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium">

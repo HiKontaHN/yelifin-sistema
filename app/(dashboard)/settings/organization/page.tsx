@@ -10,6 +10,8 @@ import { useUpdateOrganization, useIndustries } from "@/hooks/swr/use-organizati
 import { OwnerGuard } from "@/components/shared/owner-guard";
 import { SubscriptionCard } from "@/components/settings/subscription-card";
 import { PartnerLinkCard } from "@/components/settings/partner-link-card";
+import { CatalogLinkCard } from "@/components/settings/catalog-link-card";
+import { SocialLinksCard } from "@/components/settings/social-links-card";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
@@ -285,7 +287,9 @@ function OrganizationSettingsContent() {
         </CardContent>
       </Card>
 
+      {org && <SocialLinksCard key={org.id} orgId={org.id} />}
       <SubscriptionCard title="Plan y suscripción" />
+      <CatalogLinkCard />
       <PartnerLinkCard />
 
       {/* Save bar */}

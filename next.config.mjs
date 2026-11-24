@@ -28,7 +28,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  serverExternalPackages: ["@napi-rs/canvas"],
+  serverExternalPackages: ["@napi-rs/canvas", "@vercel/functions", "ws"],
   turbopack: {
     root: fileURLToPath(new URL(".", import.meta.url)),
   },

@@ -48,7 +48,8 @@ export function AddSupplyPurchaseDialog({
   const [accountId, setAccountId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
-  const [purchasedAt, setPurchasedAt] = useState<string>(() => todayInTimeZone(timezone));
+  const [dateOverride, setDateOverride] = useState<string>();
+  const purchasedAt = dateOverride ?? todayInTimeZone(timezone);
 
   const qty = Number(quantity) || 0;
   const cost = Number(unitCost) || 0;
@@ -59,9 +60,9 @@ export function AddSupplyPurchaseDialog({
       setAccountId("");
       setQuantity("1");
       setUnitCost(supply.unit_cost > 0 ? String(supply.unit_cost) : "");
-      setPurchasedAt(todayInTimeZone(timezone));
+      setDateOverride(undefined);
     }
-  }, [open, supply, timezone]);
+  }, [open, supply]);
 
   const handleClose = () => {
     onOpenChange(false);
@@ -72,11 +73,12 @@ export function AddSupplyPurchaseDialog({
     if (!accountId) return toast.error("Selecciona una cuenta");
     if (qty <= 0) return toast.error("La cantidad debe ser mayor a 0");
     if (cost < 0) return toast.error("El costo no puede ser negativo");
+    if (dateOverride === "") return toast.error("Selecciona una fecha");
 
     try {
       await createSupplyPurchase({
         account_id: Number(accountId),
-        purchase_date: purchasedAt,
+        purchase_date: dateOverride,
         items: [{ supply_id: supply.id, quantity: qty, unit_cost: cost }],
       });
 
@@ -222,7 +224,7 @@ export function AddSupplyPurchaseDialog({
               id="purchased_at"
               type="date"
               value={purchasedAt}
-              onChange={(e) => setPurchasedAt(e.target.value)}
+              onChange={(e) => setDateOverride(e.target.value)}
               disabled={isCreating}
               className="h-11 text-base"
               autoComplete="off"

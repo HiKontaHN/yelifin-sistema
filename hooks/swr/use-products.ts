@@ -26,6 +26,7 @@ export type VariantResponse = {
 
 export type CreateProductInput = {
   name: string;
+  product_category_id?: number | null;
   description?: string;
   sku?: string;
   price: number;

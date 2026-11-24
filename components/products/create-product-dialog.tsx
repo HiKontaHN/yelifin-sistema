@@ -20,12 +20,14 @@ import { useCurrency } from "@/hooks/swr/use-currency";
 import { uploadProductImage } from "@/lib/product-image";
 
 import { ProductImageUpload } from "./product-image-upload";
+import { ProductCategoryField } from "./product-category-field";
 import { InventorySection, InventorySectionValue } from "./inventory-section";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useFeatures } from "@/hooks/use-features";
 
 const schema = z.object({
   name:        z.string().trim().min(1, "El nombre es requerido"),
+  product_category_id: z.number().int().positive().nullable().optional(),
   description: z.string().optional(),
   sku:         z.string().optional(),
   price:       z.union([
@@ -67,7 +69,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodFormResolver(schema),
-    defaultValues: { is_service: false, service_cost: 0 },
+    defaultValues: { is_service: false, service_cost: 0, product_category_id: null },
   });
 
   const nameValue    = watch("name");
@@ -173,7 +175,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
         const d = inventory.data;
         await createPurchase({
           ...(d.payment_mode === "credit_card"
-            ? { credit_card_id: d.credit_card_id }
+            ? { credit_card_id: d.credit_card_id ?? undefined }
             : { account_id: d.account_id! }),
           currency:      d.currency,
           exchange_rate: d.exchange_rate,
@@ -404,6 +406,13 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                 </p>
               )}
             </div>
+
+            <ProductCategoryField
+              value={watch("product_category_id")}
+              onChange={(value) => setValue("product_category_id", value, { shouldDirty: true })}
+              open={open}
+              disabled={isLoading}
+            />
 
             {/* Precio */}
             <div className="space-y-2">

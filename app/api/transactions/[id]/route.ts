@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate } from "@/lib/date-utils";
+import { resolveBusinessDateInput } from "@/lib/date-utils";
 
 export async function DELETE(
   request: NextRequest,
@@ -111,8 +111,6 @@ export async function PATCH(
 
     const body = await request.json();
     const { amount, account_id, to_account_id, category, description, occurred_at, effective_date } = body;
-    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : undefined;
-    const requestedDate = effective_date ?? legacyDatePrefix;
 
     if (amount !== undefined && (!Number.isFinite(Number(amount)) || Number(amount) <= 0))
       return createErrorResponse("El monto debe ser mayor a 0", 400);
@@ -120,8 +118,8 @@ export async function PATCH(
       return createErrorResponse("Cuenta origen no encontrada", 404);
     if (to_account_id !== undefined && (!Number.isSafeInteger(Number(to_account_id)) || Number(to_account_id) <= 0))
       return createErrorResponse("Cuenta destino no encontrada", 404);
-    if (requestedDate !== undefined && !isCalendarDate(requestedDate))
-      return createErrorResponse("Fecha inválida", 400);
+    const transactionTime = resolveBusinessDateInput(effective_date, occurred_at, auth.data.timezone);
+    if (!transactionTime) return createErrorResponse("Fecha inválida", 400);
 
     const result = await withTransaction(async (tx) => {
       const [old] = await tx`
@@ -210,8 +208,8 @@ export async function PATCH(
           to_account_id = ${old.type === "TRANSFER" ? newToAccountId : null},
           category      = ${categoryValue},
           description   = ${descriptionValue},
-          effective_date = ${requestedDate ?? old.effective_date},
-          occurred_at   = ${occurred_at ?? old.occurred_at},
+          effective_date = ${transactionTime.date ?? old.effective_date},
+          occurred_at   = ${transactionTime.timestamp ?? old.occurred_at},
           updated_by    = ${userId}
         WHERE id = ${transactionId} AND org_id = ${orgId}
         RETURNING *, effective_date::text AS effective_date

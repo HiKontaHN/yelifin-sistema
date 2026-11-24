@@ -6,6 +6,7 @@ import {
   instantToCalendarDate,
   isCalendarDate,
   isValidTimeZone,
+  resolveBusinessDateInput,
   todayInTimeZone,
   toCalendarDate,
 } from "@/lib/date-utils";
@@ -28,6 +29,24 @@ describe("date-utils", () => {
     const instant = "2026-11-03T03:00:00.000Z";
     expect(instantToCalendarDate(instant, "America/Tegucigalpa")).toBe("2026-11-02");
     expect(instantToCalendarDate(instant, "Asia/Tokyo")).toBe("2026-11-03");
+  });
+
+  test("resolves a legacy timestamp using the business timezone", () => {
+    expect(resolveBusinessDateInput(undefined, "2026-11-25T02:30:00Z", "America/Tegucigalpa"))
+      .toEqual({ date: "2026-11-24", timestamp: "2026-11-25T02:30:00.000Z" });
+    expect(resolveBusinessDateInput(undefined, "2026-11-25T08:30:00+06:00", "America/Tegucigalpa"))
+      .toEqual({ date: "2026-11-24", timestamp: "2026-11-25T02:30:00.000Z" });
+  });
+
+  test("preserves manually selected and legacy calendar dates", () => {
+    expect(resolveBusinessDateInput("2026-11-20", "2026-11-25T02:30:00Z", "America/Tegucigalpa"))
+      .toEqual({ date: "2026-11-20", timestamp: "2026-11-25T02:30:00.000Z" });
+    expect(resolveBusinessDateInput(undefined, "2026-11-25", "America/Tegucigalpa"))
+      .toEqual({ date: "2026-11-25" });
+    expect(resolveBusinessDateInput(undefined, "2026-11-25 00:20:00", "America/Tegucigalpa"))
+      .toEqual({ date: "2026-11-25", timestamp: "2026-11-25 00:20:00" });
+    expect(resolveBusinessDateInput(undefined, "2026-02-30T00:00:00Z", "America/Tegucigalpa"))
+      .toBeNull();
   });
 
   test("gets today in a timezone and crosses year boundaries", () => {

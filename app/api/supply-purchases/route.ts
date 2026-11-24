@@ -2,17 +2,9 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
-import { addCalendarDays, isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { addCalendarDays, isCalendarDate, resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-function toISOOrNull(value: any) {
-  const s = (value ?? "").toString().trim();
-  if (!s) return null;
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
 
 export async function GET(request: NextRequest) {
   const auth = await verifyAuthAndSubscription(request);
@@ -97,18 +89,12 @@ export async function POST(request: NextRequest) {
     const items = Array.isArray(body?.items) ? body.items : [];
     if (items.length === 0) return createErrorResponse("Se requiere al menos un item", 400);
 
-    let purchased_at: string = new Date().toISOString();
-    const rawPurchasedAt = (body?.purchased_at ?? "").toString().trim();
-    const legacyDatePrefix = rawPurchasedAt ? rawPurchasedAt.slice(0, 10) : null;
-    const purchaseDate = body?.purchase_date
-      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-      ?? todayInTimeZone(auth.data.timezone);
-    if (!isCalendarDate(purchaseDate)) return createErrorResponse("Fecha inválida", 400);
-    if (rawPurchasedAt && !isCalendarDate(rawPurchasedAt)) {
-      const normalized = toISOOrNull(rawPurchasedAt);
-      if (!normalized) return createErrorResponse("Fecha inválida", 400);
-      purchased_at = normalized;
-    }
+    const rawPurchasedAt = typeof body?.purchased_at === "string" ? body.purchased_at.trim() || undefined : body?.purchased_at;
+    const purchaseTime = resolveBusinessDateInput(body?.purchase_date, rawPurchasedAt, auth.data.timezone);
+    if (!purchaseTime) return createErrorResponse("Fecha inválida", 400);
+    const now = new Date();
+    const purchaseDate = purchaseTime.date ?? todayInTimeZone(auth.data.timezone, now);
+    const purchased_at = purchaseTime.timestamp ?? now.toISOString();
 
     const normalizedItems: { supply_id: number; quantity: number; unit_cost: number; line_total: number }[] = [];
     for (const it of items) {

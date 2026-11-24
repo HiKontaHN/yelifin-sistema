@@ -27,6 +27,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       SELECT
         p.id,
         p.name,
+        pc.name AS category_name,
         p.description,
         p.sku,
         p.barcode,
@@ -37,6 +38,8 @@ export async function GET(request: NextRequest, { params }: Params) {
         p.service_cost,
         p.created_at
       FROM products p
+      LEFT JOIN product_categories pc
+        ON pc.id = p.product_category_id AND pc.org_id = p.org_id
       WHERE p.id     = ${productId}
         AND p.org_id = ${orgId}
     `;

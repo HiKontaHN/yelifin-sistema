@@ -91,7 +91,7 @@ describe("atomicidad de movimientos financieros", () => {
     requireFeatureSpy.mockRestore();
   });
 
-  it("crea una transferencia y ambos cambios de saldo dentro de withTransaction", async () => {
+  it("crea una transferencia con la fecha local y ambos cambios de saldo dentro de withTransaction", async () => {
     mockTxSql
       .mockResolvedValueOnce([{ id: 1, is_active: true }])
       .mockResolvedValueOnce([{ id: 2, is_active: true }])
@@ -106,6 +106,7 @@ describe("atomicidad de movimientos financieros", () => {
       to_account_id: 1,
       amount: 125,
       description: "Transferencia de prueba",
+      occurred_at: "2026-11-25T02:30:00Z",
     }) as never);
 
     expect(response.status).toBe(201);
@@ -117,6 +118,8 @@ describe("atomicidad de movimientos financieros", () => {
       expect.stringContaining("balance = balance +"),
     ]));
     expect(statements().filter((statement) => statement.includes("FOR UPDATE"))).toHaveLength(2);
+    const insert = mockTxSql.mock.calls.find(([strings]) => strings.join("").includes("INSERT INTO transactions"));
+    expect(insert?.slice(-2)).toEqual(["2026-11-24", "2026-11-25T02:30:00.000Z"]);
   });
 
   it("rechaza un pago mayor que la deuda antes de escribir movimientos", async () => {

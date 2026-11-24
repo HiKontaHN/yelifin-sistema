@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 
 export async function POST(
   request: NextRequest,
@@ -54,15 +54,11 @@ export async function POST(
     // Cálculo del amount_local (referencial en moneda nativa)
     const amountLocal = isUsd ? amountNum * rateNum : amountNum;
 
-    const legacyDatePrefix = typeof occurred_at === "string" ? occurred_at.slice(0, 10) : null;
-    const effectiveDate = effective_date
-      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-      ?? todayInTimeZone(auth.data.timezone);
-    if (!isCalendarDate(effectiveDate))
-      return createErrorResponse("Fecha inválida", 400);
-    const occurredAtVal = typeof occurred_at === "string" && !isCalendarDate(occurred_at)
-      ? occurred_at
-      : new Date().toISOString();
+    const paymentTime = resolveBusinessDateInput(effective_date, occurred_at, auth.data.timezone);
+    if (!paymentTime) return createErrorResponse("Fecha inválida", 400);
+    const now = new Date();
+    const effectiveDate = paymentTime.date ?? todayInTimeZone(auth.data.timezone, now);
+    const occurredAtVal = paymentTime.timestamp ?? now.toISOString();
     const desc = description?.trim() || "Pago de tarjeta de crédito";
 
     const result = await withTransaction(async (tx) => {

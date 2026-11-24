@@ -5,7 +5,7 @@ import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireF
 import { INVENTORY_PURCHASE_CATEGORY } from "@/lib/seed-default-categories";
 import { resolveWarehouseId } from "@/lib/warehouses";
 import { withTransaction } from "@/lib/db-transaction";
-import { isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { resolveBusinessDateInput, todayInTimeZone } from "@/lib/date-utils";
 
 import { CARDS_NOT_IN_PLAN } from "@/lib/plan-messages";
 
@@ -146,14 +146,11 @@ export async function POST(request: NextRequest) {
     const productsLocal   = totalLocal - shippingTotal;
     const subtotal        = totalLocal;
     const total           = totalLocal;
-    const legacyDatePrefix = typeof purchased_at === "string" ? purchased_at.slice(0, 10) : null;
-    const purchaseDate = purchase_date
-      ?? (legacyDatePrefix && isCalendarDate(legacyDatePrefix) ? legacyDatePrefix : null)
-      ?? todayInTimeZone(auth.data.timezone);
-    if (!isCalendarDate(purchaseDate)) return createErrorResponse("Fecha de compra inválida", 400);
-    const occurredAt = typeof purchased_at === "string" && !isCalendarDate(purchased_at)
-      ? purchased_at
-      : new Date().toISOString();
+    const purchaseTime = resolveBusinessDateInput(purchase_date, purchased_at, auth.data.timezone);
+    if (!purchaseTime) return createErrorResponse("Fecha de compra inválida", 400);
+    const now = new Date();
+    const purchaseDate = purchaseTime.date ?? todayInTimeZone(auth.data.timezone, now);
+    const occurredAt = purchaseTime.timestamp ?? now.toISOString();
 
     // ¿Se paga el envío desde una cuenta separada? — nunca si ya está pagado,
     // no hay ninguna cuenta de la que descontar nada.

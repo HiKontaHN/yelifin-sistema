@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule, verifyResourceLimit } from "@/lib/auth";
 import { nextProductSkus, isProductSkuAvailable, skuPrefixFromName } from "@/lib/sku";
+import { isProductCategoryReferenceError, productCategoryId } from "@/lib/product-categories";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
         p.id,
         p.org_id,
         p.name,
+        p.product_category_id,
         p.description,
         p.is_service,
         p.service_cost,
@@ -91,6 +93,8 @@ export async function POST(request: NextRequest) {
     const { userId, orgId } = auth.data;
     const body = await request.json();
     const { name, description, sku, price, image_url, is_service, service_cost } = body;
+    const category = productCategoryId.nullish().safeParse(body.product_category_id);
+    if (!category.success) return createErrorResponse("Categoría de producto inválida", 400);
 
     if (!name || typeof name !== "string" || name.trim().length < 1) {
       return createErrorResponse("El nombre del producto es requerido", 400);
@@ -125,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     const [product] = await sql`
-      INSERT INTO products (org_id, created_by, name, description, sku, barcode, price, image_url, is_service, service_cost)
+      INSERT INTO products (org_id, created_by, name, description, sku, barcode, price, image_url, is_service, service_cost, product_category_id)
       VALUES (
         ${orgId},
         ${userId},
@@ -136,7 +140,8 @@ export async function POST(request: NextRequest) {
         ${Number(price)},
         ${image_url    ?? null},
         ${is_service   ?? false},
-        ${service_cost !== undefined ? Number(service_cost) : 0}
+        ${service_cost !== undefined ? Number(service_cost) : 0},
+        ${category.data ?? null}
       )
       RETURNING *
     `;
@@ -156,6 +161,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (isProductCategoryReferenceError(error)) {
+      return createErrorResponse("La categoría no existe en este negocio", 400);
+    }
     console.error("POST /api/products:", error);
     return createErrorResponse("Error al crear producto", 500);
   }

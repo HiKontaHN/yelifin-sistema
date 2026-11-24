@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
       SELECT
         p.id             AS product_id,
         p.name           AS product_name,
+        pc.name          AS category_name,
         p.sku,
         p.is_service,
         p.image_url,
@@ -180,11 +181,13 @@ export async function GET(request: NextRequest) {
       LEFT JOIN scoped_batches ib
         ON ib.product_id = p.id
        AND ib.org_id     = p.org_id
+      LEFT JOIN product_categories pc
+        ON pc.id = p.product_category_id AND pc.org_id = p.org_id
       WHERE p.org_id    = ${orgId}
         AND p.is_active = TRUE
       ${searchCondition}
       ${stockCondition}
-      GROUP BY p.id
+      GROUP BY p.id, pc.name
       ORDER BY p.name ASC
       LIMIT ${limit} OFFSET ${offset}
     `;

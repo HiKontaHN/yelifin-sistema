@@ -213,6 +213,7 @@ export interface Product {
   id: number;
   user_id: number;
   name: string;
+  product_category_id?: number | string | null;
   description: string | null;
   sku: string | null;
   barcode: string | null;

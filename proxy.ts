@@ -6,6 +6,7 @@ import { withDevelopmentCors } from "@/lib/request-origin";
 
 const PUBLIC_PATHS = ["", "/login", "/register", "/forgot-password"];
 const AUTH_ONLY_PATHS = ["/verify-email", "/onboarding"];
+const ALWAYS_PUBLIC_PATHS = ["/catalog/"];
 
 function clearLegacyTokenCookie(response: NextResponse) {
   response.cookies.set("token", "", {
@@ -151,6 +152,12 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/auth/action") ||
     pathname.includes(".")
   ) {
+    return NextResponse.next();
+  }
+
+  // Los catálogos deben poder abrirse con o sin una sesión de HiKonta.
+  // En particular, una sesión activa no debe redirigir al dashboard.
+  if (ALWAYS_PUBLIC_PATHS.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
