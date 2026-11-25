@@ -27,12 +27,6 @@ jest.mock("@/lib/db-transaction", () => ({
 jest.mock("@/lib/request-origin", () => ({
   hasValidRequestOrigin: (request: Request) => request.headers.get("origin") === "http://localhost",
 }));
-=======
-jest.mock("@/lib/db-transaction", () => ({
-  withTransaction: (callback: (sql: typeof mockSql) => unknown) => callback(mockSql),
-}));
-jest.mock("@/lib/request-origin", () => ({ hasValidRequestOrigin: () => true }));
->>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607
 
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/auth/register/route";
@@ -161,7 +155,3 @@ describe("POST /api/auth/register con Google", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 });
-<<<<<<< HEAD
->>>>>>> Stashed changes
-=======
->>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607

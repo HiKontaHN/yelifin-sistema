@@ -58,10 +58,6 @@ export async function POST(req: NextRequest) {
       : undefined;
     const withGoogle = google_id_token !== undefined || nativeGoogleToken !== undefined;
     if ((!withGoogle && (!submittedEmail || !password)) || !display_name || !business_name || !date_of_birth) {
-=======
-    const withGoogle = google_id_token !== undefined;
-    if ((!withGoogle && (!submittedEmail || !password)) || !display_name || !business_name || !date_of_birth) {
->>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607
       return NextResponse.json(
         { error: "Todos los campos son requeridos" },
         { status: 400 }
@@ -175,10 +171,6 @@ export async function POST(req: NextRequest) {
     }
 
     const email = submittedEmail;
-<<<<<<< HEAD
->>>>>>> Stashed changes
-=======
->>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607
     // ── 1. Usuario previo en PostgreSQL con este email ─────────────
     // Si existe y su firebase_uid sigue vivo en Firebase → 409.
     // Si existe pero su firebase_uid ya no existe en Firebase (registro
