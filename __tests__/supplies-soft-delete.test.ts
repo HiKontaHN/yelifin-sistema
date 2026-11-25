@@ -37,40 +37,22 @@ describe("soft delete de suministros", () => {
     jest.clearAllMocks();
   });
 
-  it("desactiva el suministro cuando ya fue utilizado", async () => {
-    mockSql
-      .mockResolvedValueOnce([{ is_used: true }])
-      .mockResolvedValueOnce([{ id: 42 }]);
+  it("desactiva el suministro sin borrar el registro ni consultar su historial", async () => {
+    mockSql.mockResolvedValueOnce([{ id: 42 }]);
 
     const response = await DELETE(deleteRequest(), routeParams);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ message: "Suministro eliminado" });
-    const statements = mockSql.mock.calls.map(queryText);
-    expect(statements[0]).toContain("FROM sale_supplies");
-    expect(statements[0]).toContain("FROM supply_purchase_items");
-    expect(statements[0]).toContain("FROM supply_movements");
-    expect(statements[1]).toContain("UPDATE supplies SET is_active = FALSE, updated_by =");
-    expect(statements[1]).toContain("AND is_active = TRUE RETURNING id");
-  });
-
-  it("borra físicamente el suministro cuando nunca fue utilizado", async () => {
-    mockSql
-      .mockResolvedValueOnce([{ is_used: false }])
-      .mockResolvedValueOnce([{ id: 42 }]);
-
-    const response = await DELETE(deleteRequest(), routeParams);
-
-    expect(response.status).toBe(200);
-    expect(queryText(mockSql.mock.calls[1])).toContain(
-      "DELETE FROM supplies WHERE id = AND org_id = AND is_active = TRUE RETURNING id",
+    expect(mockSql).toHaveBeenCalledTimes(1);
+    expect(queryText(mockSql.mock.calls[0])).toBe(
+      "UPDATE supplies SET is_active = FALSE, updated_by = WHERE id = AND org_id = AND is_active = TRUE RETURNING id",
     );
+    expect(mockSql.mock.calls[0].slice(1)).toEqual([11, 42, 7]);
   });
 
   it("responde 404 si el suministro ya no está activo o no existe", async () => {
-    mockSql
-      .mockResolvedValueOnce([{ is_used: true }])
-      .mockResolvedValueOnce([]);
+    mockSql.mockResolvedValueOnce([]);
 
     const response = await DELETE(deleteRequest(), routeParams);
 

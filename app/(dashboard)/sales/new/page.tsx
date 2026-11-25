@@ -219,6 +219,8 @@ function NewSaleContent() {
         .filter((i) => i.quantity > 0)
     );
  
+  const decreaseBaseQuantity = (productId: number) => updateQuantity(productId, -1);
+
   const removeFromCart = (productId: number, variantId?: number | null) =>
     setCart((prev) =>
       prev.filter((i) => cartKey(i.product_id, i.variant_id) !== cartKey(productId, variantId))
@@ -412,7 +414,7 @@ function NewSaleContent() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
-          <PosProductGrid products={availableProducts} cart={cart} onAdd={addToCart} search={search} />
+          <PosProductGrid products={availableProducts} cart={cart} onAdd={addToCart} onDecrease={decreaseBaseQuantity} search={search} />
         </div>
 
         <MobileCartSheet
@@ -426,7 +428,7 @@ function NewSaleContent() {
       </div>
 
       {/* ════════════════════ LAYOUT DESKTOP ═════════════════════════ */}
-      <div className="hidden lg:flex flex-col h-[calc(100vh-4rem)] pb-4">
+      <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
         <div className="shrink-0 flex items-center gap-3 py-3">
           <Button variant="ghost" size="icon" onClick={() => safeNavigate(backHref)}>
             <ArrowLeft className="size-4" />
@@ -484,11 +486,11 @@ function NewSaleContent() {
           <div className="flex-1 min-h-0 grid grid-cols-5 gap-4">
             <div className="col-span-3 flex flex-col min-h-0 gap-3">
              <SearchBar value={search} onChange={setSearch} placeholder="Buscar Producto" />
-              <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
-                <PosProductGrid products={availableProducts} cart={cart} onAdd={addToCart} search={search} />
+              <div className="flex-1 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+                <PosProductGrid products={availableProducts} cart={cart} onAdd={addToCart} onDecrease={decreaseBaseQuantity} search={search} />
               </div>
             </div>
-            <div className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+            <div className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
               <CartPanel {...cartProps} />
               {cart.length > 0 && (
                 <Button className="w-full gap-2" onClick={() => setDesktopStep(2)}>
@@ -502,10 +504,10 @@ function NewSaleContent() {
         {/* Paso 2 */}
         {desktopStep === 2 && (
           <div className="flex-1 min-h-0 grid grid-cols-5 gap-4">
-            <div className="col-span-3 flex flex-col min-h-0 gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+            <div className="col-span-3 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
               <CartPanel {...cartProps} />
             </div>
-            <div className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+            <div className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
               <SaleOptionsPanel {...desktopOptionsProps} />
             </div>
           </div>

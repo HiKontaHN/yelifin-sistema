@@ -1,11 +1,13 @@
-﻿// components/sales/pos/product-grid.tsx
+// components/sales/pos/product-grid.tsx
 "use client";
 
 import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package } from "lucide-react";
-import { CartItem } from "@/hooks/swr/use-sales";
+import { Button } from "@/components/ui/button";
+import { Minus, Package, Plus } from "lucide-react";
+import type { CartItem } from "@/hooks/swr/use-sales";
+import type { Product } from "@/types";
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat("es-HN", {
@@ -15,13 +17,14 @@ const formatCurrency = (v: number) =>
   }).format(v);
 
 type Props = {
-  products: any[];
+  products: Product[];
   cart: CartItem[];
-  onAdd: (product: any) => void;
+  onAdd: (product: Product) => void;
+  onDecrease: (productId: number) => void;
   search: string;
 };
 
-export function PosProductGrid({ products, cart, onAdd, search }: Props) {
+export function PosProductGrid({ products, cart, onAdd, onDecrease, search }: Props) {
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -36,7 +39,12 @@ export function PosProductGrid({ products, cart, onAdd, search }: Props) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-20">
       {products.map((product) => {
-        const cartQty = cart.filter((i) => i.product_id === product.id).reduce((acc, i) => acc + i.quantity, 0);
+        const hasVariants = product.variants.length > 0;
+        const cartQty = cart.find((item) => item.product_id === product.id && item.variant_id == null)?.quantity ?? 0;
+        const totalCartQty = cart.reduce(
+          (total, item) => item.product_id === product.id ? total + item.quantity : total,
+          0,
+        );
         return (
           <Card
             key={product.id}
@@ -54,9 +62,9 @@ export function PosProductGrid({ products, cart, onAdd, search }: Props) {
               ) : (
                 <Package className="size-8 text-muted-foreground/20" />
               )}
-              {cartQty > 0 && (
-                <div className="absolute top-1.5 right-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-full size-5 flex items-center justify-center shadow">
-                  {cartQty}
+              {totalCartQty > 0 && (
+                <div className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground shadow">
+                  {totalCartQty}
                 </div>
               )}
               <div className="absolute bottom-1.5 left-1.5">
@@ -74,13 +82,46 @@ export function PosProductGrid({ products, cart, onAdd, search }: Props) {
                
               </div>
             </div>
-            <CardContent className="p-2.5 pt-0">
-              <p className="text-xs font-medium truncate leading-tight">
-                {product.name}
-              </p>
-              <p className="text-sm font-bold text-primary mt-0.5">
-                {formatCurrency(product.price)}
-              </p>
+            <CardContent
+              className="flex cursor-default items-center justify-between gap-1.5 p-2.5 pt-0"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium line-clamp-2 break-words leading-tight">
+                  {product.name}
+                </p>
+                <p className="text-sm font-bold text-primary mt-0.5">
+                  {formatCurrency(product.price)}
+                </p>
+              </div>
+              {!hasVariants && (
+                <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="size-6 rounded-full sm:size-7"
+                    aria-label={`Restar una unidad de ${product.name}`}
+                    disabled={cartQty === 0}
+                    onClick={() => onDecrease(product.id)}
+                  >
+                    <Minus aria-hidden="true" />
+                  </Button>
+                  <span className="min-w-4 text-center text-xs font-medium tabular-nums" aria-live="polite">
+                    {cartQty}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="size-6 rounded-full sm:size-7"
+                    aria-label={`Agregar una unidad de ${product.name}`}
+                    onClick={() => onAdd(product)}
+                  >
+                    <Plus aria-hidden="true" />
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         );

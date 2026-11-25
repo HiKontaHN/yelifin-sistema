@@ -55,26 +55,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const supplyId = Number(id);
     if (!supplyId || isNaN(supplyId)) return createErrorResponse("ID inválido", 400);
 
-    const [usage] = await sql`
-      SELECT
-        EXISTS (SELECT 1 FROM sale_supplies WHERE supply_id = ${supplyId})
-        OR EXISTS (SELECT 1 FROM supply_purchase_items WHERE supply_id = ${supplyId})
-        OR EXISTS (SELECT 1 FROM supply_movements WHERE supply_id = ${supplyId})
-        AS is_used
+    const [deleted] = await sql`
+      UPDATE supplies
+      SET is_active = FALSE, updated_by = ${userId}
+      WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
+      RETURNING id
     `;
-
-    const [deleted] = usage?.is_used
-      ? await sql`
-          UPDATE supplies
-          SET is_active = FALSE, updated_by = ${userId}
-          WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
-          RETURNING id
-        `
-      : await sql`
-          DELETE FROM supplies
-          WHERE id = ${supplyId} AND org_id = ${orgId} AND is_active = TRUE
-          RETURNING id
-        `;
 
     if (!deleted) return createErrorResponse("Suministro no encontrado", 404);
 

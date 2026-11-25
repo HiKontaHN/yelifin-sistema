@@ -407,6 +407,8 @@ function EditSaleContent() {
     }
   };
 
+  const decreaseBaseQuantity = (productId: number) => updateQuantity(productId, -1);
+
   const removeFromCart = (id: number, variantId?: number | null) =>
     setCart((prev) =>
       prev.filter((i) => cartKey(i.product_id, i.variant_id) !== cartKey(id, variantId))
@@ -726,6 +728,7 @@ function EditSaleContent() {
             products={availableProducts}
             cart={cart}
             onAdd={addToCart}
+            onDecrease={decreaseBaseQuantity}
             search={search}
           />
         </div>
@@ -741,7 +744,7 @@ function EditSaleContent() {
       </div>
 
       {/* DESKTOP LAYOUT */}
-      <div className="hidden lg:flex flex-col h-[calc(100vh-4rem)] pb-4">
+      <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
         <div className="shrink-0 flex items-center gap-3 py-3">
           <Button
             variant="ghost"
@@ -806,7 +809,7 @@ function EditSaleContent() {
                 onChange={setSearch}
               />
               <div
-                className="flex-1 overflow-y-auto"
+                className="flex-1 overflow-y-auto overscroll-contain"
                 style={{
                   scrollbarWidth: "none",
                 } as React.CSSProperties}
@@ -815,12 +818,13 @@ function EditSaleContent() {
                   products={availableProducts}
                   cart={cart}
                   onAdd={addToCart}
+                  onDecrease={decreaseBaseQuantity}
                   search={search}
                 />
               </div>
             </div>
             <div
-              className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto"
+              className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain"
               style={{
                 scrollbarWidth: "none",
               } as React.CSSProperties}
@@ -842,7 +846,7 @@ function EditSaleContent() {
         {desktopStep === 2 && (
           <div className="flex-1 min-h-0 grid grid-cols-5 gap-4">
             <div
-              className="col-span-3 flex flex-col min-h-0 gap-3 overflow-y-auto"
+              className="col-span-3 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain"
               style={{
                 scrollbarWidth: "none",
               } as React.CSSProperties}
@@ -850,7 +854,7 @@ function EditSaleContent() {
               <EditCartPanel {...cartProps} />
             </div>
             <div
-              className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto"
+              className="col-span-2 flex flex-col min-h-0 gap-3 overflow-y-auto overscroll-contain"
               style={{
                 scrollbarWidth: "none",
               } as React.CSSProperties}

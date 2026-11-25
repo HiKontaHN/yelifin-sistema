@@ -35,6 +35,8 @@ test.each([
 
   expect(html).toContain("Copiar lista");
   expect(html.includes('href="https://wa.me/50499999999?text=')).toBe(Boolean(contacts.whatsapp));
-  expect(html.includes('href="https://ig.me/m/tienda"')).toBe(Boolean(contacts.instagram));
-  expect(html.includes("En Instagram, pega el mensaje manualmente")).toBe(Boolean(contacts.instagram));
+  expect(html.includes('aria-label="Copiar lista y abrir Instagram"')).toBe(Boolean(contacts.instagram));
+  expect(html.includes("¿Pides por Instagram?")).toBe(Boolean(contacts.instagram));
+  expect(html).not.toContain("Instagram Web");
+  expect(html.includes("Al tocar el botón de Instagram, copiamos tu pedido automáticamente y abrimos nuestro chat. Solo tienes que pegar el mensaje y enviarlo.")).toBe(Boolean(contacts.instagram));
 });

@@ -36,8 +36,8 @@ export default async function CatalogPage({ params, searchParams }: Props) {
     <div className="flex min-h-svh flex-col bg-background">
       <main className="flex-1">
         <PublicCatalogBrowser
-          key={catalogId}
-          catalogId={catalogId}
+          key={catalog.id}
+          catalogId={catalog.id}
           catalog={catalog}
           initialPage={initialPage}
           realtime={process.env.VERCEL === "1"}

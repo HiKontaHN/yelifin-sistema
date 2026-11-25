@@ -5,11 +5,11 @@ import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-function catalogData(catalogPublicId: unknown) {
+function catalogData(catalogPublicId: unknown, catalogPublicSlug: unknown) {
   const catalogId = catalogPublicId ? String(catalogPublicId) : null;
   return {
     catalog_id: catalogId,
-    catalog_path: catalogId ? `/catalog/${catalogId}` : null,
+    catalog_path: catalogId ? `/catalog/${catalogPublicSlug ?? catalogId}` : null,
   };
 }
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const [organization] = await sql`
-      SELECT catalog_public_id
+      SELECT catalog_public_id, catalog_public_slug
       FROM organizations
       WHERE id = ${auth.data.orgId}
     `;
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json({
       data: {
-        ...catalogData(organization.catalog_public_id),
+        ...catalogData(organization.catalog_public_id, organization.catalog_public_slug),
         products: products.map((product) => ({
           id: Number(product.id),
           name: String(product.name),
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
           END,
           updated_at = NOW()
         WHERE id = ${auth.data.orgId}
-        RETURNING catalog_public_id
+        RETURNING catalog_public_id, catalog_public_slug
       `;
       if (!updatedOrganization) return null;
 
@@ -122,7 +122,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!organization) return createErrorResponse("Organización no encontrada", 404);
-    return Response.json({ data: catalogData(organization.catalog_public_id) });
+    return Response.json({
+      data: catalogData(organization.catalog_public_id, organization.catalog_public_slug),
+    });
   } catch (error) {
     if (error instanceof InvalidCatalogSelectionError) {
       return createErrorResponse(error.message, 400);

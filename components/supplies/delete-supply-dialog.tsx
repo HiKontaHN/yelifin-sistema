@@ -46,7 +46,7 @@ export function DeleteSupplyDialog({
 
         <p className="text-sm text-muted-foreground">
           ¿Seguro que querés eliminar <span className="font-medium text-foreground">{supply?.name}</span>?
-          Esta acción no se puede deshacer.
+          Se conservará su historial de uso.
         </p>
 
         <DialogFooter className="pt-2">

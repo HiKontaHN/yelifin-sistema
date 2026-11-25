@@ -688,8 +688,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           if (!supply_id || quantity <= 0)
             return createErrorResponse("Datos de suministro inválidos", 400);
           const [supply] = await sql`
-            SELECT id, unit_cost FROM supplies
-            WHERE id = ${supply_id} AND org_id = ${orgId} AND is_active = TRUE
+            SELECT s.id, s.unit_cost FROM supplies s
+            WHERE s.id = ${supply_id} AND s.org_id = ${orgId}
+              AND (s.is_active = TRUE OR EXISTS (
+                SELECT 1 FROM sale_supplies ss
+                WHERE ss.sale_id = ${saleId}
+                  AND ss.org_id = s.org_id AND ss.supply_id = s.id
+                  AND ss.deleted_at IS NULL AND ss.quantity >= ${quantity}
+              ))
           `;
           if (!supply)
             return createErrorResponse(`Suministro #${supply_id} no encontrado`, 404);

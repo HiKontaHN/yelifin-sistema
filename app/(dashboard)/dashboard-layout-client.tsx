@@ -79,6 +79,7 @@ export function DashboardLayoutClient({
   initialSidebarOpen: boolean;
 }) {
   const pathname = usePathname();
+  const hasSalesPanels = /^\/sales\/[^/]+(?:\/edit)?\/?$/.test(pathname);
   const { firebaseUser, user, loading, accessBlocked, accessBlockedMessage } = useRequireAuth();
   const { checking } = useOnboardingGuard();
   usePlanGuard();
@@ -117,7 +118,7 @@ export function DashboardLayoutClient({
             </header>
 
             {/* Tables cancel this scroll container's padding, not the navbar height. */}
-            <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 [--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem] md:[&_h1]:hidden">
+            <main className={`min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 [--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem] md:[&_h1]:hidden ${hasSalesPanels ? "lg:flex lg:flex-col lg:overflow-hidden" : ""}`}>
               <SubscriptionStatusBanner subscription={user?.subscription} org={user?.org} />
               {children}
             </main>

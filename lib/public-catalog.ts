@@ -1,9 +1,10 @@
 import { cache } from "react";
 import { neon } from "@neondatabase/serverless";
 
-import { isCatalogId, type CatalogStock } from "@/lib/catalog-stock";
+import type { CatalogStock } from "@/lib/catalog-stock";
 import { normalizeSocialLink, type OrganizationSocialLinks } from "@/lib/organization-social-links";
 import { readPublicCatalogStock } from "@/lib/public-catalog-stock";
+import { parsePublicCatalogLink } from "@/lib/public-catalog-link";
 
 export { isCatalogId } from "@/lib/catalog-stock";
 
@@ -25,6 +26,7 @@ export type PublicCatalogItem = {
 };
 
 export type PublicCatalog = {
+  id: string;
   organization: {
     name: string;
     logo_url: string | null;
@@ -37,20 +39,23 @@ export type PublicCatalog = {
 };
 
 export const getPublicCatalog = cache(async (catalogId: string): Promise<PublicCatalog | null> => {
-  if (!isCatalogId(catalogId)) return null;
+  const link = parsePublicCatalogLink(catalogId);
+  if (!link) return null;
 
   const sql = neon(process.env.DATABASE_URL!);
   const [organization] = await sql`
-    SELECT o.name, o.logo_url, o.currency, o.locale,
+    SELECT o.catalog_public_id, o.name, o.logo_url, o.currency, o.locale,
            instagram.url AS instagram, whatsapp.url AS whatsapp
     FROM organizations o
     LEFT JOIN organization_social_links instagram ON instagram.org_id = o.id AND instagram.platform = 'instagram'
     LEFT JOIN organization_social_links whatsapp ON whatsapp.org_id = o.id AND whatsapp.platform = 'whatsapp'
-    WHERE o.catalog_public_id = ${catalogId}::uuid
+    WHERE (o.catalog_public_id = ${link.id}::uuid OR o.catalog_public_slug = ${link.slug})
+      AND o.catalog_public_id IS NOT NULL
       AND o.is_active = TRUE
   `;
 
   if (!organization) return null;
+  const publicId = String(organization.catalog_public_id);
 
   const [products, stock] = await Promise.all([sql`
     SELECT
@@ -81,13 +86,14 @@ export const getPublicCatalog = cache(async (catalogId: string): Promise<PublicC
     FROM organizations o
     JOIN organization_catalog_items catalog_item ON catalog_item.org_id = o.id
     JOIN products p ON p.id = catalog_item.product_id AND p.org_id = o.id
-    WHERE o.catalog_public_id = ${catalogId}::uuid
+    WHERE o.catalog_public_id = ${publicId}::uuid
       AND o.is_active = TRUE AND p.is_active = TRUE
     ORDER BY p.is_service, p.name
-  `, readPublicCatalogStock(catalogId)]);
+  `, readPublicCatalogStock(publicId)]);
   if (!stock) return null;
 
   return {
+    id: publicId,
     organization: {
       name: String(organization.name),
       logo_url: organization.logo_url ? String(organization.logo_url) : null,

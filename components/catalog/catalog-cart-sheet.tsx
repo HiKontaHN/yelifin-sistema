@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { CircleCheck, Copy, Info, Instagram, MessageCircle, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CircleCheck, Copy, Info, Instagram, Loader2, MessageCircle, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  buildCatalogMessage, canShareCatalogCart, getInstagramCatalogChat, getWhatsAppCatalogShare, INSTAGRAM_WEB_INBOX,
+  buildCatalogMessage, canShareCatalogCart, getInstagramCatalogChat, getWhatsAppCatalogShare,
   type CatalogCartLine,
 } from "@/lib/catalog-cart";
 import type { PublicCatalog } from "@/lib/public-catalog";
 
 type CopyChannel = "instagram" | "whatsapp" | "list";
+const INSTAGRAM_REDIRECT_DELAY = 1500;
 
 export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
   contacts: PublicCatalog["contacts"];
@@ -22,20 +24,44 @@ export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
   setQuantity: (id: string, quantity: number) => void;
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ copied: boolean; channel: CopyChannel } | null>(null);
+  const [copyingInstagram, setCopyingInstagram] = useState(false);
+  const [instagramDestination, setInstagramDestination] = useState<string | null>(null);
   const count = lines.reduce((sum, line) => sum + line.quantity, 0);
   const total = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const shareable = canShareCatalogCart(lines);
   const message = buildCatalogMessage(lines);
   const whatsapp = getWhatsAppCatalogShare(contacts.whatsapp, message);
   const instagram = getInstagramCatalogChat(contacts.instagram);
+  const instagramBusy = copyingInstagram || instagramDestination !== null;
+
+  useEffect(() => {
+    if (!instagramDestination) return;
+    const timer = window.setTimeout(() => {
+      window.open(instagramDestination, "_blank", "noopener,noreferrer");
+      setInstagramDestination(null);
+    }, INSTAGRAM_REDIRECT_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [instagramDestination]);
 
   const copy = async (channel: CopyChannel) => {
     try {
       await navigator.clipboard.writeText(message);
       setCopyFeedback({ copied: true, channel });
+      return true;
     } catch {
       setCopyFeedback({ copied: false, channel });
+      return false;
     }
+  };
+
+  const openInstagram = async () => {
+    if (!instagram || instagramBusy) return;
+    setCopyingInstagram(true);
+    if (await copy("instagram")) {
+      toast.success("¡Pedido copiado! Abriendo Instagram", { duration: INSTAGRAM_REDIRECT_DELAY });
+      setInstagramDestination(instagram.url);
+    }
+    setCopyingInstagram(false);
   };
 
   const updateQuantity = (id: string, quantity: number) => {
@@ -138,16 +164,17 @@ export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
                       </Button>
                     )}
                     {instagram && (
-                      <Button asChild variant="outline" className="flex-1">
-                        <a
-                          href={instagram.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label="Copiar lista y abrir Instagram"
-                          onClick={() => void copy("instagram")}
-                        >
-                          <Instagram className="size-4" /> Instagram
-                        </a>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        aria-label="Copiar lista y abrir Instagram"
+                        aria-busy={instagramBusy}
+                        disabled={instagramBusy}
+                        onClick={() => void openInstagram()}
+                      >
+                        {instagramBusy ? <Loader2 className="size-4 animate-spin" /> : <Instagram className="size-4" />}
+                        Instagram
                       </Button>
                     )}
                   </div>
@@ -162,19 +189,20 @@ export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
                   >
                     {copyFeedback?.copied ? <CircleCheck className="text-success" /> : <Info className="text-primary" />}
                     <AlertTitle>
-                      {copyFeedback ? (copyFeedback.copied ? "Lista copiada" : "Copia el mensaje") : "Compartir por Instagram"}
+                      {copyFeedback ? (copyFeedback.copied ? "Lista copiada" : "Copia el mensaje") : "¿Pides por Instagram?"}
                     </AlertTitle>
                     <AlertDescription>
                       {copyFeedback?.copied === false && <p>Selecciona y copia el texto de abajo.</p>}
-                      <p>{pasteInChat}</p>
-                      {instagram?.handle && copyFeedback?.channel !== "whatsapp" && (
-                        <p>
-                          En el navegador, busca @{instagram.handle} en{" "}
-                          <a href={INSTAGRAM_WEB_INBOX} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">
-                            Instagram Web
-                          </a>.
-                        </p>
+                      {copyFeedback?.channel === "instagram" && !instagramBusy && instagram && (
+                        <a href={instagram.url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">
+                          Abrir chat de Instagram
+                        </a>
                       )}
+                      <p>
+                        {copyFeedback
+                          ? pasteInChat
+                          : "Al tocar el botón de Instagram, copiamos tu pedido automáticamente y abrimos nuestro chat. Solo tienes que pegar el mensaje y enviarlo."}
+                      </p>
                     </AlertDescription>
                   </Alert>
                 )}
