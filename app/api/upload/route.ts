@@ -21,13 +21,9 @@ export async function POST(request: NextRequest) {
   try {
     const { userId } = auth.data;
 
-    // 20 subidas por usuario cada hora — evita abuso de storage/egress.
-    const { allowed, retryAfterSec } = await sharedRateLimit(`upload:${userId}`, 20, 60 * 60 * 1000);
+    const { allowed } = await sharedRateLimit(`upload:minute:${userId}`, 10, 60_000);
     if (!allowed) {
-      return createErrorResponse(
-        "Demasiadas subidas. Intenta de nuevo más tarde.",
-        429
-      );
+      return createErrorResponse("Demasiadas subidas. Intenta de nuevo en un minuto.", 429);
     }
 
     const formData = await request.formData();
