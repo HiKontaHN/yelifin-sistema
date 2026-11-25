@@ -4,7 +4,7 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { MODULES, MODULE_SUBITEMS, defaultSubitem } from "@/lib/permissions";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TransactionSql } from "@/lib/db-transaction";
 import { DEFAULT_LOCALE, DEFAULT_TIMEZONE, isValidTimeZone } from "@/lib/date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -646,11 +646,12 @@ export async function ensureOrgExists(
   orgName: string,
   timezone = DEFAULT_TIMEZONE,
   currency = "HNL",
-  locale = DEFAULT_LOCALE
+  locale = DEFAULT_LOCALE,
+  transaction?: TransactionSql,
 ): Promise<{ orgId: number; roleId: number; roleName: string }> {
   const safeTimezone = isValidTimeZone(timezone) ? timezone : DEFAULT_TIMEZONE;
 
-  return withTransaction(async (tx) => {
+  const provision = async (tx: TransactionSql) => {
     const [existing] = await tx`
       SELECT om.org_id, r.id AS role_id, r.name AS role_name
       FROM organization_members om
@@ -721,7 +722,8 @@ export async function ensureOrgExists(
     }
 
     return { orgId: ownedOrg.id, roleId: ownerRole.id, roleName: ownerRole.name };
-  });
+  };
+  return transaction ? provision(transaction) : withTransaction(provision);
 }
 
 // ── requireModule ──────────────────────────────────────────────────────

@@ -6,6 +6,8 @@ import { seedDefaultCategories } from "@/lib/seed-default-categories";
 import { sharedRateLimit, getClientIP } from "@/lib/rate-limit";
 import { ensureOrgExists } from "@/lib/auth";
 import { redeemPartnerInviteCode } from "@/lib/partner-invites";
+import { withTransaction } from "@/lib/db-transaction";
+import { hasValidRequestOrigin } from "@/lib/request-origin";
 import {
   DEFAULT_LOCALE,
   DEFAULT_TIMEZONE,
@@ -38,8 +40,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const {
-      email,
+      email: submittedEmail,
       password,
+      google_id_token,
       display_name,
       business_name,
       date_of_birth,
@@ -49,7 +52,8 @@ export async function POST(req: NextRequest) {
     } = await req.json();
 
     // ── Validaciones básicas ──────────────────────────────────────
-    if (!email || !password || !display_name || !business_name || !date_of_birth) {
+    const withGoogle = google_id_token !== undefined;
+    if ((!withGoogle && (!submittedEmail || !password)) || !display_name || !business_name || !date_of_birth) {
       return NextResponse.json(
         { error: "Todos los campos son requeridos" },
         { status: 400 }
@@ -92,7 +96,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (password.length < 6) {
+    if (!withGoogle && password.length < 6) {
       return NextResponse.json(
         { error: "La contraseña debe tener al menos 6 caracteres" },
         { status: 400 }
@@ -108,6 +112,60 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (withGoogle) {
+      if (!hasValidRequestOrigin(req)) {
+        return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
+      }
+
+      let identity;
+      try {
+        if (typeof google_id_token !== "string") throw new Error("Token inválido");
+        identity = await adminAuth.verifyIdToken(google_id_token, true);
+      } catch {
+        return NextResponse.json({ error: "Vuelve a seleccionar tu cuenta de Google." }, { status: 401 });
+      }
+
+      if (identity.firebase.sign_in_provider !== "google.com" ||
+          !identity.email || identity.email_verified !== true ||
+          Date.now() / 1000 - identity.auth_time > 5 * 60) {
+        return NextResponse.json({ error: "Vuelve a seleccionar una cuenta de Google con correo verificado." }, { status: 401 });
+      }
+
+      const email = identity.email.toLowerCase();
+      const account = await withTransaction(async (tx) => {
+        const [existing] = await tx`
+          SELECT id FROM users WHERE LOWER(email) = ${email} OR firebase_uid = ${identity.uid}
+        `;
+        if (existing) return null;
+
+        const [user] = await tx`
+          INSERT INTO users (firebase_uid, email, display_name)
+          VALUES (${identity.uid}, ${email}, ${display_name})
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `;
+        if (!user) return null;
+
+        await tx`
+          INSERT INTO user_profile (user_id, business_name)
+          VALUES (${user.id}, ${business_name})
+        `;
+        const { orgId } = await ensureOrgExists(
+          user.id, business_name, organizationTimezone, "HNL", organizationLocale, tx,
+        );
+        await seedDefaultCategories(orgId, user.id, tx);
+        return { userId: user.id, orgId };
+      });
+
+      if (!account) {
+        return NextResponse.json({ error: "Este correo ya está registrado. Inicia sesión con tu cuenta de HiKonta." }, { status: 409 });
+      }
+
+      await redeemRegistrationInvite(partner_code, account.orgId);
+      return registrationResponse(account.userId, account.orgId, email, display_name);
+    }
+
+    const email = submittedEmail;
     // ── 1. Usuario previo en PostgreSQL con este email ─────────────
     // Si existe y su firebase_uid sigue vivo en Firebase → 409.
     // Si existe pero su firebase_uid ya no existe en Firebase (registro
@@ -207,24 +265,8 @@ export async function POST(req: NextRequest) {
     // ── 6. Código de invitación de partner (opcional, ?ref= en /register)
     // Best-effort: un código inválido/vencido NUNCA debe tumbar el registro,
     // solo se ignora — el negocio ya se creó igual.
-    if (partner_code) {
-      try {
-        await redeemPartnerInviteCode(sql, partner_code, orgId);
-      } catch (partnerError) {
-        console.error("No se pudo canjear el código de partner en registro:", partnerError);
-      }
-    }
-
-    return NextResponse.json(
-      {
-        message: "Cuenta creada exitosamente",
-        data: {
-          user: { id: userId, email, display_name },
-          org: { id: orgId },
-        },
-      },
-      { status: 201 }
-    );
+    await redeemRegistrationInvite(partner_code, orgId);
+    return registrationResponse(userId, orgId, email, display_name);
   } catch (error: any) {
     console.error("Error en registro:", error);
 
@@ -257,4 +299,20 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+async function redeemRegistrationInvite(code: string | undefined, orgId: number) {
+  if (!code) return;
+  try {
+    await redeemPartnerInviteCode(sql, code, orgId);
+  } catch (error) {
+    console.error("No se pudo canjear el código de partner en registro:", error);
+  }
+}
+
+function registrationResponse(userId: number, orgId: number, email: string, displayName: string) {
+  return NextResponse.json({
+    message: "Cuenta creada exitosamente",
+    data: { user: { id: userId, email, display_name: displayName }, org: { id: orgId } },
+  }, { status: 201 });
 }
