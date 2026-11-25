@@ -23,6 +23,7 @@ export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ copied: boolean; channel: CopyChannel } | null>(null);
   const count = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const total = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const shareable = canShareCatalogCart(lines);
   const message = buildCatalogMessage(lines);
   const whatsapp = getWhatsAppCatalogShare(contacts.whatsapp, message);
@@ -119,6 +120,10 @@ export function CatalogCartSheet({ contacts, lines, formatter, setQuantity }: {
         </div>
         {lines.length > 0 && (
           <SheetFooter className="shrink-0 gap-2 border-t pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold">
+              <span>Total</span>
+              <span className="tabular-nums">{formatter.format(total)}</span>
+            </div>
             {shareable ? (
               <>
                 {(whatsapp || instagram) && (

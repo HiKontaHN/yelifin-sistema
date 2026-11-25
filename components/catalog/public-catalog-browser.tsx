@@ -8,37 +8,28 @@ import { CatalogItemCard } from "@/components/catalog/catalog-item-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCatalogStock, type CatalogStockStatus } from "@/hooks/use-catalog-stock";
+import { useCatalogStock } from "@/hooks/use-catalog-stock";
 import { buildCatalogCartLines, changeCatalogQuantity, readCatalogCart, type CatalogCart } from "@/lib/catalog-cart";
 import { getCatalogItemAvailability } from "@/lib/catalog-stock";
 import type { PublicCatalog } from "@/lib/public-catalog";
 
 type Filter = "all" | "products" | "services";
-type StockFilter = "available" | "out" | "all";
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 15;
+const CATALOG_CONTAINER = "mx-auto w-full max-w-7xl sm:px-6 lg:px-8 xl:w-4/5 xl:max-w-none";
 
-const STOCK_LABEL: Record<CatalogStockStatus, string> = {
-  checking: "Actualizando inventario…",
-  live: "Inventario en vivo",
-  updated: "Inventario actualizado",
-  offline: "Últimas cantidades conocidas",
-  unavailable: "Catálogo no disponible",
-};
-
-export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
+export function PublicCatalogBrowser({ catalogId, catalog, header, initialPage, realtime }: {
   catalogId: string;
   catalog: PublicCatalog;
   header: ReactNode;
+  initialPage: number;
   realtime: boolean;
 }) {
   const { items, organization, contacts } = catalog;
   const { stock, status } = useCatalogStock(catalogId, catalog.stock, realtime, items.length > 0);
   const [filter, setFilter] = useState<Filter>("all");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("available");
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [cart, setCart] = useState<CatalogCart>({});
   const [loadedCart, setLoadedCart] = useState(false);
   const storageKey = `hikonta:catalog-cart:${catalogId}`;
@@ -68,32 +59,44 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
   const lines = useMemo(() => buildCatalogCartLines(items, cart, stock), [items, cart, stock]);
   const published = useMemo(() => items.filter((item) => stock[item.id] !== undefined), [items, stock]);
   const showTabs = published.some((item) => item.is_service) && published.some((item) => !item.is_service);
-  const hasProducts = published.some((item) => !item.is_service);
   const searching = Boolean(search.trim());
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase(organization.locale);
     return published.filter((item) => {
       if (showTabs && filter === "products" && item.is_service) return false;
       if (showTabs && filter === "services" && !item.is_service) return false;
+      const available = getCatalogItemAvailability(item, stock);
+      if (available !== null && (available ?? 0) <= 0) return false;
       if (query) {
         return item.name.toLocaleLowerCase(organization.locale).includes(query)
           || item.description?.toLocaleLowerCase(organization.locale).includes(query);
       }
-      const available = getCatalogItemAvailability(item, stock);
-      if (!hasProducts || (showTabs && filter === "services")) return true;
-      if (stockFilter === "out") return available === 0;
-      return stockFilter === "all" || available === null || (available ?? 0) > 0;
+      return true;
     });
-  }, [filter, hasProducts, organization.locale, published, search, showTabs, stock, stockFilter]);
+  }, [filter, organization.locale, published, search, showTabs, stock]);
 
   const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
+  const firstPageNumber = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
+  const pageNumbers = Array.from(
+    { length: Math.min(5, pageCount) },
+    (_, index) => firstPageNumber + index,
+  );
+  const lastPageNumber = pageNumbers[pageNumbers.length - 1];
   const from = (currentPage - 1) * PAGE_SIZE;
   const pageItems = visibleItems.slice(from, from + PAGE_SIZE);
-  const resultsClassName = "mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8";
+  const resultsClassName = `${CATALOG_CONTAINER} px-3 py-4 sm:py-6`;
+
+  function selectPage(nextPage: number) {
+    setPage(nextPage);
+    const url = new URL(window.location.href);
+    if (nextPage === 1) url.searchParams.delete("page");
+    else url.searchParams.set("page", String(nextPage));
+    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  }
 
   function goToPage(nextPage: number) {
-    setPage(nextPage);
+    selectPage(nextPage);
     window.scrollTo({ top: 0 });
   }
 
@@ -107,7 +110,7 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
 
   const results = pageItems.length > 0 ? (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-5">
         {pageItems.map((item) => <CatalogItemCard key={item.id} item={item} formatter={formatter} stock={stock} cart={cart} add={add} />)}
       </div>
       {pageCount > 1 && (
@@ -115,7 +118,35 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
           <Button type="button" variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => goToPage(currentPage - 1)}>
             <ChevronLeft className="size-4" /> Anterior
           </Button>
-          <p aria-live="polite" className="text-sm tabular-nums text-muted-foreground">Página {currentPage} de {pageCount}</p>
+          <div className="flex flex-wrap items-center justify-center gap-1">
+            {firstPageNumber > 1 && (
+              <>
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Página 1" onClick={() => goToPage(1)}>1</Button>
+                {firstPageNumber > 2 && <span aria-hidden="true">…</span>}
+              </>
+            )}
+            {pageNumbers.map((number) => (
+              <Button
+                key={number}
+                type="button"
+                variant={number === currentPage ? "default" : "outline"}
+                size="icon-sm"
+                aria-label={`Página ${number}`}
+                aria-current={number === currentPage ? "page" : undefined}
+                onClick={() => goToPage(number)}
+              >
+                {number}
+              </Button>
+            ))}
+            {lastPageNumber < pageCount && (
+              <>
+                {lastPageNumber < pageCount - 1 && <span aria-hidden="true">…</span>}
+                <Button type="button" variant="outline" size="icon-sm" aria-label={`Página ${pageCount}`} onClick={() => goToPage(pageCount)}>
+                  {pageCount}
+                </Button>
+              </>
+            )}
+          </div>
           <Button type="button" variant="outline" size="sm" disabled={currentPage >= pageCount} onClick={() => goToPage(currentPage + 1)}>
             Siguiente <ChevronRight className="size-4" />
           </Button>
@@ -124,15 +155,15 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
     </>
   ) : (
     <div className="rounded-2xl border border-dashed px-4 py-14 text-center text-sm text-muted-foreground">
-      {searching ? "No encontramos productos o servicios con esa búsqueda." : "No hay artículos con esta disponibilidad."}
+      {searching ? "No encontramos productos o servicios con esa búsqueda." : "No hay artículos disponibles."}
     </div>
   );
 
   return (
-    <Tabs value={filter} onValueChange={(value) => { setFilter(value as Filter); setPage(1); }} className="gap-0">
+    <Tabs value={filter} onValueChange={(value) => { setFilter(value as Filter); selectPage(1); }} className="gap-0">
       <div className="sticky top-0 z-30 bg-background">
         <header className="border-b bg-card">
-          <nav aria-label="Barra del catálogo" className="mx-auto flex min-h-16 max-w-7xl items-center gap-2 px-4 py-2 sm:gap-4 sm:px-6 lg:px-8">
+          <nav aria-label="Barra del catálogo" className={`${CATALOG_CONTAINER} flex min-h-16 items-center gap-2 px-4 py-2 sm:gap-4`}>
             {header}
             {(published.length > 0 || lines.length > 0) && (
               <CatalogCartSheet contacts={contacts} lines={lines} formatter={formatter} setQuantity={setQuantity} />
@@ -142,7 +173,7 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
         </header>
         {published.length > 0 && (
           <div className="border-b">
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6 lg:px-8">
+            <div className={`${CATALOG_CONTAINER} flex flex-wrap items-center gap-2 px-4 py-2 sm:gap-3`}>
               {showTabs && (
                 <TabsList aria-label="Filtrar catálogo" className="grid w-full grid-cols-3 border-0 sm:w-auto">
                   <TabsTrigger value="all" className="py-2">Todo</TabsTrigger>
@@ -150,39 +181,17 @@ export function PublicCatalogBrowser({ catalogId, catalog, header, realtime }: {
                   <TabsTrigger value="services" className="py-2">Servicios</TabsTrigger>
                 </TabsList>
               )}
-              <div className="relative min-w-0 flex-[1_1_8rem] lg:max-w-72">
+              <div className="relative w-full min-w-0 sm:ml-auto sm:w-80 sm:max-w-full lg:w-[28rem]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                 <Input
                   type="search"
                   aria-label="Buscar en el catálogo"
                   value={search}
-                  onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                  onChange={(event) => { setSearch(event.target.value); selectPage(1); }}
                   placeholder="Buscar en el catálogo"
                   className="pl-9"
                 />
               </div>
-              {hasProducts && (!showTabs || filter !== "services") && (
-                <Select
-                  value={searching ? "all" : stockFilter}
-                  onValueChange={(value) => { setStockFilter(value as StockFilter); setPage(1); }}
-                  disabled={searching}
-                >
-                  <SelectTrigger aria-label="Filtrar por existencias" className="shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="available">Disponibles</SelectItem>
-                    <SelectItem value="out">Sin existencias</SelectItem>
-                    <SelectItem value="all">Todas las existencias</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              {hasProducts && (
-                <p role="status" className="flex w-full items-center gap-1.5 text-xs text-muted-foreground lg:ml-auto lg:w-auto">
-                  <span aria-hidden="true" className={status === "live" ? "size-2 rounded-full bg-success" : "size-2 rounded-full bg-muted-foreground/50"} />
-                  {STOCK_LABEL[status]}
-                </p>
-              )}
             </div>
           </div>
         )}

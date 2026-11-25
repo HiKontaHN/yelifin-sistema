@@ -9,7 +9,10 @@ import { HiKontaIcon } from "@/components/shared/hikonta-icon";
 import { HiKontaTitle } from "@/components/shared/hikonta-title";
 import { getPublicCatalog } from "@/lib/public-catalog";
 
-type Props = { params: Promise<{ catalogId: string }> };
+type Props = {
+  params: Promise<{ catalogId: string }>;
+  searchParams: Promise<{ page?: string | string[] }>;
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { catalogId } = await params;
@@ -22,8 +25,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function CatalogPage({ params }: Props) {
-  const { catalogId } = await params;
+export default async function CatalogPage({ params, searchParams }: Props) {
+  const [{ catalogId }, { page }] = await Promise.all([params, searchParams]);
+  const requestedPage = typeof page === "string" && /^[1-9]\d*$/.test(page) ? Number(page) : 1;
+  const initialPage = Number.isSafeInteger(requestedPage) ? requestedPage : 1;
   const catalog = await getPublicCatalog(catalogId);
   if (!catalog) notFound();
 
@@ -34,6 +39,7 @@ export default async function CatalogPage({ params }: Props) {
           key={catalogId}
           catalogId={catalogId}
           catalog={catalog}
+          initialPage={initialPage}
           realtime={process.env.VERCEL === "1"}
           header={(
             <>
