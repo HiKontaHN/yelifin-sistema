@@ -73,4 +73,48 @@ describe("inicio de sesión móvil", () => {
     expect((await login({ email: "account@example.test" })).status).toBe(400);
     expect(upstream).not.toHaveBeenCalled();
   });
+
+  it("intercambia la credencial de Google por un token Firebase verificado", async () => {
+    upstream.mockResolvedValueOnce(Response.json({ idToken: "firebase-id-token", emailVerified: true }));
+
+    const response = await login({ googleIdToken: "google-id-token" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ token: "firebase-id-token" });
+    expect(upstream).toHaveBeenCalledWith(
+      expect.stringContaining("/accounts:signInWithIdp?"),
+      expect.objectContaining({ body: expect.stringContaining("id_token=google-id-token&providerId=google.com") }),
+    );
+  });
+
+  it("rechaza una credencial de Google con correo sin verificar", async () => {
+    upstream.mockResolvedValueOnce(Response.json({ idToken: "firebase-id-token", emailVerified: false }));
+    expect((await login({ googleIdToken: "google-id-token" })).status).toBe(403);
+  });
+
+  it("solicita la contraseña cuando Firebase pide vincular la cuenta", async () => {
+    upstream.mockResolvedValueOnce(Response.json({ needConfirmation: true, email: "account@example.test" }));
+    await expect((await login({ googleIdToken: "google-id-token" })).json()).resolves.toEqual({
+      linkEmail: "account@example.test",
+    });
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it("vincula Google con el token de la cuenta autenticada por contraseña", async () => {
+    upstream.mockResolvedValueOnce(Response.json({ needConfirmation: true, email: "account@example.test" }))
+      .mockResolvedValueOnce(Response.json({ idToken: "password-token" }))
+      .mockResolvedValueOnce(Response.json({ idToken: "linked-token", emailVerified: true }));
+
+    const response = await login({ googleIdToken: "google-id-token", email: "account@example.test", password: "password" });
+
+    await expect(response.json()).resolves.toEqual({ token: "linked-token" });
+    expect(upstream).toHaveBeenNthCalledWith(3, expect.stringContaining("/accounts:signInWithIdp?"),
+      expect.objectContaining({ body: expect.stringContaining('"idToken":"password-token"') }));
+  });
+
+  it("rechaza vincular al iniciar sesión por contraseña con otro correo", async () => {
+    upstream.mockResolvedValueOnce(Response.json({ needConfirmation: true, email: "account@example.test" }));
+    expect((await login({ googleIdToken: "google-id-token", email: "other@example.test", password: "password" })).status).toBe(400);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
 });

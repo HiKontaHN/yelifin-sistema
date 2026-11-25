@@ -49,7 +49,16 @@ export async function POST(req: NextRequest) {
     } = await req.json();
 
     // ── Validaciones básicas ──────────────────────────────────────
+<<<<<<< Updated upstream
     if (!email || !password || !display_name || !business_name || !date_of_birth) {
+=======
+    // La app nativa presenta un token explícito y prescinde de las cookies de sesión.
+    const nativeGoogleToken = !req.headers.has("origin") && !req.headers.has("cookie")
+      ? /^Bearer ([^\s]+)$/i.exec(req.headers.get("authorization") ?? "")?.[1]
+      : undefined;
+    const withGoogle = google_id_token !== undefined || nativeGoogleToken !== undefined;
+    if ((!withGoogle && (!submittedEmail || !password)) || !display_name || !business_name || !date_of_birth) {
+>>>>>>> Stashed changes
       return NextResponse.json(
         { error: "Todos los campos son requeridos" },
         { status: 400 }
@@ -108,6 +117,64 @@ export async function POST(req: NextRequest) {
       }
     }
 
+<<<<<<< Updated upstream
+=======
+    if (withGoogle) {
+      if (!nativeGoogleToken && !hasValidRequestOrigin(req)) {
+        return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
+      }
+
+      let identity;
+      try {
+        const token = nativeGoogleToken ?? google_id_token;
+        if (typeof token !== "string") throw new Error("Token inválido");
+        identity = await adminAuth.verifyIdToken(token, true);
+      } catch {
+        return NextResponse.json({ error: "Vuelve a seleccionar tu cuenta de Google." }, { status: 401 });
+      }
+
+      if (identity.firebase.sign_in_provider !== "google.com" ||
+          !identity.email || identity.email_verified !== true ||
+          Date.now() / 1000 - identity.auth_time > 5 * 60) {
+        return NextResponse.json({ error: "Vuelve a seleccionar una cuenta de Google con correo verificado." }, { status: 401 });
+      }
+
+      const email = identity.email.toLowerCase();
+      const account = await withTransaction(async (tx) => {
+        const [existing] = await tx`
+          SELECT id FROM users WHERE LOWER(email) = ${email} OR firebase_uid = ${identity.uid}
+        `;
+        if (existing) return null;
+
+        const [user] = await tx`
+          INSERT INTO users (firebase_uid, email, display_name)
+          VALUES (${identity.uid}, ${email}, ${display_name})
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `;
+        if (!user) return null;
+
+        await tx`
+          INSERT INTO user_profile (user_id, business_name)
+          VALUES (${user.id}, ${business_name})
+        `;
+        const { orgId } = await ensureOrgExists(
+          user.id, business_name, organizationTimezone, "HNL", organizationLocale, tx,
+        );
+        await seedDefaultCategories(orgId, user.id, tx);
+        return { userId: user.id, orgId };
+      });
+
+      if (!account) {
+        return NextResponse.json({ error: "Este correo ya está registrado. Inicia sesión con tu cuenta de HiKonta." }, { status: 409 });
+      }
+
+      await redeemRegistrationInvite(partner_code, account.orgId);
+      return registrationResponse(account.userId, account.orgId, email, display_name);
+    }
+
+    const email = submittedEmail;
+>>>>>>> Stashed changes
     // ── 1. Usuario previo en PostgreSQL con este email ─────────────
     // Si existe y su firebase_uid sigue vivo en Firebase → 409.
     // Si existe pero su firebase_uid ya no existe en Firebase (registro
