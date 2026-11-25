@@ -1,6 +1,4 @@
 // lib/seed-default-categories.ts
-import { NeonQueryFunction } from "@neondatabase/serverless";
-
 /**
  * Categoría con la que se etiquetan automáticamente las transacciones
  * generadas por una compra de inventario (compra individual, por lote,
@@ -42,7 +40,7 @@ const DEFAULT_CATEGORIES = [
 export async function seedDefaultCategories(
   orgId: number,
   userId: number,
-  sql: NeonQueryFunction<false, false>
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => PromiseLike<unknown>
 ) {
   await Promise.all(
     DEFAULT_CATEGORIES.map(

@@ -80,7 +80,7 @@ function RegisterPageContent() {
               </div>
             )}
 
-            <RegisterForm partnerCode={partnerCode} />
+            <RegisterForm partnerCode={partnerCode} googleRegistration={searchParams.get("google") === "1"} />
 
             <p className="mt-5 text-center text-sm text-slate-600">
               ¿Ya tienes una cuenta?{" "}

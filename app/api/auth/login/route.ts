@@ -64,7 +64,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { uid, email } = decodedToken;
+    if (decodedToken.firebase.sign_in_provider === "google.com" && decodedToken.email_verified !== true) {
+      return NextResponse.json(
+        { error: "Google no pudo confirmar el correo de esta cuenta" },
+        { status: 403 },
+      );
+    }
+
+    const { uid } = decodedToken;
 
     // 2. Verificar que el usuario existe en PostgreSQL y está activo
     const [user] = await sql`
@@ -83,6 +90,10 @@ export async function POST(req: NextRequest) {
       WHERE u.firebase_uid = ${uid}
       LIMIT 1
     `;
+
+    if (!user && decodedToken.firebase.sign_in_provider === "google.com") {
+      return NextResponse.json({ code: "google_registration_required" }, { status: 404 });
+    }
 
     if (!user || !user.is_active) {
       return NextResponse.json(

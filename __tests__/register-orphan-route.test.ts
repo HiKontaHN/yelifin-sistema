@@ -2,12 +2,14 @@ const mockSql = jest.fn();
 const mockCreateUser = jest.fn();
 const mockGetUser = jest.fn();
 const mockEnsureOrg = jest.fn();
+const mockVerifyIdToken = jest.fn();
 
 jest.mock("@neondatabase/serverless", () => ({ neon: jest.fn(() => mockSql) }));
 jest.mock("@/lib/firebase-admin", () => ({
   adminAuth: {
     createUser: mockCreateUser,
     getUser: mockGetUser,
+    verifyIdToken: mockVerifyIdToken,
     deleteUser: jest.fn(),
   },
 }));
@@ -19,15 +21,18 @@ jest.mock("@/lib/rate-limit", () => ({
 jest.mock("@/lib/auth", () => ({ ensureOrgExists: mockEnsureOrg }));
 jest.mock("@/lib/seed-default-categories", () => ({ seedDefaultCategories: jest.fn() }));
 jest.mock("@/lib/partner-invites", () => ({ redeemPartnerInviteCode: jest.fn() }));
-<<<<<<< Updated upstream
-=======
 jest.mock("@/lib/db-transaction", () => ({
   withTransaction: (callback: (sql: typeof mockSql) => unknown) => callback(mockSql),
 }));
 jest.mock("@/lib/request-origin", () => ({
   hasValidRequestOrigin: (request: Request) => request.headers.get("origin") === "http://localhost",
 }));
->>>>>>> Stashed changes
+=======
+jest.mock("@/lib/db-transaction", () => ({
+  withTransaction: (callback: (sql: typeof mockSql) => unknown) => callback(mockSql),
+}));
+jest.mock("@/lib/request-origin", () => ({ hasValidRequestOrigin: () => true }));
+>>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607
 
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/auth/register/route";
@@ -96,8 +101,6 @@ describe("POST /api/auth/register con correo ya existente en users", () => {
     expect(writes().some((q) => /UPDATE users/i.test(q))).toBe(true);
   });
 });
-<<<<<<< Updated upstream
-=======
 
 describe("POST /api/auth/register con Google", () => {
   function googleRequest(emailVerified = true, native = false) {
@@ -158,4 +161,7 @@ describe("POST /api/auth/register con Google", () => {
     expect(mockSql).not.toHaveBeenCalled();
   });
 });
+<<<<<<< HEAD
 >>>>>>> Stashed changes
+=======
+>>>>>>> a509fcfed1afbf3a6717082f39701753ae3c9607

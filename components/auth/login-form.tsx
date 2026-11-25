@@ -3,7 +3,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import {
+  GoogleAuthProvider, linkWithCredential, signInWithEmailAndPassword, signInWithPopup, signOut,
+  type OAuthCredential, type User,
+} from "firebase/auth";
 import { auth, authReady } from "@/lib/firebase";
 import { useSWRConfig } from "swr";
 import { Button } from "@/components/ui/button";
@@ -14,6 +18,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleIcon } from "@/components/auth/google-icon";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -21,11 +26,14 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
+type SignInMethod = "password" | "google";
 
 export function LoginForm() {
   const { push } = useRouter();
   const { mutate } = useSWRConfig();
-  const [isLoading, setIsLoading] = useState(false);
+  const [signingIn, setSigningIn] = useState<SignInMethod | null>(null);
+  const [pendingGoogle, setPendingGoogle] = useState<{ email: string; credential: OAuthCredential } | null>(null);
+  const isLoading = signingIn !== null;
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -33,30 +41,32 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
 
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
+  const signIn = async (method: SignInMethod, authenticate: () => Promise<User>) => {
+    setSigningIn(method);
     setFormError(null);
 
     try {
       await authReady;
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        data.email,
-        data.password,
-      );
+      const user = await authenticate();
 
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: await userCredential.user.getIdToken() }),
+        body: JSON.stringify({ idToken: await user.getIdToken(true) }),
       });
 
       const result = await response.json();
+
+      if (method === "google" && response.status === 404 && result.code === "google_registration_required") {
+        push("/register?google=1");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(result.error || "Error al iniciar sesión");
@@ -66,39 +76,77 @@ export function LoginForm() {
       await mutate("/api/auth/me");
       toast.success("¡Bienvenido de vuelta!");
       push("/dashboard");
-    } catch (error: any) {
+    } catch (error) {
       await signOut(auth).catch(() => undefined);
-      console.error("Error en login:", error);
+      const code = error instanceof FirebaseError ? error.code : undefined;
+      const message = error instanceof Error ? error.message : undefined;
 
       let errorMessage = "Error al iniciar sesión. Intenta de nuevo.";
 
-      if (
-        error.code === "auth/user-not-found" ||
-        error.code === "auth/wrong-password" ||
-        error.code === "auth/invalid-credential"
+      if (method === "google" && error instanceof FirebaseError && code === "auth/account-exists-with-different-credential") {
+        const credential = GoogleAuthProvider.credentialFromError(error);
+        const email = error.customData?.email;
+        if (credential && typeof email === "string") {
+          setPendingGoogle({ email, credential });
+          setValue("email", email, { shouldValidate: true });
+        }
+        errorMessage = "Inicia sesión con tu correo y contraseña para vincular Google a tu cuenta.";
+      } else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        return;
+      } else if (code === "auth/popup-blocked") {
+        errorMessage = "Habilita las ventanas emergentes para iniciar sesión con Google.";
+      } else if (method === "google" && message === "Credenciales inválidas") {
+        errorMessage = "No pudimos acceder a una cuenta de HiKonta con este inicio de sesión. Si ya tienes una cuenta, entra con tu correo y contraseña.";
+      } else if (
+        code === "auth/user-not-found" ||
+        code === "auth/wrong-password" ||
+        code === "auth/invalid-credential"
       ) {
         errorMessage = "El email o la contraseña son incorrectos";
-      } else if (error.code === "auth/invalid-email") {
+      } else if (code === "auth/invalid-email") {
         errorMessage = "El formato del email no es válido";
-      } else if (error.code === "auth/user-disabled") {
+      } else if (code === "auth/user-disabled") {
         errorMessage = "Esta cuenta ha sido deshabilitada. Contacta a soporte.";
-      } else if (error.code === "auth/too-many-requests") {
+      } else if (code === "auth/too-many-requests") {
         errorMessage =
           "Demasiados intentos fallidos. Espera unos minutos e intenta de nuevo.";
-      } else if (error.message === "Usuario no encontrado") {
+      } else if (message === "Usuario no encontrado") {
         errorMessage = "No existe una cuenta asociada a este email";
-      } else if (error.message === "Esta cuenta ha sido deshabilitada") {
+      } else if (message === "Esta cuenta ha sido deshabilitada") {
         errorMessage = "Esta cuenta ha sido deshabilitada. Contacta a soporte.";
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (!code && message) {
+        errorMessage = message;
       }
 
       // Error visible en el form Y en el toast
       setFormError(errorMessage);
       toast.error(errorMessage);
     } finally {
-      setIsLoading(false);
+      setSigningIn(null);
     }
+  };
+
+  const onSubmit = (data: LoginFormData) => signIn("password", async () => {
+    const { user } = await signInWithEmailAndPassword(auth, data.email, data.password);
+    if (pendingGoogle && user.email?.toLowerCase() === pendingGoogle.email.toLowerCase()) {
+      setPendingGoogle(null);
+      try {
+        await linkWithCredential(user, pendingGoogle.credential);
+      } catch {
+        toast.error("No se pudo vincular Google. Puedes seguir entrando con tu contraseña.");
+      }
+    }
+    return user;
+  });
+
+  const signInWithGoogle = () => {
+    setPendingGoogle(null);
+    return signIn("google", async () => {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const { user } = await signInWithPopup(auth, provider);
+      return user;
+    });
   };
 
   return (
@@ -211,7 +259,7 @@ export function LoginForm() {
       </div>
 
       <Button type="submit" className="h-12 w-full rounded-xl bg-[#8cff00] text-base font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
-        {isLoading ? (
+        {signingIn === "password" ? (
           <>
             <Loader2 className="mr-2 size-4 animate-spin" />
             Iniciando sesión…
@@ -219,6 +267,16 @@ export function LoginForm() {
         ) : (
           "Iniciar sesión"
         )}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12 w-full rounded-xl border-slate-200 bg-white text-base text-slate-950"
+        disabled={isLoading}
+        onClick={() => void signInWithGoogle()}
+      >
+        {signingIn === "google" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <GoogleIcon />}
+        Continuar con Google
       </Button>
     </form>
   );

@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from "firebase/auth";
 import { auth, authReady } from "@/lib/firebase";
 import { useSWRConfig } from "swr";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import * as z from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { ageOnCalendarDate, isCalendarDate, todayInTimeZone } from "@/lib/date-utils";
+import { GoogleIcon } from "@/components/auth/google-icon";
 
 const BIRTH_MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -52,7 +53,7 @@ function browserTimeZone() {
   }
 }
 
-const registerSchema = z
+const registerSchema = (withGoogle: boolean) => z
   .object({
     name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
     email: z.string().email("Email inválido"),
@@ -62,12 +63,14 @@ const registerSchema = z
     birth_month: z.string().regex(/^(0?[1-9]|1[0-2])$/, "Mes inválido"),
     birth_day: z.string().regex(/^(0?[1-9]|[12]\d|3[01])$/, "Día inválido"),
     birth_year: z.string().regex(/^\d{4}$/, "Año inválido"),
-    password: z
-      .string()
-      .min(6, "La contraseña debe tener al menos 6 caracteres"),
-    confirmPassword: z.string(),
+    password: z.string().optional(),
+    confirmPassword: z.string().optional(),
   })
-  .refine((data) => data.password === data.confirmPassword, {
+  .refine((data) => withGoogle || (data.password?.length ?? 0) >= 6, {
+    message: "La contraseña debe tener al menos 6 caracteres",
+    path: ["password"],
+  })
+  .refine((data) => withGoogle || data.password === data.confirmPassword, {
     message: "Las contraseñas no coinciden",
     path: ["confirmPassword"],
   })
@@ -91,12 +94,21 @@ const registerSchema = z
     },
   );
 
-type RegisterFormData = z.infer<typeof registerSchema>;
+type RegisterFormData = z.infer<ReturnType<typeof registerSchema>>;
 
-export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
+export function RegisterForm({ partnerCode, googleRegistration }: {
+  partnerCode?: string;
+  googleRegistration?: boolean;
+} = {}) {
   const { push } = useRouter();
   const { mutate } = useSWRConfig();
   const [isLoading, setIsLoading] = useState(false);
+  const [selectingGoogle, setSelectingGoogle] = useState(false);
+  const [googleUser, setGoogleUser] = useState<User | null>(() =>
+    googleRegistration && auth.currentUser?.emailVerified ? auth.currentUser : null
+  );
+  const [withGoogle, setWithGoogle] = useState(Boolean(googleRegistration));
+  const isBusy = isLoading || selectingGoogle;
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -104,12 +116,50 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(registerSchema(withGoogle)),
+    defaultValues: {
+      name: googleUser?.displayName ?? "",
+      email: googleUser?.email ?? "",
+    },
   });
 
+  const selectGoogle = async () => {
+    setSelectingGoogle(true);
+    try {
+      await authReady;
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const { user } = await signInWithPopup(auth, provider);
+      if (!user.email || !user.emailVerified) {
+        await signOut(auth);
+        setGoogleUser(null);
+        toast.error("Selecciona una cuenta de Google con correo verificado.");
+        return;
+      }
+      setGoogleUser(user);
+      setWithGoogle(true);
+      setValue("email", user.email, { shouldValidate: true });
+      if (user.displayName) setValue("name", user.displayName);
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? error.code : null;
+      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
+        toast.error(code === "auth/account-exists-with-different-credential"
+          ? "Este correo ya está registrado. Inicia sesión con tu contraseña."
+          : "No se pudo conectar con Google. Intenta de nuevo.");
+      }
+    } finally {
+      setSelectingGoogle(false);
+    }
+  };
+
   const onSubmit = async (data: RegisterFormData) => {
+    if (withGoogle && (!googleUser || auth.currentUser?.uid !== googleUser.uid)) {
+      toast.error("Selecciona tu cuenta de Google para continuar.");
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -120,8 +170,9 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: data.email,
-          password: data.password,
+          ...(withGoogle && googleUser
+            ? { google_id_token: await googleUser.getIdToken() }
+            : { email: data.email, password: data.password }),
           display_name: data.name,
           business_name: data.business_name,
           date_of_birth: dateOfBirth,
@@ -138,7 +189,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
       }
 
       await authReady;
-      await signInWithEmailAndPassword(auth, data.email, data.password);
+      if (!withGoogle) await signInWithEmailAndPassword(auth, data.email, data.password ?? "");
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("No se pudo iniciar la sesión");
 
@@ -151,6 +202,12 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
       if (!sessionResponse.ok) throw new Error("No se pudo iniciar la sesión");
       await signOut(auth);
       await mutate("/api/auth/me");
+
+      if (withGoogle) {
+        toast.success("¡Bienvenido a HiKonta!");
+        push("/onboarding");
+        return;
+      }
 
       // El servidor usa la cookie de sesión; el SDK ya no conserva al usuario.
       try {
@@ -166,8 +223,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
 
       push("/verify-email");
     } catch (error: any) {
-      await signOut(auth).catch(() => undefined);
-      console.error("Error en registro:", error);
+      if (!withGoogle) await signOut(auth).catch(() => undefined);
 
       let errorMessage = "Error al crear la cuenta";
 
@@ -195,6 +251,10 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Button type="button" variant="outline" className="h-11 w-full rounded-xl" disabled={isBusy} onClick={() => void selectGoogle()}>
+        {selectingGoogle ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <GoogleIcon />}
+        {googleUser ? "Cambiar cuenta de Google" : "Continuar con Google"}
+      </Button>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="name">Nombre completo</Label>
@@ -237,7 +297,8 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
           placeholder="tu@email.com"
           autoComplete="email"
           {...register("email")}
-          disabled={isLoading}
+          readOnly={withGoogle}
+          disabled={isBusy}
           className="h-11 rounded-xl border-slate-200 bg-white text-base"
         />
         {errors.email && (
@@ -324,7 +385,7 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
         </p>
       </fieldset>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {!withGoogle && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="password">Contraseña</Label>
           <div className="relative">
@@ -388,9 +449,9 @@ export function RegisterForm({ partnerCode }: { partnerCode?: string } = {}) {
             </p>
           )}
         </div>
-      </div>
+      </div>}
 
-      <Button type="submit" className="h-11 w-full rounded-xl bg-[#8cff00] text-base font-bold text-black hover:bg-[#7ce600]" disabled={isLoading}>
+      <Button type="submit" className="h-11 w-full rounded-xl bg-[#8cff00] text-base font-bold text-black hover:bg-[#7ce600]" disabled={isBusy || (withGoogle && !googleUser)}>
         {isLoading ? (
           <>
             <Loader2 className="mr-2 size-4 animate-spin" />
