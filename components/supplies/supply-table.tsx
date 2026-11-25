@@ -116,8 +116,6 @@ export function SupplyTable({
       pagination={pagination}
       recordLabel={total === 1 ? "suministro" : "suministros"}
       isLoading={isLoading}
-      stickyOffset="var(--data-table-sticky-offset)"
-      className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
       minWidth="100%"
       ariaLabel="Suministros"
       emptyState={(

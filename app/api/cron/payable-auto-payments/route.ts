@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
           FROM accounts_payable ap
           JOIN organizations o ON o.id = ap.org_id
           WHERE ap.id = ${item.id} AND ap.auto_payment_enabled = TRUE
+            AND ap.status NOT IN ('PAID', 'CANCELLED')
             AND ap.auto_payment_next_date <= (NOW() AT TIME ZONE o.timezone)::date
           FOR UPDATE
         `;

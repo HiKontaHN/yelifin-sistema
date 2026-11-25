@@ -78,7 +78,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const [account] = await sql`
       UPDATE accounts_payable
-      SET status = 'CANCELLED', updated_by = ${auth.data.userId}, updated_at = NOW()
+      SET status = 'CANCELLED', auto_payment_enabled = FALSE, auto_payment_next_date = NULL,
+          updated_by = ${auth.data.userId}, updated_at = NOW()
       WHERE id = ${id} AND org_id = ${auth.data.orgId} AND status <> 'CANCELLED'
       RETURNING id
     `;

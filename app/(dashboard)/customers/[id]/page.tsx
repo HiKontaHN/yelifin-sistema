@@ -279,8 +279,6 @@ export default function CustomerDetailPage({ params }: Props) {
             recordLabel="ventas recientes"
             ariaLabel="Ventas recientes del cliente"
             minWidth={520}
-            stickyOffset="var(--data-table-sticky-offset)"
-            className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
             showFooterPagination={false}
           />
         ) : (

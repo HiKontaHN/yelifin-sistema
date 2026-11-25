@@ -489,7 +489,6 @@ export default function WarehousesPage() {
               recordLabel="transferencias"
               ariaLabel="Transferencias recientes"
               minWidth={760}
-              stickyOffset="0px"
               showFooterPagination={false}
               pagination={{
                 page: transferPage,

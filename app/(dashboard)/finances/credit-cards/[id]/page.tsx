@@ -428,8 +428,6 @@ function CreditCardDetailContent({
           }}
           recordLabel={visibleTxns.length === 1 ? "movimiento" : "movimientos"}
           isLoading={loadingTxns || isSearching}
-          stickyOffset="var(--data-table-sticky-offset)"
-          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
           minWidth={850}
           ariaLabel="Movimientos de la tarjeta"
           emptyState={

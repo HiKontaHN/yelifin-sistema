@@ -20,6 +20,9 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { useAccounts } from "@/hooks/swr/use-accounts";
+import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { getPaymentTarget, ReceivablesPayablesPaymentDialog } from "@/components/finances/receivables-payables-payment-dialog";
+import { ReceivablesPayablesOrigin } from "@/components/finances/receivables-payables-origin";
 import { formatCalendarDate } from "@/lib/date-utils";
 
 type Props = { type: "receivable" | "payable"; id: number };
@@ -41,6 +44,7 @@ export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   const { format } = useCurrency();
   const { mutate: mutateCache } = useSWRConfig();
   const [search, setSearch] = useState("");
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [autoOpen, setAutoOpen] = useState(false);
@@ -49,7 +53,9 @@ export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   const [autoDay, setAutoDay] = useState("");
   const [isSavingAuto, setIsSavingAuto] = useState(false);
   const { accounts } = useAccounts();
-  const { data, error, isLoading, mutate: mutateDetail } = useSWR(`/api/accounts-${type === "receivable" ? "receivable" : "payable"}/${id}`, fetcher);
+  const endpoint = `/api/accounts-${type}`;
+  const { data, error, isLoading, mutate: mutateDetail } = useSWR(`${endpoint}/${id}`, fetcher);
+  const { can_delete: canDelete, can_edit: canEdit } = useModulePermissions("FINANCES", "ACCOUNTS");
   const isReceivable = type === "receivable";
   const Icon = isReceivable ? ArrowDownToLine : ArrowUpFromLine;
   const payments = useMemo(() => (data?.payments ?? []).filter((item: any) => `${item.notes ?? ""} ${item.account_name ?? ""} ${item.amount}`.toLowerCase().includes(search.toLowerCase())), [data?.payments, search]);
@@ -68,17 +74,25 @@ export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   const paid = Number(account.paid_amount ?? 0);
   const balance = Number(account.outstanding_amount ?? 0);
   const name = isReceivable ? account.customer_name : account.entity_name;
+  const paymentTarget = getPaymentTarget(type, account);
+  const isCancelled = account.status === "CANCELLED";
+  const canCancelAccount = canDelete && !isCancelled;
+  const canConfigureAuto = !isReceivable && canEdit && !isCancelled;
+  const accountLabel = isReceivable ? "cuenta por cobrar" : "cuenta por pagar";
   const deleteAccount = async () => {
+    if (isDeleting) return;
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/accounts-payable/${id}`, { method: "DELETE" });
+      const response = await fetch(`${endpoint}/${id}`, { method: "DELETE" });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "No se pudo eliminar la cuenta");
-      toast.success("Cuenta por pagar eliminada");
-      await mutateCache((key) => typeof key === "string" && (key === "/api/accounts-payable" || key.startsWith("/api/accounts-payable?")), undefined, { revalidate: true });
-      router.push("/finances/receivables-payables/pagar");
-    } catch (error: any) {
-      toast.error(error.message ?? "No se pudo eliminar la cuenta");
+      if (!response.ok) throw new Error(body.error ?? "No se pudo cancelar la cuenta");
+      toast.success("Cuenta cancelada");
+      await Promise.allSettled([
+        mutateDetail(),
+        mutateCache((key) => typeof key === "string" && (key === endpoint || key.startsWith(`${endpoint}?`)), undefined, { revalidate: true }),
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cancelar la cuenta");
     } finally {
       setIsDeleting(false);
       setDeleteOpen(false);
@@ -108,17 +122,77 @@ export function ReceivablesPayablesAccountDetail({ type, id }: Props) {
   };
   return (
     <div className="space-y-6 pb-24">
-      <div className="flex items-start gap-3"><Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Volver"><ArrowLeft className="size-5" /></Button><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h1 className="truncate text-2xl font-semibold">{name}</h1><p className="truncate text-sm text-muted-foreground">{account.description}</p></div>{account.status === "PAID" ? <Badge className="shrink-0 gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge> : <Badge className="shrink-0 gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />Pendiente</Badge>}</div></div></div>
-      <SummaryStats ariaLabel="Resumen de la cuenta" columns="three" items={[{ label: "Total", icon: Icon, value: format(total) }, { label: "Pagado", icon: CheckCircle, value: format(paid), valueClassName: "text-green-600" }, { label: "Saldo", icon: Clock, value: format(balance), valueClassName: "text-amber-600" }]} />
-      {!isReceivable && <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" className="gap-2" onClick={openAutoPayment}>Configurar abono automático</Button><Button type="button" variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="size-4" />Eliminar cuenta</Button></div>}
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Volver"><ArrowLeft className="size-5" /></Button>
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+          <div className="min-w-0"><h1 className="truncate text-2xl font-semibold">{name}</h1><p className="truncate text-sm text-muted-foreground">{account.description}</p></div>
+          {isCancelled ? (
+            <Badge variant="outline" className="shrink-0">Cancelada</Badge>
+          ) : account.status === "PAID" ? (
+            <Badge className="shrink-0 gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge>
+          ) : (
+            <Badge className="shrink-0 gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />Pendiente</Badge>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Origen</span>
+        <ReceivablesPayablesOrigin account={account} showReference />
+      </div>
+      <SummaryStats ariaLabel="Resumen de la cuenta" columns="three" items={[{ label: "Total", icon: Icon, value: format(total) }, { label: "Pagado", icon: CheckCircle, value: format(paid), valueClassName: "text-green-600" }, { label: isCancelled ? "Saldo al cancelar" : "Saldo", icon: Clock, value: format(balance), valueClassName: isCancelled ? "text-muted-foreground" : "text-amber-600" }]} />
+      {(paymentTarget || canConfigureAuto || canCancelAccount) && (
+        <div className="flex flex-wrap gap-2">
+          {paymentTarget && <Button type="button" onClick={() => setPaymentOpen(true)}>Registrar {isReceivable ? "cobro" : "pago"}</Button>}
+          {canConfigureAuto && <Button type="button" variant="outline" className="gap-2" onClick={openAutoPayment}>Configurar abono automático</Button>}
+          {canCancelAccount && <Button type="button" variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="size-4" />Eliminar cuenta</Button>}
+        </div>
+      )}
       <div className="grid gap-x-8 gap-y-4 border-y py-4 text-sm sm:grid-cols-2 lg:grid-cols-3"><div><p className="text-xs text-muted-foreground">{isReceivable ? "Persona" : "Entidad"}</p><p>{name}</p></div><div><p className="text-xs text-muted-foreground">Fecha de inicio</p><p>{date(account.start_date)}</p></div><div><p className="text-xs text-muted-foreground">Vencimiento</p><p>{date(account.due_date)}</p></div>{!isReceivable && <><div><p className="text-xs text-muted-foreground">Tipo</p><p>{accountTypeLabels[account.account_type] ?? account.account_type}</p></div><div><p className="text-xs text-muted-foreground">Frecuencia</p><p>{frequencyLabels[account.payment_frequency] ?? "—"}</p></div><div><p className="text-xs text-muted-foreground">Plazo</p><p>{account.term_count} {termUnitLabels[account.term_unit] ?? ""}</p></div><div><p className="text-xs text-muted-foreground">Interés</p><p>{Number(account.interest_rate ?? 0)}% · {interestPeriodLabels[account.interest_period] ?? "—"}</p></div><div><p className="text-xs text-muted-foreground">Abono automático</p><p>{account.auto_payment_enabled ? `${account.auto_payment_account_name ?? "Cuenta"} · Día ${account.auto_payment_day ?? "—"}` : "Desactivado"}</p></div></>}</div>
       {!isReceivable && <Card><CardHeader><CardTitle className="text-base">Cuotas</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="px-2 py-2">Cuota</th><th className="px-2 py-2">Vencimiento</th><th className="px-2 py-2">Monto</th><th className="px-2 py-2">Estado</th></tr></thead><tbody>{(data.installments ?? []).map((item: any) => <tr key={item.id} className="border-b last:border-0"><td className="px-2 py-2">{item.installment_number}</td><td className="px-2 py-2">{date(item.due_date)}</td><td className="px-2 py-2">{format(Number(item.amount))}</td><td className="px-2 py-2">{item.status}</td></tr>)}</tbody></table></div></CardContent></Card>}
-      <div className="space-y-3"><div><h2 className="text-lg font-semibold">Transacciones y pagos</h2><p className="text-sm text-muted-foreground">Movimientos asociados a esta cuenta.</p></div><SearchBar value={search} onChange={setSearch} placeholder="Buscar por detalle de la transacción..." /><DataTableTimeSection columns={paymentColumns} data={payments} getRowKey={(item) => item.id} emptyState="No hay pagos registrados" recordLabel={payments.length === 1 ? "transacción" : "transacciones"} ariaLabel="Transacciones de la cuenta" minWidth={700} stickyOffset="var(--data-table-sticky-offset)" className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]" showFooterPagination={false} /></div>
-      <ConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} title="¿Eliminar cuenta por pagar?" description="La cuenta se cancelará y dejará de aparecer en el listado. Sus pagos y transacciones históricas se conservarán." confirmLabel="Eliminar cuenta" variant="danger" onConfirm={deleteAccount} />
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Transacciones y pagos</h2>
+          <p className="text-sm text-muted-foreground">Movimientos asociados a esta cuenta.</p>
+        </div>
+        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por detalle de la transacción..." />
+        <DataTableTimeSection
+          columns={paymentColumns}
+          data={payments}
+          getRowKey={(item) => item.id}
+          emptyState="No hay pagos registrados"
+          recordLabel={payments.length === 1 ? "transacción" : "transacciones"}
+          ariaLabel="Transacciones de la cuenta"
+          minWidth={700}
+          showFooterPagination={false}
+          renderMobileRow={(item) => (
+            <Card className="gap-1.5 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 wrap-break-word text-sm font-medium">{item.notes || (isReceivable ? "Cobro" : "Pago")}</p>
+                <p className="shrink-0 text-sm font-bold text-green-700 dark:text-green-400">{format(Number(item.amount))}</p>
+              </div>
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {item.account_name && <p className="min-w-0 wrap-break-word">{item.account_name}</p>}
+                <p className="ml-auto">{date(item.payment_date ?? item.paid_at)}</p>
+              </div>
+            </Card>
+          )}
+        />
+      </div>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`¿Eliminar ${accountLabel}?`}
+        description="La cuenta quedará cancelada y saldrá del listado. Se conservarán el historial de abonos, las transacciones vinculadas y los saldos de las cuentas financieras."
+        confirmLabel="Eliminar cuenta"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={deleteAccount}
+      />
       <ResponsiveModal open={autoOpen} onOpenChange={setAutoOpen} title="Abono automático" footer={<><Button type="button" variant="outline" onClick={() => setAutoOpen(false)} disabled={isSavingAuto} className="flex-1 h-11">Cancelar</Button><Button type="button" onClick={saveAutoPayment} disabled={isSavingAuto || (autoEnabled && (!autoAccountId || !autoDay))} loading={isSavingAuto} className="flex-1 h-11">Guardar configuración</Button></>}>
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium"><Checkbox checked={autoEnabled} onCheckedChange={(checked) => setAutoEnabled(checked === true)} />Activar abonos automáticos</label>
         {autoEnabled && <><div className="space-y-1.5"><Label>Cuenta de débito</Label><SearchableSelect value={autoAccountId} onValueChange={setAutoAccountId} items={accounts.map((account: any) => ({ value: String(account.id), label: account.name }))} placeholder="Seleccionar cuenta..." searchPlaceholder="Buscar cuenta..." className="h-11 w-full" /></div><div className="space-y-1.5"><Label>Día del mes</Label><Input type="number" min="1" max="31" step="1" value={autoDay} onChange={(event) => setAutoDay(event.target.value)} placeholder="Ej: 15" className="h-11" /></div><p className="text-xs text-muted-foreground">Se usará la cuota configurada y la frecuencia de esta cuenta.</p></>}
       </ResponsiveModal>
+      {paymentOpen && paymentTarget && <ReceivablesPayablesPaymentDialog target={paymentTarget} onClose={() => setPaymentOpen(false)} />}
     </div>
   );
 }

@@ -117,8 +117,7 @@ export function DashboardLayoutClient({
               </div>
             </header>
 
-            {/* Tables cancel this scroll container's padding, not the navbar height. */}
-            <main className={`min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 [--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem] md:[&_h1]:hidden ${hasSalesPanels ? "lg:flex lg:flex-col lg:overflow-hidden" : ""}`}>
+            <main className={`min-h-0 min-w-0 flex-1 overflow-auto p-4 lg:p-6 md:[&_h1]:hidden ${hasSalesPanels ? "lg:flex lg:flex-col lg:overflow-hidden" : ""}`}>
               <SubscriptionStatusBanner subscription={user?.subscription} org={user?.org} />
               {children}
             </main>

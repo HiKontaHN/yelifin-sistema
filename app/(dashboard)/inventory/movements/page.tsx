@@ -570,8 +570,6 @@ function MovementsPageContent() {
           recordLabel={total === 1 ? "movimiento" : "movimientos"}
           ariaLabel="Movimientos de inventario"
           minWidth={showCosts && showProfit ? 860 : showCosts || showProfit ? 750 : 640}
-          stickyOffset="var(--data-table-sticky-offset)"
-          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
           showFooterPagination={false}
           pagination={{
             page,

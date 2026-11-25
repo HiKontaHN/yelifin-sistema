@@ -648,8 +648,6 @@ export default function SalesPage() {
         isLoading={isLoading}
         emptyState={<div className="flex flex-col items-center gap-3"><Receipt className="size-10 text-muted-foreground/40" /><span>No se encontraron ventas en este período</span></div>}
         minWidth={showProfit ? 820 : 730}
-        stickyOffset="var(--data-table-sticky-offset)"
-        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
       />
 
       <Fab actions={[{ label: "Nueva venta", icon: ShoppingCart, onClick: () => push("/sales/new") }]} />

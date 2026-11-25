@@ -7,6 +7,8 @@ import useSWR from "swr";
 import { toast } from "sonner";
 import { ArrowDownToLine, ArrowUpFromLine, Building2, CheckCircle, Clock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getPaymentTarget, ReceivablesPayablesPaymentDialog, type PaymentTarget } from "@/components/finances/receivables-payables-payment-dialog";
+import { ReceivablesPayablesOrigin } from "@/components/finances/receivables-payables-origin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,6 +23,7 @@ import { useAccounts } from "@/hooks/swr/use-accounts";
 import { useCurrency } from "@/hooks/swr/use-currency";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 import { todayInTimeZone } from "@/lib/date-utils";
+import { accountStatusFilters, isPendingReceivablePayable, matchesAccountStatus, type AccountStatusFilter } from "@/lib/receivables-payables-status";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -31,9 +34,12 @@ const fetcher = async (url: string) => {
 
 type AccountTab = "receivable" | "payable";
 type ViewMode = "accounts" | "owners";
-type PaymentTarget = { type: AccountTab; id: number; balance: number; principalBalance?: number } | null;
 type OwnerSummary = { id: string; name: string; accounts: any[]; total: number; paid: number; balance: number; active: number };
 
+const isPending = (row: { status: string }) => isPendingReceivablePayable(row.status);
+const getOwnerId = (tab: AccountTab, row: any) => tab === "payable"
+  ? `entity-${row.entity_id}`
+  : row.customer_id ? `customer-${row.customer_id}` : `person-${row.person_id}`;
 
 export default function ReceivablesPayablesPage({ initialTab = "receivable" }: { initialTab?: AccountTab }) {
   const router = useRouter();
@@ -42,14 +48,11 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const timezone = useTimezone();
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const [viewMode, setViewMode] = useState<ViewMode>("accounts");
+  const [statusFilter, setStatusFilter] = useState<AccountStatusFilter>("pending");
   const [message, setMessage] = useState("");
-  const [target, setTarget] = useState<PaymentTarget>(null);
+  const [target, setTarget] = useState<PaymentTarget | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentAccount, setPaymentAccount] = useState("");
-  const [paymentType, setPaymentType] = useState("INSTALLMENT");
   const [isCreating, setIsCreating] = useState(false);
-  const [isPaying, setIsPaying] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [personId, setPersonId] = useState("");
@@ -69,6 +72,11 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
 
   const receivables = useSWR<{ data: any[] }>("/api/accounts-receivable", fetcher);
   const payables = useSWR<{ data: any[] }>("/api/accounts-payable", fetcher);
+  const includeCancelled = statusFilter === "all" || statusFilter === "cancelled";
+  const accountHistory = useSWR<{ data: any[] }>(
+    includeCancelled ? `/api/accounts-${tab}?include_cancelled=true` : null,
+    fetcher,
+  );
   const entities = useSWR<{ data: any[] }>("/api/financial-entities", fetcher);
   const people = useSWR<{ data: any[] }>(createOpen && tab === "receivable" ? "/api/people?limit=500" : null, fetcher);
   const { accounts } = useAccounts();
@@ -130,7 +138,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     router.replace(pathname);
   }, [newAccountType, pathname, router]);
 
-  useEffect(() => setPage(1), [tab, viewMode]);
+  useEffect(() => setPage(1), [tab, viewMode, statusFilter]);
 
   const createAccount = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -160,7 +168,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
       form.reset();
       resetCreateForm();
       setCreateOpen(false);
-      await Promise.all([receivables.mutate(), payables.mutate()]);
+      await Promise.all([receivables.mutate(), payables.mutate(), accountHistory.mutate()]);
       setMessage("Cuenta registrada");
       toast.success("Cuenta registrada");
     } catch (error: any) {
@@ -171,34 +179,25 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     }
   };
 
-  const registerPayment = async () => {
-    if (!target) return;
-    setIsPaying(true);
-    try {
-      await submit(`/api/accounts-${target.type}/${target.id}/payments`, {
-        amount: Number(paymentAmount),
-        account_id: Number(paymentAccount),
-        payment_type: target.type === "payable" ? paymentType : "INSTALLMENT",
-      });
-      const completedType = target.type;
-      setTarget(null);
-      setPaymentAmount("");
-      setPaymentAccount("");
-      setPaymentType("INSTALLMENT");
-      await Promise.all([receivables.mutate(), payables.mutate()]);
-      setMessage(completedType === "receivable" ? "Cobro registrado" : "Pago registrado");
-      toast.success(completedType === "receivable" ? "Cobro registrado" : "Pago registrado");
-    } catch (error: any) {
-      setMessage(error.message);
-      toast.error(error.message || "No se pudo registrar el pago");
-    } finally {
-      setIsPaying(false);
-    }
+  const renderPaymentButton = (row: any) => {
+    const paymentTarget = getPaymentTarget(tab, row);
+    if (!paymentTarget) return null;
+    return (
+      <Button type="button" size="sm" variant="outline" onClick={(event) => {
+        event.stopPropagation();
+        setTarget(paymentTarget);
+      }}>
+        Registrar {tab === "receivable" ? "cobro" : "pago"}
+      </Button>
+    );
   };
 
-  const rows = tab === "receivable" ? (receivables.data?.data ?? []) : (payables.data?.data ?? []);
+  const allRows = (tab === "receivable" ? receivables.data?.data : payables.data?.data) ?? [];
+  const sourceRows = includeCancelled ? accountHistory.data?.data ?? [] : allRows;
+  const rows = useMemo(() => sourceRows.filter((row) => matchesAccountStatus(row.status, statusFilter)), [sourceRows, statusFilter]);
   const selectedId = tab === "receivable" ? personId : entityId;
   const isLoadingRows = tab === "receivable" ? receivables.isLoading : payables.isLoading;
+  const isLoadingTable = includeCancelled ? accountHistory.isLoading : isLoadingRows;
   const getName = (row: any) => tab === "receivable" ? row.customer_name : row.entity_name;
   const getPaid = (row: any) => Number(row.paid_amount ?? 0);
   const getBalance = (row: any) => Number(row.outstanding_amount ?? 0);
@@ -206,32 +205,42 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const ownerRows = useMemo<OwnerSummary[]>(() => {
     const grouped = new Map<string, OwnerSummary>();
     rows.forEach((row: any) => {
-      const ownerId = tab === "receivable"
-        ? row.customer_id ? `customer-${row.customer_id}` : `person-${row.person_id}`
-        : `entity-${row.entity_id}`;
+      const ownerId = getOwnerId(tab, row);
       const current: OwnerSummary = grouped.get(ownerId) ?? { id: ownerId, name: getName(row) || "Sin nombre", accounts: [], total: 0, paid: 0, balance: 0, active: 0 };
       current.accounts.push(row);
       current.total += getTotal(row);
       current.paid += getPaid(row);
-      current.balance += getBalance(row);
-      if (getBalance(row) > 0) current.active += 1;
+      if (row.status !== "CANCELLED") current.balance += getBalance(row);
+      if (isPending(row)) current.active += 1;
       grouped.set(ownerId, current);
     });
     return Array.from(grouped.values()).sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name, "es"));
   }, [rows, tab]);
-  const totals = useMemo(() => rows.reduce((result, row) => ({
+  const totals = useMemo(() => allRows.reduce((result, row) => ({
     total: result.total + getTotal(row),
     paid: result.paid + getPaid(row),
     balance: result.balance + getBalance(row),
-  }), { total: 0, paid: 0, balance: 0 }), [rows, tab]);
+    pending: result.pending + Number(isPending(row)),
+  }), { total: 0, paid: 0, balance: 0, pending: 0 }), [allRows]);
+  const ownerCount = new Set(allRows.map((row) => getOwnerId(tab, row))).size;
   const displayedRows = viewMode === "accounts" ? rows : ownerRows;
-  const pagedRows = displayedRows.slice((page - 1) * pageSize, page * pageSize);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(displayedRows.length / pageSize)));
+  const pagedRows = displayedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => {
+    if (!isLoadingTable && currentPage < page) setPage(currentPage);
+  }, [currentPage, isLoadingTable, page]);
   const ownerDetailPath = (owner: OwnerSummary) => tab === "receivable"
     ? `/finances/receivables-payables/cobrar/persona/${owner.id}`
     : `/finances/receivables-payables/pagar/entidad/${owner.id.replace(/^entity-/, "")}`;
-  const statusBadge = (row: any) => row.status === "PAID"
-    ? <Badge className="gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge>
-    : <Badge className="gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />Pendiente</Badge>;
+  const statusBadge = (row: any) => {
+    if (row.status === "PAID") return <Badge className="gap-1 border-green-200 bg-green-100 text-green-700" variant="outline"><CheckCircle className="size-3" />Pagada</Badge>;
+    if (row.status === "CANCELLED") return <Badge variant="outline">Cancelada</Badge>;
+    const label = row.status === "PARTIAL" ? "Parcial" : row.status === "OVERDUE" ? "Vencida" : "Pendiente";
+    return <Badge className="gap-1 border-amber-200 bg-amber-100 text-amber-700" variant="outline"><Clock className="size-3" />{label}</Badge>;
+  };
+  const renderBalance = (row: any) => row.status === "CANCELLED"
+    ? <div className="text-muted-foreground"><p>{format(getBalance(row))}</p><p className="text-xs">al cancelar</p></div>
+    : <span className="text-amber-700 dark:text-amber-400">{format(getBalance(row))}</span>;
 
   const accountColumns: DataTableTimeSectionColumn<any>[] = [
     {
@@ -240,7 +249,12 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
     },
     {
       id: "description", header: "Descripción", width: "clamp(12rem, 24vw, 20rem)",
-      cell: (row) => <span className="block truncate" title={row.description}>{row.description}</span>,
+      cell: (row) => (
+        <div className="space-y-1">
+          <span className="block truncate" title={row.description}>{row.description}</span>
+          <ReceivablesPayablesOrigin account={row} />
+        </div>
+      ),
     },
     { id: "status", header: "Estado", width: 125, cell: statusBadge },
     {
@@ -252,19 +266,17 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
       cell: (row) => format(getPaid(row)),
     },
     {
-      id: "balance", header: "Saldo", width: 110, align: "right", className: "font-medium text-amber-700",
-      cell: (row) => format(getBalance(row)),
+      id: "balance", header: "Saldo", width: 110, align: "right", className: "font-medium",
+      cell: renderBalance,
     },
     {
       id: "actions", header: <span className="sr-only">Acciones</span>, width: 150, align: "right", stopRowClick: true,
-      cell: (row) => getBalance(row) > 0
-        ? <Button size="sm" variant="outline" onClick={() => setTarget({ type: tab, id: row.id, balance: getBalance(row), principalBalance: Number(row.principal_outstanding ?? row.original_amount ?? 0) })}>Registrar {tab === "receivable" ? "cobro" : "pago"}</Button>
-        : null,
+      cell: renderPaymentButton,
     },
   ];
 
   const ownerColumns: DataTableTimeSectionColumn<OwnerSummary>[] = [
-    { id: "name", header: tab === "receivable" ? "Persona" : "Entidad", width: "clamp(12rem, 28vw, 22rem)", cell: (owner) => <div><p className="font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} cuenta{owner.accounts.length === 1 ? "" : "s"} en el historial</p></div> },
+    { id: "name", header: tab === "receivable" ? "Persona" : "Entidad", width: "clamp(12rem, 28vw, 22rem)", cell: (owner) => <div><p className="font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} cuenta{owner.accounts.length === 1 ? "" : "s"}</p></div> },
     { id: "accounts", header: "Pendientes", width: 105, align: "right", cell: (owner) => owner.active },
     { id: "total", header: "Total", width: 120, align: "right", className: "font-medium", cell: (owner) => format(owner.total) },
     { id: "paid", header: tab === "receivable" ? "Cobrado" : "Pagado", width: 120, align: "right", className: "font-medium text-green-700", cell: (owner) => format(owner.paid) },
@@ -281,12 +293,13 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
               {statusBadge(row)}
             </div>
             <p className="truncate text-sm text-muted-foreground">{row.description}</p>
+            <div className="mt-1"><ReceivablesPayablesOrigin account={row} /></div>
           </div>
-          <p className="shrink-0 font-semibold">{format(getBalance(row))}</p>
+          <div className="shrink-0 text-right font-semibold">{renderBalance(row)}</div>
         </div>
         <div className="mt-3 flex items-end justify-between gap-3 text-xs text-muted-foreground">
           <div><span>Total {format(getTotal(row))}</span><span className="ml-3 text-green-700">Pagado {format(getPaid(row))}</span></div>
-          {getBalance(row) > 0 && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setTarget({ type: tab, id: row.id, balance: getBalance(row), principalBalance: Number(row.principal_outstanding ?? row.original_amount ?? 0) }); }}>Registrar {tab === "receivable" ? "cobro" : "pago"}</Button>}
+          {renderPaymentButton(row)}
         </div>
       </CardContent>
     </Card>
@@ -295,7 +308,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
   const renderMobileOwner = (owner: OwnerSummary) => (
     <Card className="cursor-pointer pt-1 pb-1" onClick={() => router.push(ownerDetailPath(owner))}>
       <CardContent className="px-4 py-3">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} en historial · {owner.active} pendiente{owner.active === 1 ? "" : "s"}</p></div><p className="shrink-0 font-semibold text-amber-700">{format(owner.balance)}</p></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-medium">{owner.name}</p><p className="text-xs text-muted-foreground">{owner.accounts.length} cuenta{owner.accounts.length === 1 ? "" : "s"} · {owner.active} pendiente{owner.active === 1 ? "" : "s"}</p></div><p className="shrink-0 font-semibold text-amber-700">{format(owner.balance)}</p></div>
         <div className="mt-3 text-xs text-muted-foreground"><span>Total {format(owner.total)}</span><span className="ml-3 text-green-700">{tab === "receivable" ? "Cobrado" : "Pagado"} {format(owner.paid)}</span></div>
       </CardContent>
     </Card>
@@ -314,15 +327,15 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         ariaLabel={tab === "receivable" ? "Resumen de cuentas por cobrar" : "Resumen de cuentas por pagar"}
         isLoading={isLoadingRows}
         items={[
-          { label: tab === "receivable" ? "Total por cobrar" : "Total por pagar", icon: tab === "receivable" ? ArrowDownToLine : ArrowUpFromLine, value: format(totals.total), detail: `${rows.length} cuenta${rows.length === 1 ? "" : "s"} en el historial` },
+          { label: tab === "receivable" ? "Total por cobrar" : "Total por pagar", icon: tab === "receivable" ? ArrowDownToLine : ArrowUpFromLine, value: format(totals.total), detail: `${allRows.length} cuenta${allRows.length === 1 ? "" : "s"} en el historial` },
           { label: tab === "receivable" ? "Cobrado" : "Pagado", icon: CheckCircle, value: format(totals.paid), valueClassName: "text-green-600 dark:text-green-400", detail: "pagos registrados" },
-          { label: "Saldo pendiente", icon: Clock, value: format(totals.balance), valueClassName: "text-amber-600 dark:text-amber-400", detail: `${rows.filter((row: any) => getBalance(row) > 0).length} cuenta${rows.filter((row: any) => getBalance(row) > 0).length === 1 ? "" : "s"} pendiente${rows.filter((row: any) => getBalance(row) > 0).length === 1 ? "" : "s"}` },
-          { label: tab === "receivable" ? "Personas" : "Entidades", icon: tab === "receivable" ? Users : Building2, value: ownerRows.length, detail: "con cuentas actuales o históricas" },
+          { label: "Saldo pendiente", icon: Clock, value: format(totals.balance), valueClassName: "text-amber-600 dark:text-amber-400", detail: `${totals.pending} cuenta${totals.pending === 1 ? " pendiente" : "s pendientes"}` },
+          { label: tab === "receivable" ? "Personas" : "Entidades", icon: tab === "receivable" ? Users : Building2, value: ownerCount, detail: "con cuentas actuales o históricas" },
         ]}
       />
 
       <div className="flex items-center justify-between gap-3">
-        <div><p className="text-sm font-semibold">{viewMode === "accounts" ? "Todas las cuentas" : tab === "receivable" ? "Por persona" : "Por entidad"}</p><p className="text-xs text-muted-foreground">{viewMode === "accounts" ? "Consulta cada cuenta por separado." : "Consulta el historial completo de cada responsable."}</p></div>
+        <div><p className="text-sm font-semibold">{viewMode === "accounts" ? "Cuentas" : tab === "receivable" ? "Por persona" : "Por entidad"}</p><p className="text-xs text-muted-foreground">{viewMode === "accounts" ? "Consulta cada cuenta por separado." : "Abre una fila para consultar el historial completo."}</p></div>
         <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
           <TabsList className="max-w-full gap-1.5 overflow-x-auto rounded-xl border bg-card [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsTrigger value="accounts" className="rounded-xl border-0 px-4 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-primary/15 hover:text-primary data-[state=active]:bg-primary/15 data-[state=active]:font-medium data-[state=active]:text-primary">Cuentas</TabsTrigger>
@@ -331,21 +344,27 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         </Tabs>
       </div>
 
+      <div role="group" aria-label="Filtrar por estado de cuenta" className="flex flex-wrap gap-2">
+        {accountStatusFilters.map(({ value, label }) => (
+          <Button key={value} type="button" size="sm" variant={statusFilter === value ? "default" : "outline"} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>
+            {label}
+          </Button>
+        ))}
+      </div>
+
       <DataTableTimeSection
         columns={viewMode === "accounts" ? accountColumns : ownerColumns}
         data={pagedRows}
         getRowKey={(row: any) => row.id}
         renderMobileRow={viewMode === "accounts" ? renderMobileAccount : renderMobileOwner}
         onRowClick={(row: any) => viewMode === "accounts" ? router.push(`/finances/receivables-payables/${tab === "receivable" ? "cobrar" : "pagar"}/${row.id}`) : router.push(ownerDetailPath(row))}
-        isLoading={isLoadingRows}
-        emptyState={viewMode === "accounts" ? `No hay cuentas ${tab === "receivable" ? "por cobrar" : "por pagar"} registradas` : `No hay ${tab === "receivable" ? "personas" : "entidades"} con historial`}
+        isLoading={isLoadingTable}
+        emptyState={(includeCancelled ? accountHistory.error?.message : undefined) ?? accountStatusFilters.find(({ value }) => value === statusFilter)?.empty}
         recordLabel={viewMode === "accounts" ? (tab === "receivable" ? "cuentas por cobrar" : "cuentas por pagar") : (tab === "receivable" ? "personas" : "entidades")}
         ariaLabel={viewMode === "accounts" ? (tab === "receivable" ? "Cuentas por cobrar" : "Cuentas por pagar") : (tab === "receivable" ? "Personas con cuentas por cobrar" : "Entidades con cuentas por pagar")}
         minWidth={900}
-        stickyOffset="var(--data-table-sticky-offset)"
-        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
         showFooterPagination={false}
-        pagination={{ page, pageSize, total: displayedRows.length, onPageChange: setPage, onPageSizeChange: (size) => { setPage(1); setPageSize(size); } }}
+        pagination={{ page: currentPage, pageSize, total: displayedRows.length, onPageChange: setPage, onPageSizeChange: (size) => { setPage(1); setPageSize(size); } }}
       />
 
       <Fab actions={[
@@ -398,18 +417,7 @@ export default function ReceivablesPayablesPage({ initialTab = "receivable" }: {
         {tab === "receivable" && <div className="space-y-1.5"><Label>Fecha de vencimiento <span className="text-xs text-muted-foreground">(opcional)</span></Label><Input name="due_date" type="date" className="h-11" /></div>}
       </ResponsiveModal>
 
-      <ResponsiveModal
-        open={Boolean(target)}
-        onOpenChange={(open) => { if (!open) { setTarget(null); setPaymentAmount(""); setPaymentAccount(""); setPaymentType("INSTALLMENT"); } }}
-        title={`Registrar ${target?.type === "receivable" ? "cobro" : "pago"}`}
-        icon={target?.type === "receivable" ? ArrowDownToLine : ArrowUpFromLine}
-        footer={<><Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={isPaying} className="flex-1 h-11">Cancelar</Button><Button type="button" onClick={registerPayment} disabled={!paymentAmount || !paymentAccount} loading={isPaying} className="flex-1 h-11">Registrar</Button></>}
-      >
-        {target?.type === "payable" && <div className="space-y-1.5"><Label>Tipo de pago</Label><SearchableSelect value={paymentType} onValueChange={setPaymentType} items={[{ value: "INSTALLMENT", label: "Pago de cuota" }, { value: "CAPITAL", label: "Pago a capital" }]} placeholder="Seleccionar tipo..." searchPlaceholder="Buscar tipo..." className="h-11 w-full" /></div>}
-        <div className="space-y-1.5"><Label>Monto <span className="text-destructive text-xs">*</span></Label><Input type="number" min="0.01" max={target?.type === "payable" && paymentType === "CAPITAL" ? target.principalBalance : target?.balance} step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="h-11" /></div>
-        <div className="space-y-1.5"><Label>Cuenta financiera <span className="text-destructive text-xs">*</span></Label><SearchableSelect value={paymentAccount} onValueChange={setPaymentAccount} items={accounts.map((a: any) => ({ value: a.id.toString(), label: a.name }))} placeholder="Seleccionar..." searchPlaceholder="Buscar cuenta..." className="h-11 w-full" /></div>
-        {target && <p className="text-sm text-muted-foreground">{target.type === "payable" && paymentType === "CAPITAL" ? <>Capital pendiente: <strong>{format(target.principalBalance ?? 0)}</strong></> : <>Saldo pendiente: <strong>{format(target.balance)}</strong></>}</p>}
-      </ResponsiveModal>
+      {target && <ReceivablesPayablesPaymentDialog target={target} onClose={() => setTarget(null)} onMessage={setMessage} />}
 
     </div>
   );

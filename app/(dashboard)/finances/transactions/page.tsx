@@ -948,8 +948,6 @@ export default function TransactionsPage() {
         recordLabel={totalRows === 1 ? "transacción" : "transacciones"}
         ariaLabel="Transacciones"
         minWidth={930}
-        stickyOffset="var(--data-table-sticky-offset)"
-        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
         showFooterPagination={false}
         pagination={{
           page,

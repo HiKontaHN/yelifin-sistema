@@ -48,6 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         SELECT id, is_active FROM accounts WHERE id = ${accountId} AND org_id = ${auth.data.orgId} FOR UPDATE
       `;
       if (!receivable) return { error: "Cuenta por cobrar no encontrada", status: 404 } as const;
+      if (receivable.status === "CANCELLED") return { error: "La cuenta por cobrar está cancelada", status: 400 } as const;
       if (!account?.is_active) return { error: "Cuenta financiera no encontrada", status: 404 } as const;
       if (amount > Number(receivable.outstanding_amount)) return { error: "El pago supera el saldo pendiente", status: 400 } as const;
 

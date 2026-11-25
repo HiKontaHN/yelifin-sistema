@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
   const checked = await authFor(request, "canView");
   if ("response" in checked) return checked.response;
   const search = request.nextUrl.searchParams.get("search")?.trim() || null;
+  const includeCancelled = request.nextUrl.searchParams.get("include_cancelled") === "true";
   try {
     const data = await sql`
       SELECT ar.*,
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN people p ON p.id = ar.person_id
       LEFT JOIN accounts_receivable_payments arp ON arp.receivable_id = ar.id
       WHERE ar.org_id = ${checked.auth.data.orgId}
+        AND (${includeCancelled} OR ar.status <> 'CANCELLED')
         AND (${search}::text IS NULL OR COALESCE(p.name, c.name) ILIKE ${"%" + (search ?? "") + "%"} OR ar.description ILIKE ${"%" + (search ?? "") + "%"})
       GROUP BY ar.id, p.name, c.name
       ORDER BY ar.status = 'PAID', ar.due_date NULLS LAST, ar.created_at DESC

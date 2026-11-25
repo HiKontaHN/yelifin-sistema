@@ -198,8 +198,6 @@ function CustomersPageInner() {
             );
           }}
           minWidth={760}
-          stickyOffset="var(--data-table-sticky-offset)"
-          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
           showFooterPagination={false}
           pagination={{
             page,

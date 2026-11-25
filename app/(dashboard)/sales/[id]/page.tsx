@@ -119,7 +119,7 @@ export default function SaleDetailPage({ params }: Props) {
   };
 
   return (
-    <div className="mx-auto mb-5 w-full max-w-3xl space-y-6 lg:mb-0 lg:flex lg:min-h-0 lg:max-w-7xl lg:flex-1 lg:flex-col lg:gap-4 lg:space-y-0">
+    <div className="mx-auto mb-5 w-full max-w-3xl space-y-6">
 
       {/* Header */}
       <div className="shrink-0 space-y-2">
@@ -235,8 +235,8 @@ export default function SaleDetailPage({ params }: Props) {
         )}
       </div>
 
-      <div className="space-y-6 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:gap-4 lg:space-y-0">
-        <section aria-label="Información de la venta" className="min-w-0 space-y-6 lg:min-h-0 lg:space-y-4 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+      <div className="space-y-6">
+        <section aria-label="Información de la venta" className="min-w-0 space-y-6">
           {/* Aviso si está pendiente + acciones */}
           {isPending && (
             <Card className="border-amber-200 bg-amber-50/70 dark:bg-amber-950/20">
@@ -374,7 +374,7 @@ export default function SaleDetailPage({ params }: Props) {
             </Card>
           )}
         </section>
-        <section aria-label="Artículos y totales de la venta" className="min-w-0 space-y-6 lg:min-h-0 lg:space-y-4 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+        <section aria-label="Artículos y totales de la venta" className="min-w-0 space-y-6">
           {/* Productos vendidos */}
           <Card>
             <CardHeader>

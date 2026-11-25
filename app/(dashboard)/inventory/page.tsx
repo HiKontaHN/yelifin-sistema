@@ -1000,8 +1000,6 @@ export default function InventoryPage() {
           renderExpandedRows={renderExpandedInventoryRows}
           rowClassName={(item) => expanded.has(item.product_id) ? "select-none bg-muted/20" : "select-none"}
           minWidth={showCosts ? 900 : 700}
-          stickyOffset="var(--data-table-sticky-offset)"
-          className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
           showFooterPagination={false}
           pagination={{
             page,

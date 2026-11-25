@@ -181,7 +181,7 @@ export function DataTableTimeSection<T>({
       const styles = getComputedStyle(container);
       if (/(auto|scroll)/.test(styles.overflowY)) {
         const targetTop = container.getBoundingClientRect().top + container.clientTop
-          + (parseFloat(styles.paddingTop) || 0) + headerTop;
+          + headerTop;
         container.scrollTo({
           top: container.scrollTop + root.getBoundingClientRect().top - targetTop,
           behavior: "instant",
@@ -217,14 +217,27 @@ export function DataTableTimeSection<T>({
   );
 
   return (
-    <div ref={rootRef} data-slot="data-table-time-section" className={cn("space-y-0", className)} aria-busy={isLoading}>
+    <div
+      ref={rootRef}
+      data-slot="data-table-time-section"
+      className={cn("space-y-0", stickyHeader && renderMobileRow && "max-lg:overflow-y-clip", className)}
+      aria-busy={isLoading}
+    >
       <div
         ref={stickyHeaderRef}
         data-slot="data-table-sticky-header"
-        className={cn("z-10 bg-background", stickyHeader && "sticky")}
+        className={cn(
+          "z-10 bg-background",
+          stickyHeader && "sticky pt-2 lg:pt-3",
+          renderMobileRow && "max-lg:pb-2",
+        )}
         style={stickyHeader ? { top: stickyOffset } : undefined}
       >
-        <div className="rounded-t-xl border bg-card">
+        {stickyHeader && renderMobileRow && (
+          // Oculta las tarjetas que cruzan el espacio superior del contenedor al desplazarse.
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-full h-4 bg-background lg:hidden" />
+        )}
+        <div className="overflow-hidden rounded-xl border bg-card lg:rounded-b-none">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-3 sm:px-4">
             {isLoading ? <Skeleton className="h-4 w-24" /> : (
               <p className="text-sm text-muted-foreground" aria-live="polite">{total} {recordLabel}</p>
@@ -339,11 +352,11 @@ export function DataTableTimeSection<T>({
       </div>
 
       {renderMobileRow && (
-        <div className="lg:hidden">
+        <div className="isolate lg:hidden">
           {isLoading ? (
-            <div className="space-y-2 pt-3">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full rounded-xl" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full rounded-xl" />)}</div>
           ) : data.length === 0 ? (
-            <div className="rounded-b-xl border border-t-0 bg-card px-4 py-12 text-center text-sm text-muted-foreground">{emptyState}</div>
+            <div className="rounded-xl border bg-card px-4 py-12 text-center text-sm text-muted-foreground">{emptyState}</div>
           ) : groups.map((group) => (
             <section key={group.key}>
               {getGroupKey && groupHeading(group.key, group.rows)}

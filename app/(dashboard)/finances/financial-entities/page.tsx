@@ -144,8 +144,6 @@ export default function FinancialEntitiesPage() {
         recordLabel={filtered.length === 1 ? "entidad" : "entidades"}
         ariaLabel="Entidades financieras"
         minWidth={850}
-        stickyOffset="var(--data-table-sticky-offset)"
-        className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
         showFooterPagination={false}
         pagination={{ page, pageSize, total: filtered.length, onPageChange: setPage, onPageSizeChange: (size) => { setPage(1); setPageSize(size); } }}
       />

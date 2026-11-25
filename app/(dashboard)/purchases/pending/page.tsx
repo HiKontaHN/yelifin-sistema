@@ -243,8 +243,6 @@ export default function PendingPurchasesPage() {
             recordLabel={filteredPurchases.length === 1 ? "compra" : "compras"}
             ariaLabel="Compras pendientes de llegada"
             minWidth={showCosts ? 800 : 640}
-            stickyOffset="var(--data-table-sticky-offset)"
-            className="[--data-table-sticky-offset:-1rem] lg:[--data-table-sticky-offset:-1.5rem]"
             showFooterPagination={false}
             pagination={{
               page,
