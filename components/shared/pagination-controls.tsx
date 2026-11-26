@@ -1,8 +1,9 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Pagination, PaginationContent, PaginationEllipsis, PaginationItem,
-  PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
 
 interface PaginationControlsProps {
@@ -31,14 +32,12 @@ export function PaginationControls({
       <p className="text-sm text-muted-foreground order-2 sm:order-1">
         {total} {label} · página {page} de {totalPages}
       </p>
-      <Pagination className="order-1 sm:order-2 w-auto mx-0 justify-end">
-        <PaginationContent>
+      <Pagination aria-label="Paginación" className="order-1 sm:order-2 w-auto mx-0 justify-end">
+        <PaginationContent className="flex-wrap justify-center">
           <PaginationItem>
-            <PaginationPrevious
-              onClick={() => onPageChange(Math.max(1, page - 1))}
-              aria-disabled={page === 1}
-              className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-            />
+            <Button type="button" variant="ghost" size="icon" onClick={() => onPageChange(page - 1)} disabled={page === 1} aria-label="Página anterior">
+              <ChevronLeft />
+            </Button>
           </PaginationItem>
           {pages.map((p, i) =>
             p === "…" ? (
@@ -47,22 +46,23 @@ export function PaginationControls({
               </PaginationItem>
             ) : (
               <PaginationItem key={p}>
-                <PaginationLink
-                  isActive={p === page}
-                  onClick={() => onPageChange(p as number)}
-                  className="cursor-pointer"
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={p === page ? "outline" : "ghost"}
+                  aria-current={p === page ? "page" : undefined}
+                  aria-label={`Página ${p}`}
+                  onClick={() => onPageChange(p)}
                 >
                   {p}
-                </PaginationLink>
+                </Button>
               </PaginationItem>
             )
           )}
           <PaginationItem>
-            <PaginationNext
-              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-              aria-disabled={page === totalPages}
-              className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-            />
+            <Button type="button" variant="ghost" size="icon" onClick={() => onPageChange(page + 1)} disabled={page === totalPages} aria-label="Página siguiente">
+              <ChevronRight />
+            </Button>
           </PaginationItem>
         </PaginationContent>
       </Pagination>

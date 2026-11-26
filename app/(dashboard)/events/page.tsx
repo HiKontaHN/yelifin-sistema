@@ -1,17 +1,18 @@
 ﻿// app/(dashboard)/events/page.tsx
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { addMonths, startOfMonth, endOfMonth, format as formatMonth } from "date-fns";
+import { addMonths, format as formatMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryStats } from "@/components/shared/summary-stats";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { DataTableTimeSection } from "@/components/shared/data-table-time-section";
+import { SearchBar } from "@/components/shared/search-bar";
+import { DateRangePicker, DEFAULT_DATE_RANGE_PRESETS, type DateRangePreset, type DateRangeValue } from "@/components/shared/date-range-picker";
 import {
   Calendar, TrendingUp, DollarSign, BarChart3, CalendarPlus, ShoppingCart,
 } from "lucide-react";
@@ -25,10 +26,19 @@ import { EditEventDialog }     from "@/components/events/edit-event-dialog";
 import { DeleteEventDialog }   from "@/components/events/delete-event-dialog";
 import { AddExpenseDialog }    from "@/components/events/add-expense-dialog";
 import { Fab }                 from "@/components/ui/fab";
-import { todayInTimeZone, toCalendarDate } from "@/lib/date-utils";
+import { todayInTimeZone } from "@/lib/date-utils";
+import { ALL_EVENT_DATES, defaultEventDateRange, eventMonthRange, eventOverlapsDateRange, readEventDateRange } from "@/lib/event-date-range";
+import { filterEventsBySearch } from "@/lib/event-search";
 import { useTimezone } from "@/hooks/swr/use-timezone";
 
-const calendarDateObject = (value: string) => new Date(`${toCalendarDate(value)}T12:00:00`);
+const calendarDateObject = (value: string) => new Date(`${value}T12:00:00`);
+const EVENTS_PER_PAGE = 6;
+const EVENT_DATE_PRESETS: DateRangePreset[] = [
+  { id: "this-month", label: "Este mes", getRange: eventMonthRange },
+  { id: "last-month", label: "Mes pasado", getRange: (today) => eventMonthRange(addMonths(today, -1)) },
+  ...DEFAULT_DATE_RANGE_PRESETS.filter(({ id }) => id === "this-year"),
+  { id: "all", label: "Todos", getRange: () => ALL_EVENT_DATES },
+];
 
 export default function EventsPage() {
   const { push, replace }              = useRouter();
@@ -44,169 +54,162 @@ export default function EventsPage() {
   const [editEvent,    setEditEvent]    = useState<Event | null>(null);
   const [deleteEvent,  setDeleteEvent]  = useState<Event | null>(null);
   const [expenseEvent, setExpenseEvent] = useState<Event | null>(null);
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const gridRef = useRef<HTMLDivElement>(null);
 
-  // null = "sin elección manual, usar el default" (mes actual, o si no
-  // tiene eventos, el mes con registros más reciente). Restaurado desde
-  // la URL para que "volver" desde /events/[id] (que usa router.back())
-  // no resetee el mes/año que se estaba viendo.
-  const [manualYear,  setManualYear]  = useState<number | null>(() => {
-    const v = searchParams.get("y");
-    return v ? Number(v) : null;
-  });
-  const [manualMonth, setManualMonth] = useState<number | null>(() => {
-    const v = searchParams.get("m");
-    return v ? Number(v) : null;
-  }); // 0-11
+  const organizationToday = todayInTimeZone(timezone);
+  const currentMonth = useMemo(() => eventMonthRange(calendarDateObject(organizationToday)), [organizationToday]);
+  const manualRange = useMemo(() => readEventDateRange(searchParams), [searchParams]);
+  const selectedRange = useMemo(
+    () => manualRange ?? defaultEventDateRange(events, currentMonth),
+    [manualRange, events, currentMonth],
+  );
+  const showingFallback = !manualRange && selectedRange.from !== currentMonth.from;
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (manualYear !== null) params.set("y", String(manualYear));
-    if (manualMonth !== null) params.set("m", String(manualMonth));
-    const qs = params.toString();
-    replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [manualYear, manualMonth, pathname, replace]);
-
-  // ── Meses/años que sí tienen eventos (un evento "pertenece" a todos los
-  // meses con los que se solapa su rango de fechas) ─────────────────────
-  const { monthsByYear, availableYears, latestYear, latestMonth } = useMemo(() => {
-    const map = new Map<number, Set<number>>();
-    for (const e of events) {
-      let cursor = startOfMonth(calendarDateObject(e.start_date ?? e.starts_at));
-      const last = startOfMonth(calendarDateObject(e.end_date ?? e.ends_at));
-      while (cursor <= last) {
-        const y = cursor.getFullYear();
-        if (!map.has(y)) map.set(y, new Set());
-        map.get(y)!.add(cursor.getMonth());
-        cursor = addMonths(cursor, 1);
-      }
+  const changeRange = ({ from, to }: DateRangeValue) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const key of ["y", "m", "from", "to", "range", "page"]) params.delete(key);
+    if (from && to) {
+      params.set("from", from);
+      params.set("to", to);
+    } else {
+      params.set("range", "all");
     }
-    const years = Array.from(map.keys()).sort((a, b) => b - a);
-    let latestYear: number | null = null;
-    let latestMonth: number | null = null;
-    if (years.length > 0) {
-      latestYear = years[0];
-      latestMonth = Math.max(...Array.from(map.get(latestYear)!));
-    }
-    return { monthsByYear: map, availableYears: years, latestYear, latestMonth };
-  }, [events]);
-
-  const now              = calendarDateObject(todayInTimeZone(timezone));
-  const currentYear       = now.getFullYear();
-  const currentMonthIdx   = now.getMonth();
-  const currentMonthHasEvents = monthsByYear.get(currentYear)?.has(currentMonthIdx) ?? false;
-
-  const defaultYear  = currentMonthHasEvents ? currentYear     : (latestYear  ?? currentYear);
-  const defaultMonth = currentMonthHasEvents ? currentMonthIdx : (latestMonth ?? currentMonthIdx);
-
-  const selectedYear  = manualYear  ?? defaultYear;
-  const selectedMonth = manualMonth ?? defaultMonth;
-  const isDefaultView  = manualYear === null && manualMonth === null;
-  const showingFallback = isDefaultView && !currentMonthHasEvents && latestYear !== null;
-
-  const monthOptions = Array.from(monthsByYear.get(selectedYear) ?? []).sort((a, b) => a - b);
-
-  const handleYearChange = (v: string) => {
-    const y = Number(v);
-    setManualYear(y);
-    const monthsInYear = Array.from(monthsByYear.get(y) ?? []).sort((a, b) => b - a);
-    setManualMonth(monthsInYear[0] ?? 0);
+    replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
-  const handleMonthChange = (v: string) => setManualMonth(Number(v));
-  const resetToDefault    = () => { setManualYear(null); setManualMonth(null); };
-
-  // ── Eventos del mes/año seleccionado ──────────────────────────────────
-  const displayedEvents = useMemo(() => {
-    const monthStart = startOfMonth(new Date(selectedYear, selectedMonth, 1));
-    const monthEnd   = endOfMonth(monthStart);
-    return events.filter((e) => {
-      const start = calendarDateObject(e.start_date ?? e.starts_at);
-      const end   = calendarDateObject(e.end_date ?? e.ends_at);
-      return start <= monthEnd && end >= monthStart;
-    });
-  }, [events, selectedYear, selectedMonth]);
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("page");
+    if (value.trim()) url.searchParams.set("q", value.trim());
+    else url.searchParams.delete("q");
+    window.history.replaceState(null, "", url);
+  };
+  const rangeEvents = useMemo(
+    () => events.filter((event) => eventOverlapsDateRange(event, selectedRange)),
+    [events, selectedRange],
+  );
+  const displayedEvents = useMemo(() => filterEventsBySearch(rangeEvents, search), [rangeEvents, search]);
+  const requestedPage = Number(searchParams.get("page"));
+  const totalPages = Math.max(1, Math.ceil(displayedEvents.length / EVENTS_PER_PAGE));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0
+    ? Math.min(requestedPage, totalPages)
+    : 1;
+  const pageEvents = displayedEvents.slice((page - 1) * EVENTS_PER_PAGE, page * EVENTS_PER_PAGE);
+  const changePage = (nextPage: number) => {
+    if (page === nextPage) return;
+    const params = new URLSearchParams(window.location.search);
+    if (nextPage === 1) params.delete("page");
+    else params.set("page", String(nextPage));
+    const query = params.toString();
+    replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   // El evento activo (hoy cae dentro de su rango) manda al FAB, sin
   // importar qué mes/año se esté viendo — es un dato relativo a "ahora".
   const activeEvent = events.find((e) => e.status === "ACTIVE") ?? null;
 
-  // ── Stats del mes que se está viendo ──────────────────────────────────
-  const totalSales  = displayedEvents.reduce((s, e) => s + e.total_sales, 0);
-  const totalProfit = displayedEvents.reduce((s, e) => s + (e.net_profit ?? 0), 0);
-  const avgRoi      = displayedEvents.length
-    ? displayedEvents.reduce((s, e) => s + (e.roi ?? 0), 0) / displayedEvents.length
+  // ── Resumen del rango seleccionado ───────────────────────────────────
+  const totalSales  = rangeEvents.reduce((s, e) => s + e.total_sales, 0);
+  const totalProfit = rangeEvents.reduce((s, e) => s + (e.net_profit ?? 0), 0);
+  const avgRoi      = rangeEvents.length
+    ? rangeEvents.reduce((s, e) => s + (e.roi ?? 0), 0) / rangeEvents.length
     : 0;
-  const activeCount = events.filter((e) => e.status === "ACTIVE").length;
+  const activeCount = rangeEvents.filter((e) => e.status === "ACTIVE").length;
+
+  const filters = (
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <SearchBar
+          value={search}
+          onChange={changeSearch}
+          placeholder="Buscar por nombre o ubicación..."
+          className="min-w-0 lg:max-w-sm lg:flex-1"
+        />
+        <div className="flex min-w-0 items-center justify-between gap-2 lg:ml-auto lg:flex-none">
+          <div className="min-w-0 flex-1">
+            <DateRangePicker
+              value={selectedRange}
+              onChange={changeRange}
+              presets={EVENT_DATE_PRESETS}
+              today={organizationToday}
+            />
+          </div>
+          {canEdit && (
+            <Button size="sm" className="shrink-0 gap-1.5 px-2 sm:px-3" onClick={() => setCreateOpen(true)}>
+              <CalendarPlus className="size-4" />
+              Registrar Evento
+            </Button>
+          )}
+        </div>
+      </div>
+      {showingFallback && (
+        <p className="text-center text-xs text-muted-foreground">
+          Sin eventos en {formatMonth(calendarDateObject(currentMonth.from), "MMMM yyyy", { locale: es })} · mostrando{" "}
+          {formatMonth(calendarDateObject(selectedRange.from), "MMMM yyyy", { locale: es })}, el mes con registros más reciente
+        </p>
+      )}
+    </div>
+  );
+
+  const renderEvent = (event: Event) => (
+    <EventCard
+      key={event.id}
+      canEdit={canEdit}
+      canDelete={canDelete}
+      showProfit={showProfit}
+      event={event}
+      onView={(selectedEvent) => push(`/events/${selectedEvent.id}`)}
+      onEdit={setEditEvent}
+      onDelete={setDeleteEvent}
+      onAddExpense={setExpenseEvent}
+    />
+  );
+
+  const emptyContent = events.length === 0 ? (
+    <>
+      <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10">
+        <Calendar className="size-7 text-primary" />
+      </div>
+      <p className="text-base font-semibold text-foreground">Sin eventos registrados</p>
+      <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+        Crea tu primer evento para rastrear ventas, gastos y rentabilidad de ferias.
+      </p>
+      {canEdit && (
+        <Button className="mt-5 gap-2" onClick={() => setCreateOpen(true)}>
+          <CalendarPlus className="size-4" />
+          Crear evento
+        </Button>
+      )}
+    </>
+  ) : (
+    <>
+      <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted">
+        <Calendar className="size-7 text-muted-foreground/50" />
+      </div>
+      <p className="text-base font-semibold text-foreground">
+        {search.trim() ? "No se encontraron eventos con esa búsqueda" : "Sin eventos en el rango seleccionado"}
+      </p>
+      <Button
+        variant="outline"
+        className="mt-5"
+        onClick={() => search.trim() ? changeSearch("") : changeRange(ALL_EVENT_DATES)}
+      >
+        {search.trim() ? "Limpiar búsqueda" : "Ver todos los eventos"}
+      </Button>
+    </>
+  );
 
   return (
     <div className="space-y-5 pb-24">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Eventos y Ferias</h1>
-          <p className="text-muted-foreground text-sm">
-            {isLoading
-              ? "Cargando..."
-              : `${displayedEvents.length} evento${displayedEvents.length !== 1 ? "s" : ""} · ${activeCount} activo${activeCount !== 1 ? "s" : ""}`
-            }
-          </p>
-        </div>
-        {canEdit && (
-          <Button size="sm" className="gap-2 shrink-0" onClick={() => setCreateOpen(true)}>
-            <CalendarPlus className="size-4" />
-            <span className="hidden sm:inline">Nuevo evento</span>
-          </Button>
-        )}
-      </div>
-
-      {/* Filtro por mes/año — solo lista meses y años que tienen eventos */}
-      {!isLoading && events.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Select value={String(selectedMonth)} onValueChange={handleMonthChange}>
-            <SelectTrigger className="flex-1 capitalize">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((m) => (
-                <SelectItem key={m} value={String(m)} className="capitalize">
-                  {formatMonth(new Date(selectedYear, m, 1), "MMMM", { locale: es })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={String(selectedYear)} onValueChange={handleYearChange}>
-            <SelectTrigger className="w-28 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableYears.map((y) => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {!isDefaultView && (
-            <Button variant="outline" size="sm" className="shrink-0" onClick={resetToDefault}>
-              Hoy
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Nota de fallback — mes actual sin eventos, mostrando el mes con
-          registros más reciente */}
-      {showingFallback && (
-        <p className="text-xs text-muted-foreground text-center -mt-2">
-          Sin eventos en {formatMonth(now, "MMMM yyyy", { locale: es })} · mostrando{" "}
-          {formatMonth(new Date(selectedYear, selectedMonth, 1), "MMMM yyyy", { locale: es })}, el mes con registros más reciente
-        </p>
-      )}
-
+      <h1 className="text-2xl font-semibold tracking-tight">Eventos y Ferias</h1>
       {/* Stats */}
       <SummaryStats
         ariaLabel="Resumen de eventos"
         isLoading={isLoading}
         items={[
-          { label: "Eventos", icon: Calendar, value: displayedEvents.length, detail: `${activeCount} activos` },
+          { label: "Eventos", icon: Calendar, value: rangeEvents.length, detail: `${activeCount} activos` },
           { label: "Ventas", icon: DollarSign, value: format(totalSales), detail: "total acumulado" },
           ...(showProfit ? [
             {
@@ -221,68 +224,57 @@ export default function EventsPage() {
         ]}
       />
 
-      {/* Eventos grid / empty */}
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-72 w-full rounded-xl" />
-          ))}
+      <DataTableTimeSection
+        columns={[]}
+        data={pageEvents}
+        getRowKey={(event) => event.id}
+        recordLabel={displayedEvents.length === 1 ? "evento" : "eventos"}
+        headerTopContent={filters}
+        renderMobileRow={renderEvent}
+        pagination={totalPages > 1 ? { page, pageSize: EVENTS_PER_PAGE, total: displayedEvents.length, onPageChange: changePage } : undefined}
+        isLoading={isLoading}
+        emptyState={emptyContent}
+        showFooterPagination={false}
+        ariaLabel="Eventos"
+        className="lg:hidden"
+      />
+
+      <div className="hidden space-y-5 overflow-y-clip lg:block">
+        <div className="sticky -top-2 z-10 bg-background pt-1 pb-2">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-background" />
+          {filters}
         </div>
-      ) : events.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <Calendar className="size-7 text-primary" />
+        {isLoading ? (
+          <div className="grid grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-72 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : displayedEvents.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              {emptyContent}
+            </CardContent>
+          </Card>
+        ) : (
+          <div ref={gridRef} className="scroll-mt-20 space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              {pageEvents.map(renderEvent)}
             </div>
-            <p className="text-base font-semibold">Sin eventos registrados</p>
-            <p className="text-sm text-muted-foreground mt-1 text-center max-w-xs">
-              Crea tu primer evento para rastrear ventas, gastos y rentabilidad de ferias.
-            </p>
-            {canEdit && (
-              <Button className="mt-5 gap-2" onClick={() => setCreateOpen(true)}>
-                <CalendarPlus className="size-4" />
-                Crear evento
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : displayedEvents.length === 0 ? (
-        // Defensivo: en teoría no debería pasar, porque los selectores solo
-        // ofrecen meses/años que sí tienen eventos.
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="size-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
-              <Calendar className="size-7 text-muted-foreground/50" />
-            </div>
-            <p className="text-base font-semibold">
-              Sin eventos en {formatMonth(new Date(selectedYear, selectedMonth, 1), "MMMM yyyy", { locale: es })}
-            </p>
-            <Button
-              variant="outline"
-              className="mt-5"
-              onClick={resetToDefault}
-            >
-              Volver a hoy
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {displayedEvents.map((event) => (
-            <EventCard
-              canEdit={canEdit}
-              canDelete={canDelete}
-              showProfit={showProfit}
-              key={event.id}
-              event={event}
-              onView={(e) => push(`/events/${e.id}`)}
-              onEdit={setEditEvent}
-              onDelete={setDeleteEvent}
-              onAddExpense={setExpenseEvent}
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={displayedEvents.length}
+              label="eventos"
+              onPageChange={(nextPage) => {
+                if (nextPage === page) return;
+                changePage(nextPage);
+                gridRef.current?.scrollIntoView({ block: "start" });
+              }}
             />
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* FAB — solo cuando hay un evento activo hoy (dentro de su rango de
           fechas), y solo lleva a registrar una venta para ese evento */}

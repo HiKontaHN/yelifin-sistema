@@ -9,6 +9,7 @@ export interface TransactionCategory {
   name: string;
   type: "INCOME" | "EXPENSE" | "TRANSFER";
   is_active: boolean;
+  display_order?: number | null;
 }
 
 interface CategoriesResponse {

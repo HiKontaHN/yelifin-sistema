@@ -30,7 +30,9 @@ export function TransactionCategoryField({ type, value, onChange, disabled }: {
     await mutate((current) => {
       const previous = current?.data ?? [];
       const items = [...previous.filter((category) => category.id !== saved.id), saved];
-      items.sort((a, b) => a.name.localeCompare(b.name, "es"));
+      if (items.every((category) => category.display_order == null)) {
+        items.sort((a, b) => a.name.localeCompare(b.name, "es"));
+      }
       return { ...current, data: items, total: items.length };
     }, { revalidate: true });
     return saved;

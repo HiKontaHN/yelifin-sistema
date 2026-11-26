@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { CalendarDays, Check, ChevronDown } from "lucide-react";
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { toLocalDateInput } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 
 export type DateRangeValue = { from: string; to: string };
@@ -39,6 +39,7 @@ type DateRangePickerProps = {
 };
 
 const cloneDate = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const formatInputDate = (date: Date) => format(date, "yyyy-MM-dd");
 
 const shiftDays = (date: Date, days: number) => {
   const next = cloneDate(date);
@@ -47,8 +48,8 @@ const shiftDays = (date: Date, days: number) => {
 };
 
 const range = (from: Date, to: Date): DateRangeValue => ({
-  from: toLocalDateInput(from),
-  to: toLocalDateInput(to),
+  from: formatInputDate(from),
+  to: formatInputDate(to),
 });
 
 export const DEFAULT_DATE_RANGE_PRESETS: DateRangePreset[] = [
@@ -134,6 +135,7 @@ export function DateRangePicker({
     }),
     [presets, today, value.from, value.to],
   );
+  const isUnbounded = Boolean(selectedPreset && !value.from && !value.to);
 
   const handleCalendarOpen = (open: boolean) => {
     if (open) setDraft(toPickerRange(value));
@@ -192,20 +194,26 @@ export function DateRangePicker({
         <PopoverTrigger asChild>
           <Button type="button" variant="outline" size="sm" disabled={disabled} className="w-0 min-w-0 flex-1 shrink justify-start rounded-l-none px-3 text-xs font-normal shadow-xs sm:w-auto sm:min-w-60 sm:text-sm" aria-label="Seleccionar rango de fechas">
             <CalendarDays className="hidden size-3.5 text-muted-foreground sm:block" />
-            <span className="truncate tabular-nums sm:hidden">{formatCompactDate(value.from)}–{formatCompactDate(value.to)}</span>
-            <span className="hidden truncate tabular-nums sm:inline">{formatDate(value.from)} — {formatDate(value.to)}</span>
+            {isUnbounded ? (
+              <span className="truncate">Sin límite</span>
+            ) : (
+              <>
+                <span className="truncate tabular-nums sm:hidden">{formatCompactDate(value.from)}–{formatCompactDate(value.to)}</span>
+                <span className="hidden truncate tabular-nums sm:inline">{formatDate(value.from)} — {formatDate(value.to)}</span>
+              </>
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="max-h-[var(--radix-popover-content-available-height)] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-0">
           <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 border-b p-3">
             <label className="min-w-0 space-y-1 text-xs font-medium text-muted-foreground">
               Desde
-              <Input type="date" value={draft.from ? toLocalDateInput(draft.from) : ""} min={minDate ? toLocalDateInput(minDate) : undefined} max={maxDate ? toLocalDateInput(maxDate) : undefined} onChange={(event) => updateDraftInput("from", event.target.value)} className="mt-1 h-8 min-w-0 px-2 text-xs text-foreground" />
+              <Input type="date" value={draft.from ? formatInputDate(draft.from) : ""} min={minDate ? formatInputDate(minDate) : undefined} max={maxDate ? formatInputDate(maxDate) : undefined} onChange={(event) => updateDraftInput("from", event.target.value)} className="mt-1 h-8 min-w-0 px-2 text-xs text-foreground" />
             </label>
             <span className="pb-2 text-xs text-muted-foreground">a</span>
             <label className="min-w-0 space-y-1 text-xs font-medium text-muted-foreground">
               Hasta
-              <Input type="date" value={draft.to ? toLocalDateInput(draft.to) : ""} min={minDate ? toLocalDateInput(minDate) : undefined} max={maxDate ? toLocalDateInput(maxDate) : undefined} onChange={(event) => updateDraftInput("to", event.target.value)} className="mt-1 h-8 min-w-0 px-2 text-xs text-foreground" />
+              <Input type="date" value={draft.to ? formatInputDate(draft.to) : ""} min={minDate ? formatInputDate(minDate) : undefined} max={maxDate ? formatInputDate(maxDate) : undefined} onChange={(event) => updateDraftInput("to", event.target.value)} className="mt-1 h-8 min-w-0 px-2 text-xs text-foreground" />
             </label>
           </div>
 

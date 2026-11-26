@@ -29,7 +29,7 @@ export interface DataTableTimeSectionPagination {
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   pageSizeOptions?: readonly number[];
 }
 
@@ -56,6 +56,10 @@ export interface DataTableTimeSectionProps<T> {
   minWidth?: CSSProperties["minWidth"];
   /** Optional card presentation below lg; the renderer owns card interactions. */
   renderMobileRow?: (row: T) => ReactNode;
+  /** Optional actions inside the sticky header. */
+  headerActions?: ReactNode;
+  /** Optional controls above the record count that move with the sticky header. */
+  headerTopContent?: ReactNode;
   className?: string;
   ariaLabel?: string;
   showFooterPagination?: boolean;
@@ -128,7 +132,7 @@ export function DataTableTimeSection<T>({
   recordLabel = "registros", isLoading = false, emptyState = "No hay registros para mostrar",
   onRowClick, isRowClickable, renderExpandedRows, rowClassName, stickyHeader = true,
   stickyOffset = "var(--data-table-sticky-offset, 0px)", minWidth,
-  renderMobileRow, className, ariaLabel = "Datos", showFooterPagination = true,
+  renderMobileRow, headerActions, headerTopContent, className, ariaLabel = "Datos", showFooterPagination = true,
   hideFooterPaginationOnDesktop = false,
 }: DataTableTimeSectionProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -220,7 +224,7 @@ export function DataTableTimeSection<T>({
     <div
       ref={rootRef}
       data-slot="data-table-time-section"
-      className={cn("space-y-0", stickyHeader && renderMobileRow && "max-lg:overflow-y-clip", className)}
+      className={cn("space-y-0", stickyHeader && "overflow-y-clip", className)}
       aria-busy={isLoading}
     >
       <div
@@ -228,45 +232,53 @@ export function DataTableTimeSection<T>({
         data-slot="data-table-sticky-header"
         className={cn(
           "z-10 bg-background",
-          stickyHeader && "sticky pt-2 lg:pt-3",
+          stickyHeader && "sticky pt-1 lg:pt-1",
           renderMobileRow && "max-lg:pb-2",
         )}
         style={stickyHeader ? { top: stickyOffset } : undefined}
       >
-        {stickyHeader && renderMobileRow && (
-          // Oculta las tarjetas que cruzan el espacio superior del contenedor al desplazarse.
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-full h-4 bg-background lg:hidden" />
+        {stickyHeader && (
+          // Cubre el espacio superior del contenedor para ocultar las filas al desplazarse.
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-full h-4 bg-background lg:h-6" />
         )}
+        {headerTopContent && <div className="pb-2">{headerTopContent}</div>}
         <div className="overflow-hidden rounded-xl border bg-card lg:rounded-b-none">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-3 sm:px-4">
             {isLoading ? <Skeleton className="h-4 w-24" /> : (
               <p className="text-sm text-muted-foreground" aria-live="polite">{total} {recordLabel}</p>
             )}
             {pagination && navigation && (
-              <div className="flex w-full items-center justify-between gap-10 sm:w-auto">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground sm:text-sm">
-                  <Select
-                    value={String(pagination.pageSize)} disabled={isLoading}
-                    onValueChange={(value) => {
-                      changePage(1);
-                      pagination.onPageSizeChange(Number(value));
-                    }}
-                  >
-                    <SelectTrigger id={pageSizeId} size="sm" className="w-20" aria-label="Registros por página">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(pagination.pageSizeOptions ?? DATA_TABLE_PAGE_SIZE_OPTIONS).map((size) => (
-                        <SelectItem key={size} value={String(size)}>{size}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="hidden sm:inline">por página</span>
-                </div>
+              <div className={cn("flex items-center gap-10", pagination.onPageSizeChange && "w-full justify-between sm:w-auto")}>
+                {pagination.onPageSizeChange && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground sm:text-sm">
+                    <Select
+                      value={String(pagination.pageSize)} disabled={isLoading}
+                      onValueChange={(value) => {
+                        changePage(1);
+                        pagination.onPageSizeChange?.(Number(value));
+                      }}
+                    >
+                      <SelectTrigger id={pageSizeId} size="sm" className="w-20" aria-label="Registros por página">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(pagination.pageSizeOptions ?? DATA_TABLE_PAGE_SIZE_OPTIONS).map((size) => (
+                          <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="hidden sm:inline">por página</span>
+                  </div>
+                )}
                 <PageNavigation pagination={navigation} isLoading={isLoading} />
               </div>
             )}
           </div>
+          {headerActions && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 sm:px-4">
+              {headerActions}
+            </div>
+          )}
           <div className={desktopClassName}>
             <div
               ref={headerScrollRef} onScroll={syncHorizontalScroll}

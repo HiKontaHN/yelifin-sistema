@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { verifyAuthAndSubscription, createErrorResponse, isAuthSuccess, requireFeature, requireModule } from "@/lib/auth";
+import { withTransaction } from "@/lib/db-transaction";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -57,13 +58,13 @@ export async function GET(request: NextRequest) {
     `;
 
     const categories = await sql`
-      SELECT id, name, type, is_active, created_at
+      SELECT id, name, type, is_active, created_at, display_order
       FROM transaction_categories
       WHERE org_id  = ${orgId}
         AND (${type}::text IS NULL OR type = ${type})
         AND (${isActiveFilter}::boolean IS NULL OR is_active = ${isActiveFilter})
         AND (${search}::text IS NULL OR name ILIKE '%' || ${search} || '%')
-      ORDER BY type, name
+      ORDER BY type, display_order NULLS LAST, name, id
       ${page ? sql`LIMIT ${limit} OFFSET ${(page - 1) * limit}` : sql``}
     `;
 
@@ -122,6 +123,52 @@ export async function POST(request: NextRequest) {
     }
     console.error("POST /api/transaction-categories:", error);
     return createErrorResponse("Error al crear categoría", 500);
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = await verifyAuthAndSubscription(request);
+  if (!isAuthSuccess(auth)) return createErrorResponse(auth.error, auth.status);
+  const feature = await requireFeature(auth.data.orgId, "finances.custom_categories");
+  if (feature) return feature;
+  const deny = await requireModule(auth.data, "ADMIN", "canEdit", "CATEGORIES");
+  if (deny) return deny;
+
+  const body = await request.json().catch(() => null);
+  const type = body?.type;
+  const ids: unknown = body?.ids;
+  if (!VALID_TYPES.includes(type) || !Array.isArray(ids) || ids.length === 0
+    || ids.some((id) => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    return createErrorResponse("El orden de categorías no es válido", 400);
+  }
+
+  const { orgId, userId } = auth.data;
+  try {
+    const saved = await withTransaction(async (tx) => {
+      const categories = await tx<{ id: string | number }>`
+        SELECT id FROM transaction_categories
+        WHERE org_id = ${orgId} AND type = ${type} AND is_active = TRUE
+        ORDER BY id
+        FOR UPDATE
+      `;
+      const activeIds = new Set(categories.map(({ id }) => Number(id)));
+      if (activeIds.size !== ids.length || ids.some((id) => !activeIds.has(id))) return false;
+
+      await tx`
+        UPDATE transaction_categories AS category
+        SET display_order = requested.position::integer, updated_by = ${userId}, updated_at = NOW()
+        FROM unnest(${ids}::bigint[]) WITH ORDINALITY AS requested(id, position)
+        WHERE category.id = requested.id AND category.org_id = ${orgId}
+          AND category.type = ${type} AND category.is_active = TRUE
+      `;
+      return true;
+    });
+
+    if (!saved) return createErrorResponse("La lista de categorías cambió. Vuelve a abrir el orden e inténtalo de nuevo.", 409);
+    return Response.json({ message: "Orden de categorías guardado" });
+  } catch (error) {
+    console.error("PATCH /api/transaction-categories:", error);
+    return createErrorResponse("Error al guardar el orden de categorías", 500);
   }
 }
 

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FeatureGate } from "@/components/shared/feature-gate";
 import { ProductCategoriesSettings } from "@/components/settings/product-categories-settings";
+import { TransactionCategoryOrderDialog } from "@/components/settings/transaction-category-order-dialog";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,7 @@ import {
   ArrowLeftRight,
   Tags,
   RotateCcw,
+  ListOrdered,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -134,6 +136,7 @@ function CategoriesPageContent() {
   const { removeMany } = useBulkDeleteCategories();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [orderingType, setOrderingType] = useState<TransactionCategory["type"] | null>(null);
   const [editCategory, setEditCategory] = useState<TransactionCategory | null>(null);
   const [deleteCategory, setDeleteCategory] = useState<TransactionCategory | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -294,6 +297,29 @@ function CategoriesPageContent() {
     }
   };
 
+  const selectionActions = canMutate && selectedCategories.length > 0 && (
+    <>
+      <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+        <Checkbox
+          checked={allActiveSelected ? true : someActiveSelected ? "indeterminate" : false}
+          onCheckedChange={(checked) => toggleAllActive(checked === true)}
+          aria-label="Seleccionar todas las categorías activas de esta página"
+        />
+        Seleccionar esta página
+      </label>
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
+        className="gap-1.5"
+        onClick={() => setBulkDeleteOpen(true)}
+      >
+        <Trash2 className="size-4" />
+        Eliminar ({selectedCategories.length})
+      </Button>
+    </>
+  );
+
   return (
     <div className="space-y-4 pb-24 md:space-y-6">
       {/* Header */}
@@ -307,16 +333,21 @@ function CategoriesPageContent() {
           </p>
         </div>
         {canMutate && (
-          <Button
-            type="button"
-            onClick={() => {
-              setFormName("");
-              setFormType(selectedType);
-              setCreateOpen(true);
-            }}
-          >
-            <Plus className="size-4" /> Registrar categoría
-          </Button>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setOrderingType(selectedType)}>
+              <ListOrdered className="size-4" /> Ordenar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setFormName("");
+                setFormType(selectedType);
+                setCreateOpen(true);
+              }}
+            >
+              <Plus className="size-4" /> Registrar categoría
+            </Button>
+          </div>
         )}
       </div>
 
@@ -365,32 +396,8 @@ function CategoriesPageContent() {
         </Select>
       </div>
 
-      {canMutate && activeCategories.length > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-2.5 sm:px-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-            <Checkbox
-              checked={allActiveSelected ? true : someActiveSelected ? "indeterminate" : false}
-              onCheckedChange={(checked) => toggleAllActive(checked === true)}
-              aria-label="Seleccionar todas las categorías activas de esta página"
-            />
-            Seleccionar esta página
-          </label>
-          {selectedCategories.length > 0 && (
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              Eliminar ({selectedCategories.length})
-            </Button>
-          )}
-        </div>
-      )}
-
       <DataTableTimeSection
+        headerActions={selectionActions}
         columns={[
           ...(canMutate ? [{
             id: "selection",
@@ -472,16 +479,15 @@ function CategoriesPageContent() {
         }}
         showFooterPagination={false}
         renderMobileRow={(cat) => (
-          <div className={cn("flex items-center justify-between gap-3 rounded-xl border bg-card px-3 py-3", !cat.is_active && "opacity-60")}>
-            {canMutate && cat.is_active && (
+          <div className={cn("flex items-center gap-3 rounded-xl border bg-card px-3 py-3", !cat.is_active && "opacity-60")}>
+            {canMutate && (cat.is_active ? (
               <Checkbox
-                className="shrink-0"
                 checked={selectedIds.has(cat.id)}
                 onCheckedChange={(checked) => toggleCategory(cat.id, checked === true)}
                 aria-label={`Seleccionar ${cat.name}`}
               />
-            )}
-            <div className="min-w-0">
+            ) : <span aria-hidden="true" className="size-4 shrink-0" />)}
+            <div className="min-w-0 flex-1 text-left">
               <p className="truncate font-medium">{cat.name}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline" className={`${TYPE_CONFIG[cat.type].badge} text-xs`}>{TYPE_CONFIG[cat.type].label}</Badge>
@@ -503,6 +509,14 @@ function CategoriesPageContent() {
           </div>
         )}
       />
+
+      {canMutate && orderingType && (
+        <TransactionCategoryOrderDialog
+          initialType={orderingType}
+          typeOptions={validTypes.map((type) => ({ value: type, label: TYPE_CONFIG[type].label }))}
+          onClose={() => setOrderingType(null)}
+        />
+      )}
 
       {/* Dialog Crear */}
       <Dialog open={createOpen} onOpenChange={(v) => !v && setCreateOpen(false)}>

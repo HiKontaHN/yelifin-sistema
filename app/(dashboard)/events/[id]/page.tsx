@@ -7,12 +7,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, Calendar, MapPin, TrendingUp,
   TrendingDown, DollarSign, ShoppingCart,
-  Banknote, CreditCard, ArrowLeftRight, HelpCircle, Tag, Pencil, Receipt,
+  Banknote, CreditCard, ArrowLeftRight, HelpCircle, Info, Tag, Pencil, Receipt,
 } from "lucide-react";
 import { useCurrency }       from "@/hooks/swr/use-currency";
 import { useEvent }          from "@/hooks/swr/use-events";
@@ -114,6 +115,21 @@ export default function EventDetailPage({ params }: Props) {
             )}
           </div>
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Información sobre las ventas del evento">
+              <Info className="size-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" collisionPadding={12} aria-labelledby="event-sales-help-title" className="w-80 max-w-[calc(100vw-1.5rem)] space-y-2 text-sm">
+            <h2 id="event-sales-help-title" className="font-semibold">Ventas del evento</h2>
+            <p className="text-muted-foreground">Una venta normal queda en el historial general del negocio. Una venta de evento también aparece allí y queda vinculada a este evento.</p>
+            {event.status !== "COMPLETED" && salesCanEdit && (
+              <p className="text-muted-foreground">Usa <strong className="text-foreground">Nueva venta</strong> desde este detalle para vincularla automáticamente.</p>
+            )}
+            <p className="text-muted-foreground">La ganancia neta del evento se calcula con sus ventas vinculadas. De ellas se descuentan los costos de los productos, el ISV cuando aplica y los gastos del evento.</p>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* ── Métricas principales ── */}
