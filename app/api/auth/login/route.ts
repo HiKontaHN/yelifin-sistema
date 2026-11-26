@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // 1. Verificar el token con Firebase Admin
     let decodedToken;
     try {
-      decodedToken = await adminAuth.verifyIdToken(idToken);
+      decodedToken = await adminAuth.verifyIdToken(idToken, true);
     } catch {
       return NextResponse.json(
         { error: "Token inválido o expirado" },

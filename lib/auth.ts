@@ -78,7 +78,7 @@ export async function verifyAuth(
       ? /^Bearer ([^\s]+)$/i.exec(request.headers.get("authorization") ?? "")?.[1]
       : undefined;
     if (sessionCookie) {
-      decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
+      decodedToken = await adminAuth.verifySessionCookie(sessionCookie, true);
     } else if (mobileToken) {
       decodedToken = await adminAuth.verifyIdToken(mobileToken, true);
     } else {

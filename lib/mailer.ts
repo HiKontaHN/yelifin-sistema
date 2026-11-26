@@ -18,12 +18,13 @@ function getDeliveryRecipient(to: string): string {
 function getTransporter(): Transporter {
   if (transporter) return transporter;
 
-  const user = process.env.MAIL_USER;
-  const pass = process.env.MAIL_PASSWORD;
+  const user = process.env.MAIL_USER?.trim();
+  // Google muestra la contraseña de aplicación en grupos separados por espacios.
+  const pass = process.env.MAIL_PASSWORD?.replace(/\s/g, "");
 
   if (!user || !pass) {
     throw new Error(
-      "MAIL_USER / MAIL_PASSWORD no configurados — revisa .env.local (contraseña de aplicación de Gmail)."
+      "MAIL_USER / MAIL_PASSWORD no configurados (contraseña de aplicación de Gmail)."
     );
   }
 
@@ -40,6 +41,7 @@ export async function sendMail({
   subject,
   html,
   text,
+  deliverToAccount = false,
 }: {
   to: string;
   subject: string;
@@ -48,11 +50,13 @@ export async function sendMail({
   // de spam: un correo HTML sin versión de texto es algo que muchos
   // filtros penalizan.
   text?: string;
+  /** Los correos de recuperación solo pueden entregarse al titular de la cuenta. */
+  deliverToAccount?: boolean;
 }): Promise<void> {
   const user = process.env.MAIL_USER;
   await getTransporter().sendMail({
     from: `"HiKonta" <${user}>`,
-    to: getDeliveryRecipient(to),
+    to: deliverToAccount ? to : getDeliveryRecipient(to),
     subject,
     html,
     text,

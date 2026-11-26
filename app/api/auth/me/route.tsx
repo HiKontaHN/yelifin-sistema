@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     let sessionEmailVerified: boolean;
     if (sessionCookie) {
       try {
-        const decoded = await adminAuth.verifySessionCookie(sessionCookie);
+        const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
         firebaseUid = decoded.uid;
         sessionEmailVerified = decoded.email_verified === true;
       } catch {

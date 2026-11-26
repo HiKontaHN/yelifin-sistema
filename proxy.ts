@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
 import { adminAuth } from "@/lib/firebase-admin";
 import { withDevelopmentCors } from "@/lib/request-origin";
+import { clearSessionCookies } from "@/lib/session-cookies";
 
 const PUBLIC_PATHS = ["", "/login", "/register", "/forgot-password"];
 const AUTH_ONLY_PATHS = ["/verify-email", "/onboarding"];
@@ -146,10 +147,15 @@ export async function proxy(request: NextRequest) {
     return withDevelopmentCors(request, response);
   }
 
+  if (pathname.startsWith("/auth/action")) {
+    const response = NextResponse.next();
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
+  }
+
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/ingest") ||
-    pathname.startsWith("/auth/action") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();
@@ -176,12 +182,9 @@ export async function proxy(request: NextRequest) {
 
   let decodedToken;
   try {
-    decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
+    decodedToken = await adminAuth.verifySessionCookie(sessionCookie, true);
   } catch {
-    const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("hikonta_auth");
-    response.cookies.delete("hikonta_nav");
-    return response;
+    return clearSessionCookies(NextResponse.redirect(new URL("/login", request.url)));
   }
 
   const uid = decodedToken.uid;

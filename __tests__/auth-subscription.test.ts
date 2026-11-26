@@ -62,6 +62,16 @@ describe("subscription guard", () => {
     });
   });
 
+  it("bloquea una API protegida cuando la sesión web fue revocada", async () => {
+    mockVerifySessionCookie.mockRejectedValue({ code: "auth/session-cookie-revoked" });
+
+    const response = await getProducts(request());
+
+    expect(response.status).toBe(401);
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith("session-cookie", true);
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
   it("acepta tokens móviles verificados solo en lecturas habilitadas", async () => {
     const headers = { authorization: "Bearer firebase-token" };
     const url = "http://localhost/api/inventory";

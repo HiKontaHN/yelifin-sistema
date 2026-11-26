@@ -2,13 +2,10 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  applyActionCode,
-  checkActionCode,
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-} from 'firebase/auth';
+import { applyActionCode, checkActionCode } from 'firebase/auth';
 import { auth, authReady } from '@/lib/firebase';
+import { meetsPasswordPolicy } from '@/lib/password-policy';
+import { PasswordRequirements } from '@/components/auth/password-requirements';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,10 +14,22 @@ import { HiKontaTitle } from '@/components/shared/hikonta-title';
 import { LoadingScreen } from '@/hooks/ui/loading-screen';
 import { CheckCircle2, XCircle, KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react';
 
-type Status = 'loading' | 'verify-success' | 'reset-form' | 'reset-success' | 'recover-success' | 'error';
+type Status = 'loading' | 'verify-success' | 'reset-form' | 'reset-success' | 'recover-success' | 'error' | 'reset-retry';
 
-function actionErrorMessage(error: any): string {
-  switch (error?.code) {
+async function requestPasswordReset(oobCode: string, newPassword?: string, signal?: AbortSignal) {
+  const response = await fetch('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ oobCode, newPassword }),
+    signal,
+  });
+  const result = await response.json().catch(() => null);
+  return { response, result };
+}
+
+function actionErrorMessage(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+  switch (code) {
     case 'auth/expired-action-code':
       return 'Este enlace ha expirado. Solicita uno nuevo.';
     case 'auth/invalid-action-code':
@@ -29,8 +38,6 @@ function actionErrorMessage(error: any): string {
       return 'Esta cuenta ha sido deshabilitada.';
     case 'auth/user-not-found':
       return 'No se encontró ninguna cuenta asociada a este enlace.';
-    case 'auth/weak-password':
-      return 'La contraseña debe tener al menos 6 caracteres.';
     default:
       return 'Ocurrió un error al procesar el enlace. Intenta de nuevo.';
   }
@@ -57,9 +64,11 @@ function AuthActionHandler() {
   const { push } = useRouter();
 
   const mode = searchParams.get('mode');
-  const oobCode = searchParams.get('oobCode');
+  const queryCode = searchParams.get('oobCode');
 
   const [status, setStatus] = useState<Status>('loading');
+  const [resetCode, setResetCode] = useState('');
+  const [verificationAttempt, setVerificationAttempt] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [resetEmail, setResetEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -69,6 +78,12 @@ function AuthActionHandler() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const oobCode = mode === 'resetPassword'
+      ? new URLSearchParams(window.location.hash.slice(1)).get('oobCode') ?? queryCode
+      : queryCode;
+
+    setStatus('loading');
     if (!mode || !oobCode) {
       setErrorMessage('Este enlace es inválido o está incompleto.');
       setStatus('error');
@@ -77,14 +92,24 @@ function AuthActionHandler() {
 
     (async () => {
       try {
+        if (mode === 'resetPassword') {
+          const { response, result } = await requestPasswordReset(oobCode, undefined, controller.signal);
+          if (controller.signal.aborted) return;
+          if (!response.ok || typeof result?.email !== 'string') {
+            setErrorMessage(result?.error ?? 'No se pudo comprobar el enlace. Intenta de nuevo.');
+            setStatus(result?.code === 'invalid-link' ? 'error' : 'reset-retry');
+            return;
+          }
+          setResetCode(oobCode);
+          setResetEmail(result.email);
+          setStatus('reset-form');
+          return;
+        }
+
         await authReady;
         if (mode === 'verifyEmail') {
           await applyActionCode(auth, oobCode);
           setStatus('verify-success');
-        } else if (mode === 'resetPassword') {
-          const email = await verifyPasswordResetCode(auth, oobCode);
-          setResetEmail(email);
-          setStatus('reset-form');
         } else if (mode === 'recoverEmail') {
           await checkActionCode(auth, oobCode);
           await applyActionCode(auth, oobCode);
@@ -93,19 +118,21 @@ function AuthActionHandler() {
           setErrorMessage('Este tipo de enlace no es compatible.');
           setStatus('error');
         }
-      } catch (error: any) {
+      } catch (error) {
+        if (mode === 'resetPassword' && controller.signal.aborted) return;
         setErrorMessage(actionErrorMessage(error));
-        setStatus('error');
+        setStatus(mode === 'resetPassword' ? 'reset-retry' : 'error');
       }
     })();
-  }, [mode, oobCode]);
+    return () => controller.abort();
+  }, [mode, queryCode, verificationAttempt]);
 
   const handleConfirmReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!oobCode) return;
+    if (!resetCode || isSubmitting) return;
 
-    if (password.length < 6) {
-      setPasswordError('La contraseña debe tener al menos 6 caracteres');
+    if (!meetsPasswordPolicy(password)) {
+      setPasswordError('La contraseña no cumple los requisitos.');
       return;
     }
     if (password !== confirmPassword) {
@@ -116,11 +143,23 @@ function AuthActionHandler() {
 
     setIsSubmitting(true);
     try {
-      await confirmPasswordReset(auth, oobCode, password);
+      const { response, result } = await requestPasswordReset(resetCode, password);
+      if (!response.ok || result?.ok !== true) {
+        const message = result?.error ?? 'No se pudo actualizar la contraseña. Intenta de nuevo.';
+        if (result?.code === 'invalid-link') {
+          setErrorMessage(message);
+          setStatus('error');
+        } else {
+          setPasswordError(message);
+        }
+        return;
+      }
+      setPassword('');
+      setConfirmPassword('');
+      setResetCode('');
       setStatus('reset-success');
-    } catch (error: any) {
-      setErrorMessage(actionErrorMessage(error));
-      setStatus('error');
+    } catch {
+      setPasswordError('No se pudo confirmar el cambio. Intenta de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -137,19 +176,25 @@ function AuthActionHandler() {
     );
   }
 
-  if (status === 'error') {
+  if (status === 'error' || status === 'reset-retry') {
     return (
       <ActionCard>
         <div className="space-y-3">
           <div className="size-14 bg-destructive/10 rounded-full flex items-center justify-center">
             <XCircle className="size-7 text-destructive" />
           </div>
-          <h1 className="text-2xl font-bold">Enlace no válido</h1>
+          <h1 className="text-2xl font-bold">{status === 'error' ? 'Enlace no válido' : 'No pudimos comprobar el enlace'}</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">{errorMessage}</p>
         </div>
-        <Button className="w-full" onClick={() => push('/login')}>
-          Ir a iniciar sesión
-        </Button>
+        {status === 'reset-retry' ? (
+          <Button className="w-full" onClick={() => setVerificationAttempt((attempt) => attempt + 1)}>
+            Volver a intentar
+          </Button>
+        ) : (
+          <Button className="w-full" onClick={() => window.location.replace('/login')}>
+            Ir a iniciar sesión
+          </Button>
+        )}
       </ActionCard>
     );
   }
@@ -195,6 +240,8 @@ function AuthActionHandler() {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 autoComplete="new-password"
+                maxLength={4096}
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
@@ -204,10 +251,12 @@ function AuthActionHandler() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 tabIndex={-1}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
+            <PasswordRequirements password={password} />
           </div>
 
           <div className="space-y-2">
@@ -217,13 +266,15 @@ function AuthActionHandler() {
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               autoComplete="new-password"
+              maxLength={4096}
+              required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               disabled={isSubmitting}
             />
           </div>
 
-          {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+          {passwordError && <p role="alert" className="text-sm text-destructive">{passwordError}</p>}
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? (
@@ -249,10 +300,10 @@ function AuthActionHandler() {
           </div>
           <h1 className="text-2xl font-bold">Contraseña actualizada</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Ya puedes iniciar sesión con tu nueva contraseña.
+            El enlace ya fue utilizado. Inicia sesión con tu nueva contraseña.
           </p>
         </div>
-        <Button className="w-full" onClick={() => push('/login')}>
+        <Button className="w-full" onClick={() => window.location.replace('/login')}>
           Ir a iniciar sesión
         </Button>
       </ActionCard>

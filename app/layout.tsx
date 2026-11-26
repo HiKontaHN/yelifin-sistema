@@ -1,10 +1,9 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { GoogleAnalytics } from '@next/third-parties/google'
 import localFont from 'next/font/local'
-import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/theme-provider"
+import { SiteAnalytics } from "@/components/providers/site-analytics"
 import './globals.css'
 
 // These files ship with the installed Next.js package and are emitted as
@@ -68,12 +67,9 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
           <Toaster richColors closeButton position="top-right" />
-          <Analytics />
+          <SiteAnalytics googleAnalyticsId={process.env.NEXT_PUBLIC_GA_ID} />
         </ThemeProvider>
       </body>
-      {process.env.NEXT_PUBLIC_GA_ID && (
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
-      )}
     </html>
   )
 }

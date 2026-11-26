@@ -1,9 +1,9 @@
 import posthog from "posthog-js"
-import { sanitizePostHogEvent } from "@/lib/posthog-sanitize"
+import { isAuthActionPath, sanitizePostHogEvent } from "@/lib/posthog-sanitize"
 
 const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN
 
-if (typeof window !== "undefined" && posthogToken) {
+if (typeof window !== "undefined" && posthogToken && !isAuthActionPath(window.location.pathname)) {
   posthog.init(posthogToken, {
     api_host: "/ingest",
     ui_host: "https://us.posthog.com",

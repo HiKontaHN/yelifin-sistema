@@ -185,7 +185,7 @@ export function LoginForm() {
             onClick={async () => {
               const email = (
                 document.getElementById("email") as HTMLInputElement
-              )?.value;
+              )?.value.trim();
 
               if (!email) {
                 toast.error("Ingresa tu email primero");
@@ -205,23 +205,14 @@ export function LoginForm() {
                   body: JSON.stringify({ email }),
                 });
 
-                if (res.status === 429) {
-                  toast.error("Demasiados intentos. Espera unos minutos.");
-                } else {
-                  // Respuesta genérica (venga o no de una cuenta real) para
-                  // no revelar si el email está registrado — la decide el
-                  // propio endpoint, ver app/api/auth/send-password-reset.
-                  toast.success(
-                    "Si el email está registrado, recibirás un correo en breve",
-                    { duration: 6000 },
-                  );
+                const result = await res.json().catch(() => null);
+                if (!res.ok || typeof result?.data?.message !== "string") {
+                  toast.error(result?.error ?? "No se pudo enviar el correo de recuperación.");
+                  return;
                 }
+                toast.success(result.data.message, { duration: 6000 });
               } catch {
-                // Error de red: misma respuesta genérica.
-                toast.success(
-                  "Si el email está registrado, recibirás un correo en breve",
-                  { duration: 6000 },
-                );
+                toast.error("No se pudo enviar el correo de recuperación.");
               } finally {
                 setIsResetting(false);
               }

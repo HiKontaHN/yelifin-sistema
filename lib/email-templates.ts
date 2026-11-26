@@ -144,7 +144,7 @@ export function resetPasswordTemplate({ actionLink }: { actionLink: string }): {
     </p>
     ${ctaButton("Crear nueva contraseña", actionLink)}
     <p style="margin:0; color:${TEXT_MUTED}; font-size:12px; line-height:1.6;">
-      Si no solicitaste esto, puedes ignorar este correo — tu contraseña actual sigue funcionando.
+      El enlace solo se puede usar una vez. Si no solicitaste el cambio, puedes ignorar este correo.
     </p>`;
 
   const text = [
@@ -154,7 +154,7 @@ export function resetPasswordTemplate({ actionLink }: { actionLink: string }): {
     "",
     `Crear nueva contraseña: ${actionLink}`,
     "",
-    "Si no solicitaste esto, puedes ignorar este correo — tu contraseña actual sigue funcionando.",
+    "El enlace solo se puede usar una vez. Si no solicitaste el cambio, puedes ignorar este correo.",
   ].join("\n");
 
   return {

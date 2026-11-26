@@ -139,6 +139,7 @@ describe("GET /api/auth/me", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith("session-cookie", true);
     expect(mockSql).toHaveBeenCalledTimes(1);
     expect(body.session).toEqual({
       uid: "firebase-1",
@@ -149,6 +150,16 @@ describe("GET /api/auth/me", () => {
     });
     expect(body.user.id).toBe(1);
     expect(body.org.id).toBe(7);
+  });
+
+  it("rechaza la cookie revocada antes de consultar el perfil", async () => {
+    mockVerifySessionCookie.mockRejectedValue({ code: "auth/session-cookie-revoked" });
+
+    const response = await GET(authenticatedRequest());
+
+    expect(response.status).toBe(401);
+    expect(mockVerifySessionCookie).toHaveBeenCalledWith("session-cookie", true);
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("sigue respondiendo para una organización EXPIRED", async () => {

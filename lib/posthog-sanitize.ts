@@ -2,6 +2,10 @@ const URL_KEYS = ["$current_url", "$referrer", "$pathname", "$initial_current_ur
 const SENSITIVE_PARAMS = ["oobCode", "apiKey", "continueUrl", "mode", "lang"]
 const AUTH_ACTION_PATH = /^\/auth\/action\/?$/
 
+export function isAuthActionPath(pathname: string): boolean {
+  return AUTH_ACTION_PATH.test(pathname)
+}
+
 /** Quita query/hash sensibles de una URL (absoluta o relativa). En /auth/action quita toda la query. */
 export function sanitizeUrl(value: string): string {
   let url: URL
@@ -13,7 +17,7 @@ export function sanitizeUrl(value: string): string {
   }
 
   const before = url.search + url.hash
-  if (AUTH_ACTION_PATH.test(url.pathname)) {
+  if (isAuthActionPath(url.pathname)) {
     url.search = ""
     url.hash = ""
   } else {

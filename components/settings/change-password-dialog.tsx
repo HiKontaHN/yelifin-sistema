@@ -12,40 +12,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { signInWithEmailAndPassword, signOut, updatePassword } from "firebase/auth";
-import { Check, Circle, Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 
+import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { auth, authReady } from "@/lib/firebase";
+import { meetsPasswordPolicy } from "@/lib/password-policy";
 import { useAuth } from "@/hooks/use-auth";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-
-// 3+ dígitos seguidos que suben o bajan de a uno: "123", "987".
-function hasDigitSequence(v: string) {
-  for (let i = 0; i + 2 < v.length; i++) {
-    const [a, b, c] = [v[i], v[i + 1], v[i + 2]].map(Number);
-    if (![v[i], v[i + 1], v[i + 2]].every((ch) => /[0-9]/.test(ch))) continue;
-    if ((b - a === 1 && c - b === 1) || (a - b === 1 && b - c === 1)) return true;
-  }
-  return false;
-}
-
-// Fuente única: la checklist de la UI y la validación del schema.
-const RULES = [
-  { label: "8 caracteres",       test: (v: string) => v.length >= 8 },
-  { label: "Una mayúscula",      test: (v: string) => /[A-Z]/.test(v) },
-  { label: "Una minúscula",      test: (v: string) => /[a-z]/.test(v) },
-  { label: "3 números",          test: (v: string) => (v.match(/[0-9]/g) ?? []).length >= 3 },
-  { label: "Sin secuencias (123)", test: (v: string) => v.length > 0 && !hasDigitSequence(v) },
-  { label: "Carácter especial",  test: (v: string) => /[^A-Za-z0-9]/.test(v) },
-];
 
 const schema = z
   .object({
     current: z.string().min(1, "Ingresa tu contraseña actual"),
-    next: z.string().refine((v) => RULES.every((r) => r.test(v)), "La contraseña no cumple los requisitos"),
+    next: z.string().refine(meetsPasswordPolicy, "La contraseña no cumple los requisitos"),
     confirm: z.string(),
   })
   .refine((d) => d.next === d.confirm, {
@@ -149,14 +130,19 @@ export function ChangePasswordDialog({
     if (!email) return;
     setIsSending(true);
     try {
-      await fetch("/api/auth/send-password-reset", {
+      const response = await fetch("/api/auth/send-password-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      toast.success(`Te enviamos un enlace a ${email}`);
+      const result = await response.json().catch(() => null);
+      if (!response.ok || typeof result?.data?.message !== "string") {
+        toast.error(result?.error ?? "No se pudo enviar el correo de recuperación.");
+        return;
+      }
+      toast.success(result.data.message);
     } catch {
-      toast.error("No se pudo enviar el correo");
+      toast.error("No se pudo enviar el correo de recuperación.");
     } finally {
       setIsSending(false);
     }
@@ -210,20 +196,7 @@ export function ChangePasswordDialog({
         error={errors.next?.message}
         {...register("next")}
       />
-      <ul className="-mt-2 grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
-        {RULES.map((r) => {
-          const ok = r.test(nextValue);
-          return (
-            <li
-              key={r.label}
-              className={cn("flex items-center gap-1.5", ok ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}
-            >
-              {ok ? <Check className="size-3.5 shrink-0" /> : <Circle className="size-3 shrink-0" />}
-              {r.label}
-            </li>
-          );
-        })}
-      </ul>
+      <PasswordRequirements password={nextValue} className="-mt-2 sm:grid-cols-3" />
 
       <PasswordField
         id="confirm-password"

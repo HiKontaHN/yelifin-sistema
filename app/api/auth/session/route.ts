@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { neon } from "@neondatabase/serverless";
 import { hasValidRequestOrigin } from "@/lib/request-origin";
+import { clearSessionCookies } from "@/lib/session-cookies";
 
 const sql = neon(process.env.DATABASE_URL!);
 const SESSION_COOKIE = "hikonta_auth";
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
     if (!sessionCookie) return NextResponse.json({ error: "Sesión ausente" }, { status: 401 });
 
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie);
+    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
     const user = await adminAuth.getUser(decoded.uid);
     if (user.disabled) return NextResponse.json({ error: "Cuenta deshabilitada" }, { status: 401 });
 
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
+    const decoded = await adminAuth.verifyIdToken(idToken, true);
     // Evita que un ID token renovado en segundo plano se use para extender
     // una cookie de sesión vencida sin que el usuario vuelva a autenticarse.
     if (Date.now() / 1000 - decoded.auth_time > 5 * 60) {
@@ -94,34 +95,5 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
   }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-  response.cookies.set("hikonta_nav", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-  response.cookies.set("token", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-  response.cookies.set("hikonta_session", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-  return response;
+  return clearSessionCookies(NextResponse.json({ ok: true }));
 }
