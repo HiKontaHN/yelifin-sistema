@@ -1,10 +1,8 @@
 // lib/email-templates.ts
 // Plantillas HTML para los correos que manda lib/mailer.ts. Usan tablas y
-// estilos inline (no CSS externo/flexbox) a propósito: es lo único que
-// Outlook de escritorio renderiza de forma confiable. El logo es texto +
-// una cajita de color, no una imagen — así siempre se ve, incluso con
-// "mostrar imágenes" bloqueado (el comportamiento por defecto en la
-// mayoría de los clientes de correo).
+// estilos inline (no CSS externo/flexbox) para clientes de correo como Outlook.
+
+export const EMAIL_LOGO_CID = "logo@hikonta.com";
 
 const BRAND_BLUE = "#0068ff";
 const TEXT_DARK = "#0f172a";
@@ -30,11 +28,10 @@ function emailShell({ previewText, bodyHtml }: { previewText: string; bodyHtml: 
           <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px; max-width:100%; background-color:#ffffff; border:1px solid ${BORDER}; border-radius:16px;">
             <tr>
               <td style="padding:36px 32px 8px 32px;">
-                <!-- Logo: cajita azul "hi" + wordmark, igual que components/shared/hikonta-icon.tsx + hikonta-title.tsx -->
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td style="background-color:${BRAND_BLUE}; border-radius:8px; width:32px; height:32px; text-align:center; vertical-align:middle;">
-                      <span style="color:#ffffff; font-weight:700; font-size:16px; line-height:32px;">hi</span>
+                    <td width="32" height="32" style="vertical-align:middle;">
+                      <img src="cid:${EMAIL_LOGO_CID}" alt="" width="32" height="32" style="display:block; border:0; border-radius:8px;">
                     </td>
                     <td style="padding-left:8px; color:${TEXT_DARK}; font-weight:700; font-size:18px;">hikonta</td>
                   </tr>

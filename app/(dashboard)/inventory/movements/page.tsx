@@ -12,7 +12,7 @@ import {
 import {
   ArrowDownCircle, ArrowUpCircle, Package, Layers,
   SlidersHorizontal, X, TrendingUp, TrendingDown, BoxIcon,
-  Plus, ShoppingCart, PackagePlus, RotateCcw, FilePen, Pencil,
+  Plus, ShoppingCart, PackagePlus, RotateCcw, FilePen,
 } from "lucide-react";
 import { useMovements, Movement } from "@/hooks/swr/use-movements";
 import { useProducts } from "@/hooks/swr/use-products";
@@ -400,23 +400,6 @@ function MovementsPageContent() {
   const { products }              = useProducts();
   const { format: formatCurrency } = useCurrency();
   const { show_costs: showCosts, show_profit: showProfit } = useModulePermissions("INVENTORY");
-  const { can_edit: canEditIncoming } = useModulePermissions("INVENTORY", "INCOMING");
-  const { can_edit: canEditSales } = useModulePermissions("SALES");
-
-  const editHref = (movement: Movement): string | null => {
-    if (
-      canEditSales &&
-      movement.reference_id &&
-      (movement.reference_type === "SALE" || movement.reference_type === "SALE_EDITED")
-    ) return `/sales/${movement.reference_id}/edit`;
-    if (
-      canEditIncoming &&
-      movement.reference_id &&
-      movement.purchase_item_id &&
-      (movement.reference_type === "PURCHASE" || movement.reference_type === "PURCHASE_EDITED")
-    ) return `/purchases/${movement.reference_id}/edit?item=${movement.purchase_item_id}`;
-    return null;
-  };
 
   const format = (v: number | null | undefined): string => {
     if (v == null) return "—";
@@ -430,17 +413,6 @@ function MovementsPageContent() {
     { id: "detail", header: "Detalle", cell: (m) => <MovementDetail m={m} format={format} showCosts={showCosts} /> },
     ...(showCosts ? [{ id: "total", header: "Total", width: 110, align: "right" as const, cell: (m: Movement) => <MovementTotal m={m} format={format} /> }] : []),
     ...(showProfit ? [{ id: "profit", header: "Ganancia", width: 110, align: "right" as const, cell: (m: Movement) => <MovementProfit m={m} format={format} /> }] : []),
-    {
-      id: "actions", header: "", width: 48, align: "right" as const, stopRowClick: true,
-      cell: (m: Movement) => {
-        const href = editHref(m);
-        return href ? (
-          <Button variant="ghost" size="icon-sm" title="Editar movimiento" aria-label="Editar movimiento" onClick={() => push(href)}>
-            <Pencil className="size-3.5" />
-          </Button>
-        ) : null;
-      },
-    },
   ];
   const renderMovementDate = (_key: string, rows: readonly Movement[]) => {
     const parts = dateTitleFormatter.formatToParts(new Date(rows[0].created_at));
@@ -552,19 +524,9 @@ function MovementsPageContent() {
                   <div className="flex shrink-0 flex-col items-end gap-1"><TypeBadge m={m} /><span className="text-xs text-muted-foreground">{m.quantity} uds</span></div>
                 </div>
                 <MobileDetail m={m} format={format} showCosts={showCosts} showProfit={showProfit} />
-                {editHref(m) && (
-                  <Button variant="outline" size="sm" className="mt-3 w-full gap-2" onClick={() => push(editHref(m)!)}>
-                    <Pencil className="size-3.5" /> Editar movimiento
-                  </Button>
-                )}
               </CardContent>
             </Card>
           )}
-          onRowClick={(movement) => {
-            const href = editHref(movement);
-            if (href) push(href);
-          }}
-          isRowClickable={(movement) => Boolean(editHref(movement))}
           isLoading={isLoading}
           emptyState="No hay movimientos en este período"
           recordLabel={total === 1 ? "movimiento" : "movimientos"}

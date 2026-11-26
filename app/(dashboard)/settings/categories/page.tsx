@@ -28,7 +28,7 @@ import {
 import {
   Plus,
   Pencil,
-  Trash2,
+  Archive,
   Loader2,
   ArrowDownCircle,
   ArrowUpCircle,
@@ -222,7 +222,7 @@ function CategoriesPageContent() {
     setIsSubmitting(true);
     try {
       await remove(deleteCategory.id);
-      toast.success("Categoría eliminada");
+      toast.success("Categoría inactivada");
       mutate();
       setDeleteCategory(null);
     } catch (error: any) {
@@ -266,15 +266,15 @@ function CategoriesPageContent() {
       await mutate();
 
       if (failed.length === 0) {
-        toast.success(`${succeeded.length} ${succeeded.length === 1 ? "categoría eliminada" : "categorías eliminadas"}`);
+        toast.success(`${succeeded.length} ${succeeded.length === 1 ? "categoría inactivada" : "categorías inactivadas"}`);
       } else {
         const description = failed
           .map((result) => `${categoryById.get(result.id)?.name ?? `ID ${result.id}`}: ${result.message}`)
           .join("; ");
         if (succeeded.length > 0) {
-          toast.warning(`Se eliminaron ${succeeded.length} de ${results.length} categorías`, { description });
+          toast.warning(`Se inactivaron ${succeeded.length} de ${results.length} categorías`, { description });
         } else {
-          toast.error("No se pudo eliminar ninguna categoría", { description });
+          toast.error("No se pudo inactivar ninguna categoría", { description });
         }
       }
     } catch (error: any) {
@@ -314,8 +314,8 @@ function CategoriesPageContent() {
         className="gap-1.5"
         onClick={() => setBulkDeleteOpen(true)}
       >
-        <Trash2 className="size-4" />
-        Eliminar ({selectedCategories.length})
+        <Archive className="size-4" />
+        Inactivar ({selectedCategories.length})
       </Button>
     </>
   );
@@ -446,8 +446,8 @@ function CategoriesPageContent() {
                 <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}>
                   <Pencil className="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Eliminar ${cat.name}`}>
-                  <Trash2 className="size-4" />
+                <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Inactivar ${cat.name}`}>
+                  <Archive className="size-4" />
                 </Button>
               </div>
             ) : (
@@ -498,7 +498,7 @@ function CategoriesPageContent() {
               {canMutate ? (cat.is_active ? (
                 <>
                   <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditCategory(cat); setFormName(cat.name); }} aria-label={`Editar ${cat.name}`}><Pencil className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Eliminar ${cat.name}`}><Trash2 className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setDeleteCategory(cat)} aria-label={`Inactivar ${cat.name}`}><Archive className="size-4" /></Button>
                 </>
               ) : (
                 <Button variant="ghost" size="icon" className="size-8" disabled={reactivatingId === cat.id} onClick={() => handleReactivate(cat)} aria-label={`Reactivar ${cat.name}`}>
@@ -710,7 +710,7 @@ function CategoriesPageContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Eliminar */}
+      {/* Dialog Inactivar */}
       <Dialog open={!!deleteCategory} onOpenChange={(v) => !v && setDeleteCategory(null)}>
         <DialogContent
           className={cn(
@@ -736,18 +736,18 @@ function CategoriesPageContent() {
 
           <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
             <DialogTitle className="flex items-center gap-2 text-lg font-bold text-destructive">
-              <Trash2 className="size-4" />
-              Eliminar Categoría
+              <Archive className="size-4" />
+              Inactivar categoría
             </DialogTitle>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-5 py-4">
             <p className="text-sm text-muted-foreground">
-              ¿Estás seguro que deseas eliminar la categoría{" "}
+              ¿Estás seguro que quieres inactivar la categoría{" "}
               <span className="font-medium text-foreground">
                 "{deleteCategory?.name}"
               </span>
-              ? Esta acción no se puede deshacer.
+              ? Podrás reactivarla después.
             </p>
           </div>
 
@@ -771,17 +771,17 @@ function CategoriesPageContent() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Eliminando…
+                  Inactivando…
                 </>
               ) : (
-                "Eliminar"
+                "Inactivar"
               )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Eliminar varias */}
+      {/* Dialog Inactivar varias */}
       <Dialog open={bulkDeleteOpen} onOpenChange={(open) => !open && setBulkDeleteOpen(false)}>
         <DialogContent
           className={cn(
@@ -807,15 +807,15 @@ function CategoriesPageContent() {
 
           <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
             <DialogTitle className="flex items-center gap-2 text-lg font-bold text-destructive">
-              <Trash2 className="size-4" />
-              Eliminar {selectedCategories.length} {selectedCategories.length === 1 ? "categoría" : "categorías"}
+              <Archive className="size-4" />
+              Inactivar {selectedCategories.length} {selectedCategories.length === 1 ? "categoría" : "categorías"}
             </DialogTitle>
           </DialogHeader>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
             <p className="text-sm text-muted-foreground">
-              ¿Estás seguro que deseas eliminar {selectedCategories.length === 1 ? "esta categoría" : "estas categorías"}?
-              Quedarán inactivas y podrán reactivarse después.
+              ¿Estás seguro que quieres inactivar {selectedCategories.length === 1 ? "esta categoría" : "estas categorías"}?
+              {selectedCategories.length === 1 ? "Podrás reactivarla después." : "Podrás reactivarlas después."}
             </p>
             {selectedCategories.length > 0 && selectedCategories.length <= 5 && (
               <ul className="list-disc space-y-1 pl-5 text-sm font-medium">
@@ -844,10 +844,10 @@ function CategoriesPageContent() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Eliminando…
+                  Inactivando…
                 </>
               ) : (
-                `Eliminar (${selectedCategories.length})`
+                `Inactivar (${selectedCategories.length})`
               )}
             </Button>
           </div>

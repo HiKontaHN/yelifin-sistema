@@ -5,7 +5,10 @@
 // app/(auth)/auth/action/page.tsx) — esto solo controla el diseño y el
 // envío del correo, que antes hacía Firebase con su propia plantilla.
 import nodemailer, { type Transporter } from "nodemailer";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { neon } from "@neondatabase/serverless";
+import { EMAIL_LOGO_CID } from "@/lib/email-templates";
 import { buildUnsubscribeUrl } from "@/lib/marketing-unsubscribe";
 
 let transporter: Transporter | null = null;
@@ -54,12 +57,20 @@ export async function sendMail({
   deliverToAccount?: boolean;
 }): Promise<void> {
   const user = process.env.MAIL_USER;
+  const logo = await readFile(join(process.cwd(), "public/pwa/icon-192.png"));
   await getTransporter().sendMail({
     from: `"HiKonta" <${user}>`,
     to: deliverToAccount ? to : getDeliveryRecipient(to),
     subject,
     html,
     text,
+    attachments: [{
+      filename: "hikonta.png",
+      content: logo,
+      contentType: "image/png",
+      contentDisposition: "inline",
+      cid: EMAIL_LOGO_CID,
+    }],
   });
 }
 

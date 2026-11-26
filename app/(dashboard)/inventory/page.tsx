@@ -80,6 +80,11 @@ const getStockBadge = (stock: number, is_service?: boolean) => {
 // ── Module-level action menu components ────────────────────────────────
 
 type InventoryItem = ReturnType<typeof useInventory>["inventory"][0];
+const PRODUCT_COLUMN_WIDTH = "clamp(14rem, 25vw, 20rem)";
+const SKU_COLUMN_WIDTH = "clamp(7rem, 12vw, 9rem)";
+const ACTIONS_COLUMN_WIDTH = 48;
+const STOCK_COLUMN_WIDTH = 110;
+const AMOUNT_COLUMN_WIDTH = 125;
 
 function ProductActionsMenu({
   item,
@@ -109,7 +114,7 @@ function ProductActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8 shrink-0">
+        <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={`Acciones para ${item.product_name}`}>
           <MoreVertical className="size-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -653,7 +658,7 @@ export default function InventoryPage() {
 
   const inventoryColumns: DataTableTimeSectionColumn<InventoryItem>[] = [
     {
-      id: "product", header: "Producto", width: "clamp(14rem, 25vw, 20rem)",
+      id: "product", header: "Producto", width: PRODUCT_COLUMN_WIDTH,
       cell: (item) => {
         const hasVariants = item.variants_stock.length > 0 && !item.is_service;
         const isExpanded = expanded.has(item.product_id);
@@ -686,29 +691,30 @@ export default function InventoryPage() {
       },
     },
     {
-      id: "sku", header: "SKU", width: "clamp(7rem, 12vw, 9rem)",
+      id: "sku", header: "SKU", width: SKU_COLUMN_WIDTH,
       className: "font-mono text-sm text-muted-foreground",
       cell: (item) => item.sku ?? "—",
     },
     {
-      id: "stock", header: "Stock", width: 110, align: "center", stopRowClick: true,
+      id: "stock", header: "Stock", width: STOCK_COLUMN_WIDTH, align: "center", stopRowClick: true,
       cell: (item) => getStockBadge(Number(item.stock), item.is_service),
     },
     ...(showCosts ? [{
-      id: "cost", header: "Costo prom.", width: 125, align: "right" as const,
+      id: "cost", header: "Costo prom.", width: AMOUNT_COLUMN_WIDTH, align: "right" as const,
       cell: (item: InventoryItem) => item.is_service ? "—" : format(Number(item.avg_unit_cost ?? 0)),
     }] : []),
     {
-      id: "price", header: "Precio venta", width: 125, align: "right",
+      id: "price", header: "Precio venta", width: AMOUNT_COLUMN_WIDTH, align: "right",
       cell: (item) => format(item.price),
     },
     ...(showCosts ? [{
-      id: "value", header: "Valor total", width: 125, align: "right" as const,
+      id: "value", header: "Valor total", width: AMOUNT_COLUMN_WIDTH, align: "right" as const,
       className: "font-medium",
       cell: (item: InventoryItem) => item.is_service ? format(item.price) : format(Number(item.total_value ?? 0)),
     }] : []),
     {
-      id: "actions", header: <span className="sr-only">Acciones</span>, width: 48,
+      id: "actions", header: <span className="sr-only">Acciones</span>, width: ACTIONS_COLUMN_WIDTH,
+      className: "px-2",
       align: "right", stopRowClick: true,
       cell: (item) => (
         <ProductActionsMenu
@@ -727,6 +733,9 @@ export default function InventoryPage() {
       ),
     },
   ];
+  const fixedWidth = STOCK_COLUMN_WIDTH + AMOUNT_COLUMN_WIDTH * (showCosts ? 3 : 1) + ACTIONS_COLUMN_WIDTH;
+  // Incluye el borde del contenedor para que ambas tablas quepan completas.
+  const inventoryMinWidth = `calc(${PRODUCT_COLUMN_WIDTH} + ${SKU_COLUMN_WIDTH} + ${fixedWidth + 2}px)`;
 
   const renderExpandedInventoryRows = (item: InventoryItem) => {
     const hasVariants = item.variants_stock.length > 0 && !item.is_service;
@@ -999,7 +1008,7 @@ export default function InventoryPage() {
             : push(`/inventory/${item.product_id}`)}
           renderExpandedRows={renderExpandedInventoryRows}
           rowClassName={(item) => expanded.has(item.product_id) ? "select-none bg-muted/20" : "select-none"}
-          minWidth={showCosts ? 900 : 700}
+          minWidth={inventoryMinWidth}
           showFooterPagination={false}
           pagination={{
             page,

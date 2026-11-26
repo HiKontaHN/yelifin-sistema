@@ -82,6 +82,7 @@ export function DashboardLayoutClient({
   const hasSalesPanels = /^\/sales\/[^/]+(?:\/edit)?\/?$/.test(pathname);
   const { firebaseUser, user, loading, accessBlocked, accessBlockedMessage } = useRequireAuth();
   const { checking } = useOnboardingGuard();
+  const planSlug = user?.subscription?.plan?.slug;
   usePlanGuard();
   useDashboardWarmup(pathname === "/dashboard" && loading);
 
@@ -90,7 +91,7 @@ export function DashboardLayoutClient({
   if (!firebaseUser) return null;
 
   return (
-    <PrivacyModeProvider>
+    <PrivacyModeProvider enabled={!!planSlug && planSlug !== "trial"}>
       <SidebarProvider defaultOpen={initialSidebarOpen} className="h-svh overflow-hidden rounded-none">
           <AppSidebar />
 

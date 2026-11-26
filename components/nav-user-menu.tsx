@@ -18,7 +18,7 @@ export function NavUserMenu() {
   const { push } = useRouter();
   const { user, firebaseUser, logout } = useAuth();
   const { org, isOwner } = useMe();
-  const { isPrivate, toggle: togglePrivacy } = usePrivacyMode();
+  const { isAvailable: canHideValues, isPrivate, toggle: togglePrivacy } = usePrivacyMode();
 
   const displayName =
     user?.profile?.business_name       ||
@@ -81,17 +81,15 @@ export function NavUserMenu() {
           )}
         </div>
 
-        <DropdownMenuItem
-          onSelect={(e) => e.preventDefault()}
-          onClick={togglePrivacy}
-          className="cursor-pointer"
-        >
-          {isPrivate
-            ? <EyeOff className="mr-2 size-4" />
-            : <Eye    className="mr-2 size-4" />
-          }
-          {isPrivate ? "Mostrar valores" : "Ocultar valores"}
-        </DropdownMenuItem>
+        {canHideValues && (
+          <DropdownMenuItem onSelect={(event) => {
+            event.preventDefault();
+            togglePrivacy();
+          }} className="cursor-pointer">
+            {isPrivate ? <EyeOff className="mr-2 size-4" /> : <Eye className="mr-2 size-4" />}
+            {isPrivate ? "Mostrar valores" : "Ocultar valores"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link href="/settings/profile" className="flex items-center cursor-pointer">
             <Settings className="mr-2 size-4" /> Configuración

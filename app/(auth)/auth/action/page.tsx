@@ -180,10 +180,12 @@ function AuthActionHandler() {
     return (
       <ActionCard>
         <div className="space-y-3">
-          <div className="size-14 bg-destructive/10 rounded-full flex items-center justify-center">
-            <XCircle className="size-7 text-destructive" />
+          <div className="flex items-center gap-3">
+            <div aria-hidden="true" className="flex size-14 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+              <XCircle className="size-7 text-destructive" />
+            </div>
+            <h1 className="text-2xl font-bold">{status === 'error' ? 'Enlace no válido' : 'No pudimos comprobar el enlace'}</h1>
           </div>
-          <h1 className="text-2xl font-bold">{status === 'error' ? 'Enlace no válido' : 'No pudimos comprobar el enlace'}</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">{errorMessage}</p>
         </div>
         {status === 'reset-retry' ? (

@@ -85,6 +85,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return Response.json({ message: "Categoría desactivada correctamente" });
   } catch (error) {
     console.error("DELETE /api/transaction-categories/[id]:", error);
-    return createErrorResponse("Error al eliminar categoría", 500);
+    return createErrorResponse("Error al inactivar categoría", 500);
   }
 }

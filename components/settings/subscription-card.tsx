@@ -1,12 +1,10 @@
-// components/settings/subscription-card.tsx
-// Resumen del plan (plan actual, estado, facturación) + acceso a
-// /settings/billing. Usado en Mi Negocio
-// ("Plan y suscripción").
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { useMe } from "@/hooks/swr/use-me";
+import { ResponsiveModal } from "@/components/shared/responsive-modal";
+import { SubscriptionDetails } from "@/components/settings/subscription-details";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,8 +24,8 @@ const INTERVAL_LABEL: Record<string, string> = {
 };
 
 export function SubscriptionCard({ title }: { title: string }) {
-  const { push } = useRouter();
   const { subscription, isOwner } = useMe();
+  const [showDetails, setShowDetails] = useState(false);
 
   const status = subscription?.status ?? "";
   const interval = INTERVAL_LABEL[subscription?.plan?.billing_interval ?? ""];
@@ -79,11 +77,16 @@ export function SubscriptionCard({ title }: { title: string }) {
         )}
 
         {isOwner && (
-          <Button size="sm" variant="outline" className="shrink-0 self-end md:self-auto" onClick={() => push("/settings/billing")}>
+          <Button size="sm" variant="outline" className="shrink-0 self-end md:self-auto" onClick={() => setShowDetails(true)}>
             Administrar suscripción
           </Button>
         )}
       </CardContent>
+      {isOwner && (
+        <ResponsiveModal open={showDetails} onOpenChange={setShowDetails} title="Administrar suscripción">
+          <SubscriptionDetails />
+        </ResponsiveModal>
+      )}
     </Card>
   );
 }

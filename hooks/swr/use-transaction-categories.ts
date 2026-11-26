@@ -151,7 +151,7 @@ export function useDeleteCategory() {
 
     if (!res.ok) {
       const error = await res.json();
-      throw new Error(error.error || "Error al eliminar categoría");
+      throw new Error(error.error || "Error al inactivar categoría");
     }
   };
 
@@ -174,7 +174,7 @@ export function useBulkDeleteCategories() {
 
     if (!res.ok) {
       const error = await res.json();
-      throw new Error(error.error || "Error al eliminar categorías");
+      throw new Error(error.error || "Error al inactivar categorías");
     }
 
     const result: { results: BulkDeleteCategoryResult[] } = await res.json();

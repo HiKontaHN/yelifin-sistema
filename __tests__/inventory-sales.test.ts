@@ -429,18 +429,18 @@ describe("POST /api/products", () => {
     expect(res.status).toBe(409);
   });
 
-  it("creates a product successfully and returns 201 with variants:[]", async () => {
+  it("assigns the next suggested SKU when the product omits it", async () => {
     // 1. verifyResourceLimit: plan query (no limit)
     mockSqlImpl.mockResolvedValueOnce([{ max_products: null }]);
-    // 2. nextProductSkus: no taken skus (no sku in body)
-    mockSqlImpl.mockResolvedValueOnce([]);
+    // 2. nextProductSkus: the first SKU is already taken
+    mockSqlImpl.mockResolvedValueOnce([{ sku: "C-001" }]);
     // 3. INSERT RETURNING
     const createdProduct = {
       id: 10,
       user_id: 42,
       name: "Camiseta",
       description: null,
-      sku: null,
+      sku: "C-002",
       barcode: null,
       price: "150.00",
       image_url: null,
@@ -461,9 +461,10 @@ describe("POST /api/products", () => {
     const body = await json(res) as { data: { name: string; variants: unknown[] } };
     expect(body.data.name).toBe("Camiseta");
     expect(body.data.variants).toEqual([]);
+    expect(mockSqlImpl.mock.calls[2][5]).toBe("C-002");
   });
 
-  it("creates a service product (is_service=true) successfully", async () => {
+  it("assigns a SERV SKU when the service SKU is blank", async () => {
     mockSqlImpl.mockResolvedValueOnce([{ max_products: null }]); // verifyResourceLimit
     mockSqlImpl.mockResolvedValueOnce([]); // nextProductSkus: no taken skus
     const createdService = {
@@ -479,12 +480,13 @@ describe("POST /api/products", () => {
     const { POST } = await import("@/app/api/products/route");
     const req = makeRequest("http://localhost/api/products", {
       method: "POST",
-      body: { name: "Consultoría", price: 500, is_service: true },
+      body: { name: "Consultoría", price: 500, is_service: true, sku: "   " },
     });
     const res = await POST(req as never);
     expect(res.status).toBe(201);
     const body = await json(res) as { data: { is_service: boolean } };
     expect(body.data.is_service).toBe(true);
+    expect(mockSqlImpl.mock.calls[2][5]).toBe("SERV-001");
   });
 });
 

@@ -29,21 +29,13 @@ const schema = z.object({
   name:        z.string().trim().min(1, "El nombre es requerido"),
   product_category_id: z.number().int().positive().nullable().optional(),
   description: z.string().optional(),
-  sku:         z.string().optional(),
+  sku:         z.string().trim().optional(),
   price:       z.union([
     z.string().trim().min(1, "El precio de venta es requerido"),
     z.number(),
   ]).transform(Number).pipe(z.number().finite("El precio debe ser un número válido").min(0, "El precio debe ser mayor o igual a 0")),
   is_service:  z.boolean().optional(),
   service_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0").optional(),
-}).superRefine((data, ctx) => {
-  if (!data.is_service && (!data.sku || data.sku.trim().length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "El SKU es requerido para productos",
-      path: ["sku"],
-    });
-  }
 });
 
 type FormData = z.infer<typeof schema>;
@@ -69,22 +61,23 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodFormResolver(schema),
-    defaultValues: { is_service: false, service_cost: 0, product_category_id: null },
+    defaultValues: { name: "", is_service: false, service_cost: 0, product_category_id: null },
   });
 
-  const nameValue    = watch("name");
+  const nameValue    = watch("name")?.trim() ?? "";
   const isService    = watch("is_service") ?? false;
 
-  const [suggestedSku, setSuggestedSku] = useState("");
-  const [skuStatus,    setSkuStatus]    = useState<"unknown" | "checking" | "available" | "taken">("unknown");
+  const [suggestion, setSuggestion] = useState<{ name: string; isService: boolean; sku: string } | null>(null);
+  const suggestedSku = suggestion?.name === nameValue && suggestion.isService === isService ? suggestion.sku : "";
+  const [skuCheck, setSkuCheck] = useState<{ sku: string; available: boolean } | null>(null);
 
   // Sugerencia verificada por el servidor a partir del nombre
   // (PHK-001, PHK-002, ... rellenando huecos). Para servicios, prefijo fijo
   // "SERV" (SERV-001, SERV-002...) en vez de iniciales del nombre.
-  const debouncedName = useDebounce(nameValue?.trim() ?? "", 400);
+  const debouncedName = useDebounce(nameValue, 400);
   useEffect(() => {
     if (!open || !debouncedName) {
-      setSuggestedSku("");
+      setSuggestion(null);
       return;
     }
     let cancelled = false;
@@ -95,15 +88,11 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
         );
         if (!res.ok) throw new Error();
         const json = await res.json();
-        if (!cancelled) setSuggestedSku(json.data?.suggestions?.[0] ?? "");
-      } catch {
-        // Fallback local si el endpoint falla
         if (!cancelled) {
-          const prefix = isService
-            ? "SERV"
-            : debouncedName.split(/\s+/).map((w: string) => w[0]?.toUpperCase() ?? "").join("").slice(0, 4);
-          setSuggestedSku(prefix ? `${prefix}-001` : "");
+          setSuggestion({ name: debouncedName, isService, sku: json.data?.suggestions?.[0] ?? "" });
         }
+      } catch {
+        if (!cancelled) setSuggestion(null);
       }
     })();
     return () => { cancelled = true; };
@@ -111,24 +100,25 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   }, [debouncedName, open, isService]);
 
   // Verificación en vivo de disponibilidad del SKU escrito
-  const skuValue = watch("sku");
-  const debouncedSku = useDebounce(skuValue?.trim() ?? "", 400);
+  const skuValue = watch("sku")?.trim() ?? "";
+  const skuAvailable = skuCheck?.sku === skuValue ? skuCheck.available : undefined;
+  const debouncedSku = useDebounce(skuValue, 400);
   useEffect(() => {
     if (!open || !debouncedSku) {
-      setSkuStatus("unknown");
+      setSkuCheck(null);
       return;
     }
     let cancelled = false;
-    setSkuStatus("checking");
     (async () => {
       try {
         const res = await fetch(
           `/api/products/suggest-sku?check=${encodeURIComponent(debouncedSku)}`,
         );
+        if (!res.ok) throw new Error();
         const json = await res.json();
-        if (!cancelled) setSkuStatus(json.data?.available ? "available" : "taken");
+        if (!cancelled) setSkuCheck({ sku: debouncedSku, available: json.data.available });
       } catch {
-        if (!cancelled) setSkuStatus("unknown");
+        if (!cancelled) setSkuCheck(null);
       }
     })();
     return () => { cancelled = true; };
@@ -153,7 +143,7 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       toast.error("Selecciona una cuenta o tarjeta para la compra");
       return;
     }
-    if (skuStatus === "taken") {
+    if (data.sku && data.sku === skuCheck?.sku && !skuCheck.available) {
       toast.error("El SKU ya está ocupado, elige otro");
       return;
     }
@@ -250,8 +240,8 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
     setImageFile(null);
     setInventory(null);
     setIsUploadingImage(false);
-    setSuggestedSku("");
-    setSkuStatus("unknown");
+    setSuggestion(null);
+    setSkuCheck(null);
     onOpenChange(false);
   };
 
@@ -270,10 +260,6 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
                     : isService         ? "Crear servicio"
                     : "Crear producto";
 
-  const submitForm = handleSubmit(onSubmit, () => {
-    toast.error("Completá los campos obligatorios y revisá los campos marcados");
-  });
-
   return (
     <ResponsiveModal
       open={open}
@@ -284,44 +270,46 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
       formProps={{
         id: "create-product-form",
         noValidate: true,
-        onSubmit: submitForm,
+        onSubmit: handleSubmit(onSubmit),
       }}
       bodyClassName="space-y-5"
       footer={
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleClose}
-            disabled={isLoading}
-            className="flex-1 h-11"
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            onClick={submitForm}
-            disabled={isLoading}
-            className="flex-1 h-11 gap-2"
-          >
-            {isLoading
-              ? <><Loader2 className="size-4 animate-spin" />{submitLabel}</>
-              : <><PackagePlus className="size-4" />{submitLabel}</>
-            }
-          </Button>
-        </>
+        <div className="min-w-0 flex-1 space-y-3">
+          {Object.keys(errors).length > 0 && (
+            <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              <p className="font-medium">Revisá estos campos antes de guardar</p>
+              <ul className="mt-1 list-inside list-disc">
+                {Object.entries(errors).map(([field, error]) => (
+                  <li key={field}>{error?.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={isLoading}
+              className="flex-1 h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="create-product-form"
+              disabled={isLoading}
+              className="flex-1 h-11 gap-2"
+            >
+              {isLoading
+                ? <><Loader2 className="size-4 animate-spin" />{submitLabel}</>
+                : <><PackagePlus className="size-4" />{submitLabel}</>
+              }
+            </Button>
+          </div>
+        </div>
       }
     >
-            {Object.keys(errors).length > 0 && (
-              <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                <p className="font-medium">Revisá los siguientes campos antes de crear:</p>
-                <ul className="mt-1 list-inside list-disc">
-                  {Object.entries(errors).map(([field, error]) => (
-                    <li key={field}>{error?.message}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {/* Toggle de servicio — va primero para que cambie el contexto del form */}
             <div className={cn(
               "flex items-start justify-between gap-4 rounded-xl border p-4 transition-colors",
@@ -358,8 +346,10 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
 
             {/* Nombre */}
             <div className="space-y-2">
-              <FieldLabel icon={<FileText className="size-3.5" />} label="Nombre" required />
+              <FieldLabel icon={<FileText className="size-3.5" />} label="Nombre" htmlFor="create-product-name" required />
               <Input
+                id="create-product-name"
+                required
                 {...register("name")}
                 aria-invalid={!!errors.name}
                 aria-describedby={errors.name ? "create-product-name-error" : undefined}
@@ -370,41 +360,43 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
               {errors.name && <p id="create-product-name-error" role="alert" className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
 
-            {/* SKU — opcional para servicios */}
+            {/* SKU */}
             <div className="space-y-2">
               <FieldLabel
                 icon={<Hash className="size-3.5" />}
                 label="SKU"
-                required={!isService}
-                optional={isService}
+                optional
               />
               <Input
-                {...register("sku", { required: !isService })}
+                {...register("sku")}
                 aria-invalid={!!errors.sku}
-                aria-describedby={errors.sku ? "create-product-sku-error" : undefined}
-                placeholder={isService ? "Ej: SERV-001 (opcional)" : "Ej: CAM-NEG-M"}
+                aria-describedby={errors.sku ? "create-product-sku-error" : "create-product-sku-hint"}
+                placeholder={suggestedSku || (isService ? "Ej: SERV-001" : "Ej: CAM-NEG-M")}
                 disabled={isLoading}
                 className={cn("h-11 text-base font-mono", errors.sku && "border-destructive")}
               />
               {errors.sku && <p id="create-product-sku-error" role="alert" className="text-xs text-destructive">{errors.sku.message}</p>}
-              {!errors.sku && skuStatus === "taken" && (
+              {!errors.sku && skuAvailable === false && (
                 <p className="text-xs text-destructive">Este SKU ya está ocupado</p>
               )}
-              {!errors.sku && skuStatus === "available" && (
+              {!errors.sku && skuAvailable === true && (
                 <p className="text-xs text-green-600">SKU disponible</p>
               )}
-              {suggestedSku && (
-                <p className="text-xs text-muted-foreground">
-                  Sugerido:{" "}
-                  <button
-                    type="button"
-                    className="text-primary hover:underline font-medium"
-                    onClick={() => setValue("sku", suggestedSku)}
-                  >
-                    {suggestedSku}
-                  </button>
-                </p>
-              )}
+              <p id="create-product-sku-hint" className="text-xs text-muted-foreground">
+                {suggestedSku ? (
+                  <>
+                    SKU sugerido:{" "}
+                    <button
+                      type="button"
+                      className="text-primary hover:underline font-medium"
+                      onClick={() => setValue("sku", suggestedSku)}
+                    >
+                      {suggestedSku}
+                    </button>
+                    {" · Se asigna si lo dejas vacío."}
+                  </>
+                ) : "Se asignará un SKU si dejas el campo vacío."}
+              </p>
             </div>
 
             <ProductCategoryField
@@ -416,12 +408,14 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
 
             {/* Precio */}
             <div className="space-y-2">
-              <FieldLabel icon={<DollarSign className="size-3.5" />} label="Precio de venta" required />
+              <FieldLabel icon={<DollarSign className="size-3.5" />} label="Precio de venta" htmlFor="create-product-price" required />
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-sm">
                   {symbol}
                 </span>
                 <Input
+                  id="create-product-price"
+                  required
                   type="number" step="0.01" min="0" placeholder="0.00"
                   {...register("price")}
                   aria-invalid={!!errors.price}
@@ -488,16 +482,17 @@ export function CreateProductDialog({ open, onOpenChange, onSuccess }: Props) {
   );
 }
 
-function FieldLabel({ icon, label, required, optional }: {
+function FieldLabel({ icon, label, htmlFor, required, optional }: {
   icon?:     React.ReactNode;
   label:     string;
+  htmlFor?:  string;
   required?: boolean;
   optional?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1.5">
       {icon && <span className="text-muted-foreground">{icon}</span>}
-      <Label className="text-sm font-medium">{label}</Label>
+      <Label htmlFor={htmlFor} className="text-sm font-medium">{label}</Label>
       {required && <span className="text-destructive text-xs">*</span>}
       {optional && <span className="text-muted-foreground text-xs">opcional</span>}
     </div>

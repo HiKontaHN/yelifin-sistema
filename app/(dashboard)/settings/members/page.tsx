@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { useMe } from "@/hooks/swr/use-me";
 import { formatInTZ, useTimezone } from "@/hooks/swr/use-timezone";
 import { useModulePermissions } from "@/hooks/use-module-permissions";
+import { useFeatures } from "@/hooks/use-features";
+import { RoleDialog } from "@/components/settings/role-dialog";
 import {
   useOrgMembers,
   useOrgRoles,
@@ -41,7 +43,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  ArrowLeft, UserPlus, MoreHorizontal, Loader2, Crown, Eye, EyeOff,
+  ArrowLeft, UserPlus, MoreHorizontal, Loader2, Crown, Eye, EyeOff, Plus,
   Warehouse as WarehouseIcon,
 } from "lucide-react";
 
@@ -62,7 +64,9 @@ function CreateMemberDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { roles } = useOrgRoles();
+  const { roles, mutate: mutateRoles } = useOrgRoles();
+  const { can_edit: canEditRoles } = useModulePermissions("ADMIN", "ROLES");
+  const { hasMultiUser } = useFeatures();
   const { createMemberUser, isCreating } = useCreateOrgMemberUser();
   const { activeWarehouses, defaultWarehouse } = useWarehouses();
 
@@ -74,6 +78,7 @@ function CreateMemberDialog({
   const [name,        setName]        = useState("");
   const [roleId,      setRoleId]      = useState("");
   const [warehouseId, setWarehouseId] = useState("");
+  const [showCreateRole, setShowCreateRole] = useState(false);
 
   const reset = () => {
     setEmail(""); setPassword(""); setName(""); setRoleId(""); setShowPass(false);
@@ -114,106 +119,127 @@ function CreateMemberDialog({
   };
 
   return (
-    <ResponsiveModal
-      open={open}
-      onOpenChange={(nextOpen) => { if (!nextOpen && !isCreating) handleClose(); }}
-      title="Crear usuario para el equipo"
-      width="sm"
-      dragToClose={!isCreating}
-      as="form"
-      formProps={{
-        id: "create-team-member-form",
-        onSubmit: (event) => { event.preventDefault(); void handleSubmit(); },
-      }}
-      footer={
-        <>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating} className="h-11 flex-1">Cancelar</Button>
-          <Button type="submit" form="create-team-member-form" loading={isCreating} className="h-11 flex-1">Crear usuario</Button>
-        </>
-      }
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="cm-email">Email <span className="text-destructive">*</span></Label>
-        <Input
-          id="cm-email"
-          type="email"
-          placeholder="usuario@ejemplo.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={isCreating}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="cm-pass">Contraseña <span className="text-destructive">*</span></Label>
-        <div className="relative">
-          <Input
-            id="cm-pass"
-            type={showPass ? "text" : "password"}
-            placeholder="Mínimo 6 caracteres"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={isCreating}
-            className="pr-10"
-          />
-          <button
-            type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            onClick={() => setShowPass((v) => !v)}
-            tabIndex={-1}
-          >
-            {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="cm-name">Nombre</Label>
-        <Input
-          id="cm-name"
-          placeholder="Nombre del miembro"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={isCreating}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="cm-role">Rol <span className="text-destructive">*</span></Label>
-        <Select value={roleId} onValueChange={setRoleId} disabled={isCreating}>
-          <SelectTrigger id="cm-role" className="h-10 w-full">
-            <SelectValue placeholder="Seleccioná un rol…" />
-          </SelectTrigger>
-          <SelectContent>
-            {nonOwnerRoles.map((r) => (
-              <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {activeWarehouses.length > 1 && (
+    <>
+      <ResponsiveModal
+        open={open && !showCreateRole}
+        onOpenChange={(nextOpen) => { if (!nextOpen && !isCreating) handleClose(); }}
+        title="Crear usuario para el equipo"
+        width="sm"
+        dragToClose={!isCreating}
+        as="form"
+        formProps={{
+          id: "create-team-member-form",
+          onSubmit: (event) => { event.preventDefault(); void handleSubmit(); },
+        }}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating} className="h-11 flex-1">Cancelar</Button>
+            <Button type="submit" form="create-team-member-form" loading={isCreating} className="h-11 flex-1">Crear usuario</Button>
+          </>
+        }
+      >
         <div className="space-y-1.5">
-          <Label htmlFor="cm-warehouse" className="flex items-center gap-1.5">
-            <WarehouseIcon className="size-3.5 text-muted-foreground" />
-            Bodega
-          </Label>
-          <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isCreating}>
-            <SelectTrigger id="cm-warehouse" className="h-10 w-full">
-              <SelectValue placeholder="Seleccioná una bodega…" />
-            </SelectTrigger>
-            <SelectContent>
-              {activeWarehouses.map((w) => (
-                <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Las ventas que registre este usuario descontarán de esta bodega.
-          </p>
+          <Label htmlFor="cm-email">Email <span className="text-destructive">*</span></Label>
+          <Input
+            id="cm-email"
+            type="email"
+            placeholder="usuario@ejemplo.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isCreating}
+          />
         </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cm-pass">Contraseña <span className="text-destructive">*</span></Label>
+          <div className="relative">
+            <Input
+              id="cm-pass"
+              type={showPass ? "text" : "password"}
+              placeholder="Mínimo 6 caracteres"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isCreating}
+              className="pr-10"
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowPass((v) => !v)}
+              tabIndex={-1}
+            >
+              {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cm-name">Nombre</Label>
+          <Input
+            id="cm-name"
+            placeholder="Nombre del miembro"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isCreating}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cm-role">Rol <span className="text-destructive">*</span></Label>
+          <div className="flex items-center gap-2">
+            <Select value={roleId} onValueChange={setRoleId} disabled={isCreating}>
+              <SelectTrigger id="cm-role" className="h-10 min-w-0 flex-1">
+                <SelectValue placeholder="Seleccioná un rol…" />
+              </SelectTrigger>
+              <SelectContent>
+                {nonOwnerRoles.map((r) => (
+                  <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {canEditRoles && hasMultiUser && (
+              <Button type="button" variant="outline" className="h-10 shrink-0" disabled={isCreating} onClick={() => setShowCreateRole(true)}>
+                <Plus className="size-4" />
+                Nuevo rol
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {activeWarehouses.length > 1 && (
+          <div className="space-y-1.5">
+            <Label htmlFor="cm-warehouse" className="flex items-center gap-1.5">
+              <WarehouseIcon className="size-3.5 text-muted-foreground" />
+              Bodega
+            </Label>
+            <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isCreating}>
+              <SelectTrigger id="cm-warehouse" className="h-10 w-full">
+                <SelectValue placeholder="Seleccioná una bodega…" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeWarehouses.map((w) => (
+                  <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Las ventas que registre este usuario descontarán de esta bodega.
+            </p>
+          </div>
+        )}
+      </ResponsiveModal>
+      {open && showCreateRole && (
+        <RoleDialog
+          role={null}
+          onClose={() => setShowCreateRole(false)}
+          onSaved={(createdRole) => {
+            void mutateRoles((current) => ({
+              data: [...(current?.data ?? []).filter(({ id }) => id !== createdRole.id), createdRole],
+            }), { revalidate: true });
+          }}
+        />
       )}
-    </ResponsiveModal>
+    </>
   );
 }
 
