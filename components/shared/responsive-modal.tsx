@@ -31,7 +31,23 @@ const HEIGHT_CLASSES: Record<ModalHeight, string> = {
 };
 
 // La modal se comporta como bottom sheet por debajo de este ancho (breakpoint sm)
-const SHEET_MEDIA_QUERY = "(max-width: 639px)";
+const SHEET_MEDIA_QUERY = "(width < 40rem)";
+const SHEET_TOP_GAP = 8;
+const DRAG_THRESHOLD = 8;
+const SNAP_THRESHOLD = 24;
+const INTERACTIVE_HEADER_ELEMENTS = "button, a, input, select, textarea, label, summary, [role='button'], [role='combobox'], [contenteditable]";
+
+type SheetGesture = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startedAt: number;
+  startHeight: number;
+  maxHeight: number;
+  dragging: boolean;
+};
+
+type SheetPreview = { offset: number; height?: number };
 
 type ResponsiveModalProps = {
   open: boolean;
@@ -57,7 +73,7 @@ type ResponsiveModalProps = {
   /** Si es false, permite cerrar al hacer click fuera (por defecto se previene). */
   preventOutsideClose?: boolean;
   showDragHandle?: boolean;
-  /** Si es false, desactiva el gesto de arrastrar hacia abajo para cerrar (móvil). */
+  /** Si es false, desactiva el arrastre desde el encabezado en móvil. */
   dragToClose?: boolean;
   bodyClassName?: string;
   contentClassName?: string;
@@ -86,110 +102,9 @@ export function ResponsiveModal({
   contentClassName,
 }: ResponsiveModalProps) {
   const contentRef = React.useRef<HTMLDivElement | null>(null);
-  const bodyRef = React.useRef<HTMLElement | null>(null);
-
-  const onOpenChangeRef = React.useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
-
-  // ── Gesto: arrastrar hacia abajo para cerrar (solo en modo bottom sheet) ──
-  // Usa Pointer Events, así funciona con dedo Y con mouse (DevTools/ventana
-  // angosta). Sigue el puntero y cierra por distancia (>35% de la altura) o
-  // por velocidad. Si el gesto empieza dentro del body con scroll pendiente
-  // hacia arriba (scrollTop > 0), se ignora y el scroll funciona normal.
-  React.useEffect(() => {
-    if (!open || !dragToClose) return;
-    const el = contentRef.current;
-    if (!el) return;
-
-    let startY = 0;
-    let dy = 0;
-    let startedAt = 0;
-    let dragging = false;
-    let allowed = false;
-    let closing = false;
-
-    const isSheet = () => window.matchMedia(SHEET_MEDIA_QUERY).matches;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (!isSheet() || closing) { allowed = false; return; }
-      if (e.pointerType === "mouse" && e.button !== 0) { allowed = false; return; }
-      const body = bodyRef.current;
-      const target = e.target as Node;
-      // Permitir el gesto si empieza fuera del área scrolleable
-      // o si esa área está en el tope (nada que scrollear hacia arriba)
-      allowed = !body || !body.contains(target) || body.scrollTop <= 0;
-      startY = e.clientY;
-      startedAt = Date.now();
-      dy = 0;
-      dragging = false;
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!allowed || closing) return;
-      dy = e.clientY - startY;
-
-      if (!dragging) {
-        // Umbral para no interferir con taps ni con scroll hacia arriba
-        if (dy > 12) {
-          dragging = true;
-          try { el.setPointerCapture(e.pointerId); } catch { /* no-op */ }
-          el.style.userSelect = "none";
-        } else {
-          return;
-        }
-      }
-
-      if (dy < 0) dy = 0;
-      el.style.transition = "none";
-      el.style.transform = `translateY(${dy}px)`;
-    };
-
-    // En táctil, impedir que el navegador convierta el gesto en scroll:
-    // si el body está en el tope y el dedo va hacia abajo, el scroll no
-    // tiene a dónde ir — se cancela desde el primer move para que los
-    // pointermove sigan llegando.
-    const onTouchMove = (e: TouchEvent) => {
-      if (!allowed || closing || !e.cancelable) return;
-      const delta = e.touches[0].clientY - startY;
-      if (delta > 0) e.preventDefault();
-    };
-
-    const settle = () => {
-      allowed = false;
-      if (!dragging || closing) { dragging = false; return; }
-      el.style.userSelect = "";
-
-      const elapsed = Math.max(Date.now() - startedAt, 1);
-      const velocity = dy / elapsed; // px/ms
-      const shouldClose = dy > el.offsetHeight * 0.35 || (velocity > 0.5 && dy > 60);
-
-      el.style.transition = "transform 0.22s ease-out";
-      if (shouldClose) {
-        closing = true;
-        el.style.transform = "translateY(100%)";
-        window.setTimeout(() => onOpenChangeRef.current(false), 180);
-      } else {
-        el.style.transform = "";
-      }
-      dragging = false;
-      dy = 0;
-    };
-
-    el.addEventListener("pointerdown", onPointerDown);
-    el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerup", settle);
-    el.addEventListener("pointercancel", settle);
-    // passive:false es necesario para poder hacer preventDefault del scroll
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-
-    return () => {
-      el.removeEventListener("pointerdown", onPointerDown);
-      el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerup", settle);
-      el.removeEventListener("pointercancel", settle);
-      el.removeEventListener("touchmove", onTouchMove);
-    };
-  }, [open, dragToClose]);
+  const gestureRef = React.useRef<SheetGesture | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [dragPreview, setDragPreview] = React.useState<SheetPreview | null>(null);
 
   // ── Teclado virtual (móvil) ─────────────────────────────────────────
   // La modal es un bottom sheet fixed a bottom:0 del viewport de layout.
@@ -224,20 +139,93 @@ export function ResponsiveModal({
     };
   }, [open]);
 
+  React.useEffect(() => {
+    if (open && dragToClose) return;
+    gestureRef.current = null;
+    setDragPreview(null);
+    if (!open) setExpanded(false);
+  }, [open, dragToClose]);
+
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const sheet = contentRef.current;
+    const target = event.target;
+    if (!sheet || !open || !dragToClose || gestureRef.current || !event.isPrimary || event.button !== 0
+      || !window.matchMedia(SHEET_MEDIA_QUERY).matches
+      || !(target instanceof Element) || !event.currentTarget.contains(target)
+      || target.closest(INTERACTIVE_HEADER_ELEMENTS)) return;
+
+    const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startedAt: event.timeStamp,
+      startHeight: sheet.offsetHeight,
+      maxHeight: Math.max(sheet.offsetHeight, keyboardFix?.maxHeight ?? visibleHeight - SHEET_TOP_GAP),
+      dragging: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    const dy = event.clientY - gesture.startY;
+    if (!gesture.dragging) {
+      const dx = Math.abs(event.clientX - gesture.startX);
+      if (dx >= DRAG_THRESHOLD && dx > Math.abs(dy)) {
+        gestureRef.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        return;
+      }
+      if (Math.abs(dy) < DRAG_THRESHOLD) return;
+      gesture.dragging = true;
+    }
+
+    setDragPreview(dy < 0
+      ? { offset: 0, height: Math.min(gesture.maxHeight, gesture.startHeight - dy) }
+      : { offset: dy });
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    gestureRef.current = null;
+    setDragPreview(null);
+    if (event.type !== "pointerup" || !gesture.dragging || !dragToClose
+      || !window.matchMedia(SHEET_MEDIA_QUERY).matches) return;
+
+    const dy = event.clientY - gesture.startY;
+    const velocity = dy / Math.max(event.timeStamp - gesture.startedAt, 1);
+    if (dy > gesture.startHeight * 0.35 || (dy > 60 && velocity > 0.5)) {
+      onOpenChange(false);
+    } else if (dy <= -SNAP_THRESHOLD) {
+      setExpanded(true);
+    } else if (dy >= SNAP_THRESHOLD && expanded) {
+      setExpanded(false);
+    }
+  };
+
   const bodyProps = {
     ...(as === "form" ? formProps : {}),
-    ref: (node: HTMLElement | null) => { bodyRef.current = node; },
     className: cn("min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4", bodyClassName),
     children,
   };
+  const contentStyle = {
+    ...keyboardFix,
+    "--responsive-modal-offset": dragPreview ? `${dragPreview.offset}px` : undefined,
+    "--responsive-modal-height": dragPreview?.height !== undefined ? `${dragPreview.height}px` : undefined,
+  } as React.CSSProperties;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         ref={contentRef}
-        style={keyboardFix ? { bottom: keyboardFix.bottom, maxHeight: keyboardFix.maxHeight } : undefined}
+        style={contentStyle}
         className={cn(
-          "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
+          "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-[var(--responsive-modal-offset,0px)]",
           "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
           HEIGHT_CLASSES[height],
           "flex flex-col overflow-visible p-0",
@@ -247,6 +235,9 @@ export function ResponsiveModal({
           WIDTH_CLASSES[width],
           "min-h-[50dvh] sm:min-h-0",
           "sm:rounded-xl sm:border",
+          (expanded || dragPreview?.height !== undefined) &&
+            "max-sm:h-[var(--responsive-modal-height,calc(100dvh-8px))] max-sm:max-h-[calc(100dvh-8px)]",
+          !dragPreview && "max-sm:transition-[translate] max-sm:ease-out motion-reduce:transition-none",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
           "data-[state=closed]:slide-out-to-bottom sm:data-[state=closed]:slide-out-to-bottom-[48%]",
@@ -259,27 +250,37 @@ export function ResponsiveModal({
           onOpenChange(false);
         }}
       >
-        {showDragHandle && (
-          <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0" style={{ touchAction: "none" }}>
-            <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-          </div>
-        )}
+        <div
+          data-slot="responsive-modal-drag-region"
+          className={cn("shrink-0", dragToClose && "max-sm:touch-none max-sm:cursor-grab max-sm:select-none max-sm:active:cursor-grabbing")}
+          onPointerDown={startDrag}
+          onPointerMove={updateDrag}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+          onLostPointerCapture={finishDrag}
+        >
+          {showDragHandle && (
+            <div aria-hidden="true" className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
+            </div>
+          )}
 
-        {(header || title) && (
-          <DialogHeader className="shrink-0 px-5 pt-2 pb-3 sm:pt-5 border-b">
-            {header ?? (
-              <>
-                <DialogTitle className={cn("flex items-center gap-2 text-lg font-bold", titleClassName)}>
-                  {Icon && <Icon className={cn("size-4 text-primary", iconClassName)} />}
-                  {title}
-                </DialogTitle>
-                {subtitle && (
-                  <p className="text-xs text-muted-foreground text-left">{subtitle}</p>
-                )}
-              </>
-            )}
-          </DialogHeader>
-        )}
+          {(header || title) && (
+            <DialogHeader className="shrink-0 border-b px-5 pt-2 pb-3 sm:pt-5">
+              {header ?? (
+                <>
+                  <DialogTitle className={cn("flex items-center gap-2 text-lg font-bold", titleClassName)}>
+                    {Icon && <Icon className={cn("size-4 text-primary", iconClassName)} />}
+                    {title}
+                  </DialogTitle>
+                  {subtitle && (
+                    <p className="text-left text-xs text-muted-foreground">{subtitle}</p>
+                  )}
+                </>
+              )}
+            </DialogHeader>
+          )}
+        </div>
 
         <DialogDescription className="sr-only">
           {subtitle ?? (title ? `Opciones para ${title}` : "Contenido del diálogo")}

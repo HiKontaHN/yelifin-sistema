@@ -1,7 +1,7 @@
 ﻿// components/products/create-product-variant-dialog.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -37,7 +37,7 @@ type FormData = z.infer<typeof schema>;
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
-type AttributePair = { key: string; value: string };
+type AttributePair = { id: number; key: string; value: string };
 
 type Props = {
   open:          boolean;
@@ -65,8 +65,9 @@ export function CreateProductVariantDialog({
   const [imageFile,        setImageFile]        = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [attributes,       setAttributes]       = useState<AttributePair[]>([
-    { key: "", value: "" },
+    { id: 0, key: "", value: "" },
   ]);
+  const nextAttributeId = useRef(1);
   const [inventoryOpen,    setInventoryOpen]    = useState(false);
   const [inventoryData,    setInventoryData]    = useState<ExistingFormValue>(defaultExistingForm());
   const [baseVariantName,  setBaseVariantName]  = useState("");
@@ -148,20 +149,21 @@ export function CreateProductVariantDialog({
   // ── Atributos dinámicos ────────────────────────────────────────────
 
   const addAttribute = () => {
-    setAttributes((prev) => [...prev, { key: "", value: "" }]);
+    const id = nextAttributeId.current++;
+    setAttributes((prev) => [...prev, { id, key: "", value: "" }]);
   };
 
-  const removeAttribute = (index: number) => {
-    setAttributes((prev) => prev.filter((_, i) => i !== index));
+  const removeAttribute = (id: number) => {
+    setAttributes((prev) => prev.filter((attr) => attr.id !== id));
   };
 
   const updateAttribute = (
-    index: number,
+    id: number,
     field: "key" | "value",
     value: string
   ) => {
     setAttributes((prev) =>
-      prev.map((attr, i) => (i === index ? { ...attr, [field]: value } : attr))
+      prev.map((attr) => (attr.id === id ? { ...attr, [field]: value } : attr))
     );
   };
 
@@ -266,7 +268,7 @@ export function CreateProductVariantDialog({
   const handleClose = () => {
     reset();
     setImageFile(null);
-    setAttributes([{ key: "", value: "" }]);
+    setAttributes([{ id: nextAttributeId.current++, key: "", value: "" }]);
     setIsUploadingImage(false);
     setInventoryOpen(false);
     setInventoryData(defaultExistingForm());
@@ -454,18 +456,18 @@ export function CreateProductVariantDialog({
               </div>
 
               <div className="space-y-2">
-                {attributes.map((attr, index) => (
-                  <div key={`${attr.key}-${index}`} className="flex items-center gap-2">
+                {attributes.map((attr) => (
+                  <div key={attr.id} className="flex items-center gap-2">
                     <Input
                       value={attr.key}
-                      onChange={(e) => updateAttribute(index, "key", e.target.value)}
+                      onChange={(e) => updateAttribute(attr.id, "key", e.target.value)}
                       placeholder="Ej: Color"
                       disabled={isLoading}
                       className="h-10 text-sm flex-1"
                     />
                     <Input
                       value={attr.value}
-                      onChange={(e) => updateAttribute(index, "value", e.target.value)}
+                      onChange={(e) => updateAttribute(attr.id, "value", e.target.value)}
                       placeholder="Ej: Rojo"
                       disabled={isLoading}
                       className="h-10 text-sm flex-1"
@@ -474,7 +476,7 @@ export function CreateProductVariantDialog({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeAttribute(index)}
+                      onClick={() => removeAttribute(attr.id)}
                       disabled={isLoading || attributes.length === 1}
                       className="size-10 shrink-0 text-muted-foreground hover:text-destructive"
                     >
