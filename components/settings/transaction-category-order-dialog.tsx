@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTransactionCategories, type TransactionCategory } from "@/hooks/swr/use-transaction-categories";
 import { cn } from "@/lib/utils";
@@ -157,7 +158,12 @@ export function TransactionCategoryOrderDialog({ initialType, typeOptions, onClo
         }
       >
         <TabsContent key={type} value={type} className="space-y-2">
-          {isLoading ? <p role="status" className="text-sm text-muted-foreground">Cargando categorías…</p> : (
+          {isLoading ? (
+            <div role="status" className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Spinner aria-hidden="true" />
+              <span>Cargando categorías…</span>
+            </div>
+          ) : (
             <ol
               ref={listRef}
               className="max-h-[50dvh] space-y-2 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin]"

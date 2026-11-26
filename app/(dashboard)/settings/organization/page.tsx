@@ -188,7 +188,7 @@ function OrganizationSettingsContent() {
                   <ImageIcon className="size-8 text-muted-foreground/40" />
                 )}
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="ml-auto flex flex-col items-end gap-2 md:ml-0 md:items-stretch">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -293,8 +293,8 @@ function OrganizationSettingsContent() {
       <PartnerLinkCard />
 
       {/* Save bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-3 bg-background/95 backdrop-blur border-t md:static md:flex md:justify-end md:border-0 md:bg-transparent md:backdrop-blur-none md:px-0 md:pt-0 md:pb-0">
-        <Button className="w-full md:w-auto gap-2" onClick={handleSave} disabled={busy}>
+      <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-end border-t bg-background/95 px-4 pt-3 pb-4 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+        <Button className="gap-2" onClick={handleSave} disabled={busy}>
           {busy
             ? <><Loader2 className="size-4 animate-spin" />Guardando…</>
             : <><Save className="size-4" />Guardar cambios</>

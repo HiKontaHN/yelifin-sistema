@@ -150,31 +150,37 @@ export function CatalogLinkCard() {
             Elige qué productos y servicios mostrar y compártelos mediante un enlace público seguro.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2 md:space-y-3">
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" /> Cargando catálogo…
             </div>
           ) : catalog?.catalog_path ? (
             <>
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="flex flex-col gap-2 md:flex-row">
                 <Input value={catalogUrl} readOnly aria-label="Enlace del catálogo" className="font-mono text-xs" />
-                <Button type="button" variant="outline" onClick={copyLink} className="gap-2 sm:shrink-0">
-                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                  {copied ? "Copiado" : "Copiar"}
-                </Button>
-                <Button type="button" variant="outline" asChild className="gap-2 sm:shrink-0">
-                  <a href={catalog.catalog_path} target="_blank" rel="noreferrer">
-                    <ExternalLink className="size-4" /> Ver catálogo
-                  </a>
-                </Button>
+                <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+                  <Button type="button" variant="outline" onClick={copyLink} className="gap-2 max-md:h-11 max-md:px-2">
+                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                    {copied ? "Copiado" : "Copiar"}
+                  </Button>
+                  <Button type="button" variant="outline" asChild className="gap-2 max-md:h-11 max-md:px-2">
+                    <a href={catalog.catalog_path} target="_blank" rel="noreferrer">
+                      <ExternalLink className="size-4" /> Ver catálogo
+                    </a>
+                  </Button>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => openSelector(false)} className="gap-2">
-                  <Pencil className="size-4" /> Editar productos y servicios
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+                <Button type="button" variant="outline" size="sm" onClick={() => openSelector(false)} className="gap-2 max-md:h-auto max-md:min-h-11 max-md:whitespace-normal max-md:px-2">
+                  <Pencil className="size-4" />
+                  <span className="md:hidden">Editar contenido</span>
+                  <span className="hidden md:inline">Editar productos y servicios</span>
                 </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => openSelector(true)} className="gap-2 text-muted-foreground">
-                  <RefreshCw className="size-4" /> Generar enlace nuevo
+                <Button type="button" variant="ghost" size="sm" onClick={() => openSelector(true)} className="gap-2 text-muted-foreground max-md:h-auto max-md:min-h-11 max-md:whitespace-normal max-md:border max-md:px-2">
+                  <RefreshCw className="size-4" />
+                  <span className="md:hidden">Nuevo enlace</span>
+                  <span className="hidden md:inline">Generar enlace nuevo</span>
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -182,9 +188,11 @@ export function CatalogLinkCard() {
               </p>
             </>
           ) : (
-            <Button type="button" onClick={() => openSelector(false)} disabled={!catalog} className="gap-2">
-              <Store className="size-4" /> Generar catálogo
-            </Button>
+            <div className="flex justify-end md:justify-start">
+              <Button type="button" onClick={() => openSelector(false)} disabled={!catalog} className="gap-2">
+                <Store className="size-4" /> Generar catálogo
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>

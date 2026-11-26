@@ -215,7 +215,7 @@ export function DataTableTimeSection<T>({
   );
 
   const groupHeading = (key: string, rows: readonly T[]) => (
-    <div className="flex min-h-9 items-center border-y border-border/70 bg-accent px-3 text-left text-xs font-medium text-muted-foreground sm:px-4 sm:text-sm">
+    <div className="flex min-h-9 items-center rounded-xl border border-border/70 bg-accent px-3 py-2 text-left text-xs font-medium text-muted-foreground sm:px-4 sm:text-sm">
       <span>{renderGroupHeader ? renderGroupHeader(key, rows) : key}</span>
     </div>
   );
@@ -364,13 +364,13 @@ export function DataTableTimeSection<T>({
       </div>
 
       {renderMobileRow && (
-        <div className="isolate lg:hidden">
+        <div className="isolate space-y-3 lg:hidden">
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 w-full rounded-xl" />)}</div>
           ) : data.length === 0 ? (
             <div className="rounded-xl border bg-card px-4 py-12 text-center text-sm text-muted-foreground">{emptyState}</div>
           ) : groups.map((group) => (
-            <section key={group.key}>
+            <section key={group.key} className="space-y-2">
               {getGroupKey && groupHeading(group.key, group.rows)}
               <div className="space-y-2">{group.rows.map((row) => <Fragment key={getRowKey(row)}>{renderMobileRow(row)}</Fragment>)}</div>
             </section>

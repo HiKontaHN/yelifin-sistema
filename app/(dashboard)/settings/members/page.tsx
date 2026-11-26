@@ -23,7 +23,9 @@ import { Label }    from "@/components/ui/label";
 import { Badge }    from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { DataTableTimeSection, DEFAULT_DATA_TABLE_PAGE_SIZE, type DataTableTimeSectionColumn } from "@/components/shared/data-table-time-section";
+import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -39,7 +41,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  ArrowLeft, UserPlus, MoreHorizontal, Loader2, Crown, Users, Eye, EyeOff,
+  ArrowLeft, UserPlus, MoreHorizontal, Loader2, Crown, Eye, EyeOff,
   Warehouse as WarehouseIcon,
 } from "lucide-react";
 
@@ -85,6 +87,7 @@ function CreateMemberDialog({
   const handleClose = () => { reset(); onClose(); };
 
   const handleSubmit = async () => {
+    if (isCreating) return;
     if (!email.trim())    { toast.error("El email es requerido"); return; }
     if (!password.trim()) { toast.error("La contraseña es requerida"); return; }
     if (password.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
@@ -111,105 +114,106 @@ function CreateMemberDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Crear usuario para el equipo</DialogTitle>
-        </DialogHeader>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(nextOpen) => { if (!nextOpen && !isCreating) handleClose(); }}
+      title="Crear usuario para el equipo"
+      width="sm"
+      dragToClose={!isCreating}
+      as="form"
+      formProps={{
+        id: "create-team-member-form",
+        onSubmit: (event) => { event.preventDefault(); void handleSubmit(); },
+      }}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating} className="h-11 flex-1">Cancelar</Button>
+          <Button type="submit" form="create-team-member-form" loading={isCreating} className="h-11 flex-1">Crear usuario</Button>
+        </>
+      }
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="cm-email">Email <span className="text-destructive">*</span></Label>
+        <Input
+          id="cm-email"
+          type="email"
+          placeholder="usuario@ejemplo.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={isCreating}
+        />
+      </div>
 
-        <div className="space-y-4 py-1">
-          <div className="space-y-1.5">
-            <Label htmlFor="cm-email">Email <span className="text-destructive">*</span></Label>
-            <Input
-              id="cm-email"
-              type="email"
-              placeholder="usuario@ejemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isCreating}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="cm-pass">Contraseña <span className="text-destructive">*</span></Label>
-            <div className="relative">
-              <Input
-                id="cm-pass"
-                type={showPass ? "text" : "password"}
-                placeholder="Mínimo 6 caracteres"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isCreating}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowPass((v) => !v)}
-                tabIndex={-1}
-              >
-                {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="cm-name">Nombre</Label>
-            <Input
-              id="cm-name"
-              placeholder="Nombre del miembro"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isCreating}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Rol <span className="text-destructive">*</span></Label>
-            <Select value={roleId} onValueChange={setRoleId} disabled={isCreating}>
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="Seleccioná un rol…" />
-              </SelectTrigger>
-              <SelectContent>
-                {nonOwnerRoles.map((r) => (
-                  <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {activeWarehouses.length > 1 && (
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <WarehouseIcon className="size-3.5 text-muted-foreground" />
-                Bodega
-              </Label>
-              <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isCreating}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Seleccioná una bodega…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeWarehouses.map((w) => (
-                    <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Las ventas que registre este usuario descontarán de esta bodega.
-              </p>
-            </div>
-          )}
+      <div className="space-y-1.5">
+        <Label htmlFor="cm-pass">Contraseña <span className="text-destructive">*</span></Label>
+        <div className="relative">
+          <Input
+            id="cm-pass"
+            type={showPass ? "text" : "password"}
+            placeholder="Mínimo 6 caracteres"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isCreating}
+            className="pr-10"
+          />
+          <button
+            type="button"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={() => setShowPass((v) => !v)}
+            tabIndex={-1}
+          >
+            {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
         </div>
+      </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isCreating}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={isCreating} className="gap-2">
-            {isCreating && <Loader2 className="size-3.5 animate-spin" />}
-            Crear usuario
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <div className="space-y-1.5">
+        <Label htmlFor="cm-name">Nombre</Label>
+        <Input
+          id="cm-name"
+          placeholder="Nombre del miembro"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={isCreating}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="cm-role">Rol <span className="text-destructive">*</span></Label>
+        <Select value={roleId} onValueChange={setRoleId} disabled={isCreating}>
+          <SelectTrigger id="cm-role" className="h-10 w-full">
+            <SelectValue placeholder="Seleccioná un rol…" />
+          </SelectTrigger>
+          <SelectContent>
+            {nonOwnerRoles.map((r) => (
+              <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {activeWarehouses.length > 1 && (
+        <div className="space-y-1.5">
+          <Label htmlFor="cm-warehouse" className="flex items-center gap-1.5">
+            <WarehouseIcon className="size-3.5 text-muted-foreground" />
+            Bodega
+          </Label>
+          <Select value={warehouseId} onValueChange={setWarehouseId} disabled={isCreating}>
+            <SelectTrigger id="cm-warehouse" className="h-10 w-full">
+              <SelectValue placeholder="Seleccioná una bodega…" />
+            </SelectTrigger>
+            <SelectContent>
+              {activeWarehouses.map((w) => (
+                <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Las ventas que registre este usuario descontarán de esta bodega.
+          </p>
+        </div>
+      )}
+    </ResponsiveModal>
   );
 }
 
@@ -322,8 +326,12 @@ export default function MembersPage() {
   const [showAdd,    setShowAdd]    = useState(false);
   const [editMember, setEditMember] = useState<OrgMember | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_DATA_TABLE_PAGE_SIZE);
 
   const isLoading = meLoading || membersLoading || permLoading;
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(members.length / pageSize)));
+  const pagedMembers = members.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleRemove = async () => {
     if (!removingId) return;
@@ -347,12 +355,74 @@ export default function MembersPage() {
     );
   }
 
+  const renderMember = (member: OrgMember) => (
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar className="size-9 shrink-0">
+        <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+          {getInitials(member.display_name, member.email)}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium">{member.display_name || member.email}</p>
+          {member.is_owner_role && <Crown className="size-3.5 shrink-0 text-amber-500" />}
+        </div>
+        {member.display_name && <p className="truncate text-xs text-muted-foreground">{member.email}</p>}
+      </div>
+    </div>
+  );
+
+  const renderRole = (member: OrgMember) => (
+    <Badge variant={member.is_owner_role ? "default" : "secondary"} className="max-w-full whitespace-normal text-xs">
+      {member.role_name}
+    </Badge>
+  );
+
+  const joinedDate = (member: OrgMember) => member.joined_at
+    ? formatInTZ(member.joined_at, timezone, { day: "numeric", month: "short", year: "numeric" })
+    : "—";
+
+  const renderActions = (member: OrgMember) => {
+    if (member.is_owner_role || (!canEditTeam && !canDeleteTeam)) return null;
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Acciones para ${member.display_name || member.email}`}>
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          {canEditTeam && <DropdownMenuItem onClick={() => setEditMember(member)}>Editar miembro</DropdownMenuItem>}
+          {canEditTeam && canDeleteTeam && <DropdownMenuSeparator />}
+          {canDeleteTeam && (
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setRemovingId(member.id)}>
+              Revocar acceso
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
+  const columns: DataTableTimeSectionColumn<OrgMember>[] = [
+    { id: "member", header: "Miembro", cell: renderMember },
+    { id: "role", header: "Rol", width: "25%", cell: renderRole },
+    { id: "joined", header: "Fecha de ingreso", width: 140, className: "text-xs text-muted-foreground", cell: joinedDate },
+    ...(canEditTeam || canDeleteTeam ? [{
+      id: "actions",
+      header: <span className="sr-only">Acciones</span>,
+      width: 60,
+      align: "right" as const,
+      cell: renderActions,
+    }] : []),
+  ];
+
   return (
     <div className="space-y-4 pb-24 md:space-y-6 max-w-2xl mx-auto">
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => back()}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" aria-label="Volver" onClick={() => back()}>
             <ArrowLeft className="size-4" />
           </Button>
           <div>
@@ -363,90 +433,42 @@ export default function MembersPage() {
           </div>
         </div>
         {canEditTeam && (
-          <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
+          <Button size="sm" className="ml-auto gap-2" onClick={() => setShowAdd(true)}>
             <UserPlus className="size-4" />
             Agregar al equipo
           </Button>
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="size-4 text-muted-foreground" />
-            {members.length} {members.length === 1 ? "miembro" : "miembros"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y divide-border p-0">
-          {members.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 px-6 py-4">
-              <Avatar className="size-9 shrink-0">
-                <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-                  {getInitials(m.display_name, m.email)}
-                </AvatarFallback>
-              </Avatar>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium truncate">
-                    {m.display_name || m.email}
-                  </p>
-                  {m.is_owner_role && (
-                    <Crown className="size-3.5 text-amber-500 shrink-0" />
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+      <DataTableTimeSection
+        columns={columns}
+        data={pagedMembers}
+        getRowKey={(member) => member.id}
+        ariaLabel="Miembros del equipo"
+        recordLabel={members.length === 1 ? "miembro" : "miembros"}
+        minWidth={520}
+        emptyState="No hay miembros en esta organización."
+        pagination={{
+          page: currentPage, pageSize, total: members.length,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
+        showFooterPagination={false}
+        renderMobileRow={(member) => (
+          <Card className="gap-0 p-3">
+            <CardContent className="space-y-2 p-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">{renderMember(member)}</div>
+                {renderActions(member)}
               </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <Badge
-                  variant={m.is_owner_role ? "default" : "secondary"}
-                  className="text-xs hidden sm:inline-flex"
-                >
-                  {m.role_name}
-                </Badge>
-                {m.joined_at && (
-                  <span className="text-xs text-muted-foreground hidden md:inline">
-                    {formatInTZ(m.joined_at, timezone, { day: "numeric", month: "short", year: "numeric" })}
-                  </span>
-                )}
-
-                {(canEditTeam || canDeleteTeam) && !m.is_owner_role && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8">
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      {canEditTeam && (
-                        <DropdownMenuItem onClick={() => setEditMember(m)}>
-                          Editar miembro
-                        </DropdownMenuItem>
-                      )}
-                      {canEditTeam && canDeleteTeam && <DropdownMenuSeparator />}
-                      {canDeleteTeam && (
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setRemovingId(m.id)}
-                        >
-                          Revocar acceso
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {renderRole(member)}
+                {member.joined_at && <span className="text-xs text-muted-foreground">{joinedDate(member)}</span>}
               </div>
-            </div>
-          ))}
-
-          {members.length === 0 && (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              No hay miembros en esta organización.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
+      />
 
       {/* Dialogs */}
       <CreateMemberDialog

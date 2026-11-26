@@ -392,8 +392,13 @@ export function CreateTransactionModal({
                     {accounts
                       .filter((a) => String(a.id) !== accountId)
                       .map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>
-                          {a.name}
+                        <SelectItem key={a.id} value={String(a.id)} textValue={a.name} className="[&>span:last-child]:w-full">
+                          <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                            <span className="truncate">{a.name}</span>
+                            {a.balance !== null && (
+                              <span className="shrink-0 font-mono text-xs text-muted-foreground">{format(Number(a.balance))}</span>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                   </SelectContent>

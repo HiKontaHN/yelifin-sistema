@@ -1,7 +1,7 @@
 // hooks/swr/use-supplies.ts
 "use client";
 
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -125,13 +125,20 @@ export function useUpdateSupply(id: number | null) {
 
 export function useDeleteSupply(id: number | null) {
   const authFetch = useAuthFetch();
+  const { mutate } = useSWRConfig();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const deleteSupply = async () => {
     if (!id) throw new Error("ID inválido");
     setIsDeleting(true);
     try {
-      return await authFetch(`${KEY}/${id}`, { method: "DELETE" });
+      const result = await authFetch(`${KEY}/${id}`, { method: "DELETE" });
+      void mutate(
+        (key) => typeof key === "string" && (key === KEY || key.startsWith(`${KEY}?`)),
+        undefined,
+        { revalidate: true },
+      ).catch(() => undefined);
+      return result;
     } finally {
       setIsDeleting(false);
     }

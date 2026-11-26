@@ -18,7 +18,6 @@ import {
 } from "@/hooks/swr/use-warehouses";
 
 import { Button }   from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
 import { Badge }    from "@/components/ui/badge";
@@ -32,6 +31,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { ResponsiveModal } from "@/components/shared/responsive-modal";
 import {
   DATA_TABLE_PAGE_SIZE_OPTIONS,
   DEFAULT_DATA_TABLE_PAGE_SIZE,
@@ -57,6 +57,7 @@ function CreateWarehouseDialog({ open, onClose, onCreated }: {
   const handleClose = () => { setName(""); onClose(); };
 
   const handleSubmit = async () => {
+    if (isCreating) return;
     if (!name.trim()) { toast.error("El nombre es requerido"); return; }
     try {
       await createWarehouse(name.trim());
@@ -69,31 +70,36 @@ function CreateWarehouseDialog({ open, onClose, onCreated }: {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Nueva bodega</DialogTitle>
-          <DialogDescription>Agrega una ubicación para administrar el inventario.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-1.5 py-1">
-          <Label htmlFor="wh-name">Nombre <span className="text-destructive">*</span></Label>
-          <Input
-            id="wh-name"
-            placeholder="Ej: Bodega 2, Local Centro..."
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={isCreating}
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isCreating}>Cancelar</Button>
-          <Button onClick={handleSubmit} disabled={isCreating} className="gap-2">
-            {isCreating && <Loader2 className="size-3.5 animate-spin" />}
-            Crear bodega
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(nextOpen) => { if (!nextOpen && !isCreating) handleClose(); }}
+      title="Nueva bodega"
+      subtitle="Agrega una ubicación para administrar el inventario."
+      width="sm"
+      dragToClose={!isCreating}
+      as="form"
+      formProps={{
+        id: "create-warehouse-form",
+        onSubmit: (event) => { event.preventDefault(); void handleSubmit(); },
+      }}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating} className="h-11 flex-1">Cancelar</Button>
+          <Button type="submit" form="create-warehouse-form" loading={isCreating} className="h-11 flex-1">Crear bodega</Button>
+        </>
+      }
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="wh-name">Nombre <span className="text-destructive">*</span></Label>
+        <Input
+          id="wh-name"
+          placeholder="Ej: Bodega 2, Local Centro..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={isCreating}
+        />
+      </div>
+    </ResponsiveModal>
   );
 }
 
@@ -220,20 +226,18 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-4">
+    <Card className="min-w-0">
+      <CardHeader className="px-3 sm:px-6">
         <CardTitle className="text-lg">Nueva transferencia de stock</CardTitle>
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="flex size-7 items-center justify-center rounded-full bg-muted text-sm font-medium">1</span>
-          Define el origen y destino del movimiento
-        </p>
       </CardHeader>
-      <CardContent className="space-y-6 pt-5">
-        <div className="grid items-end gap-3 md:grid-cols-[1fr_auto_1fr]">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Bodega de origen</Label>
+      <CardContent className="@container min-w-0 space-y-4 px-3 pt-2 sm:px-6">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="transfer-from-warehouse" className="text-xs">Bodega de origen</Label>
             <Select value={fromId} onValueChange={(v) => { setFromId(v); resetLines(); }} disabled={isCreating}>
-              <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Selecciona una bodega" /></SelectTrigger>
+              <SelectTrigger id="transfer-from-warehouse" className="h-10 w-full min-w-0 px-2 sm:px-3 [&_[data-slot=select-value]]:block! [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
+                <SelectValue placeholder="Seleccionar" />
+              </SelectTrigger>
               <SelectContent>
                 {warehouses.map((w) => <SelectItem key={w.id} value={String(w.id)} disabled={String(w.id) === toId}>{w.name}</SelectItem>)}
               </SelectContent>
@@ -243,17 +247,19 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
             type="button"
             variant="outline"
             size="icon"
-            className="size-9 border-primary text-primary"
+            className="size-9 self-end border-primary text-primary"
             aria-label="Intercambiar bodegas"
             onClick={() => { setFromId(toId); setToId(fromId); resetLines(); }}
             disabled={isCreating || !fromId || !toId}
           >
             <ArrowLeftRight className="size-4" />
           </Button>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Bodega de destino</Label>
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="transfer-to-warehouse" className="text-xs">Bodega de destino</Label>
             <Select value={toId} onValueChange={setToId} disabled={isCreating}>
-              <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Selecciona una bodega" /></SelectTrigger>
+              <SelectTrigger id="transfer-to-warehouse" className="h-10 w-full min-w-0 px-2 sm:px-3 [&_[data-slot=select-value]]:block! [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
+                <SelectValue placeholder="Seleccionar" />
+              </SelectTrigger>
               <SelectContent>
                 {warehouses.map((w) => <SelectItem key={w.id} value={String(w.id)} disabled={String(w.id) === fromId}>{w.name}</SelectItem>)}
               </SelectContent>
@@ -261,56 +267,65 @@ function TransferStockCard({ warehouses }: { warehouses: { id: number; name: str
           </div>
         </div>
 
-        <div className="border-t pt-5">
-          <Label className="text-xs">Producto</Label>
-          <div className="mt-3 space-y-3">
+        <div className="space-y-2 border-t pt-3">
+          <p className="text-xs font-medium">Productos</p>
+          <div className="space-y-2">
             {lines.map((line, index) => {
               const selectedItem = stock.find((s) => keyOf(s) === line.productKey);
               const selectedElsewhere = new Set(lines.filter((other) => other.id !== line.id).map((other) => other.productKey));
               const availableItems = stock
                 .filter((s) => !selectedElsewhere.has(keyOf(s)))
                 .map((s) => ({ value: keyOf(s), label: `${s.product_name}${s.variant_name ? ` — ${s.variant_name}` : ""}` }));
+              const quantity = Number(line.quantity);
+              const updateQuantity = (delta: number) => setLines((current) => current.map((item) =>
+                item.id === line.id
+                  ? { ...item, quantity: String(Math.max(1, Math.min(selectedItem?.stock ?? 1, Number(item.quantity) + delta))) }
+                  : item,
+              ));
               return (
-                <div key={line.id} className="grid items-center gap-3 md:grid-cols-[100px_minmax(0,1fr)_110px_auto_auto]">
-                  <div className="flex h-10 items-center justify-center gap-3 rounded-xl border px-2">
-                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.max(1, Number(item.quantity) - 1)) } : item))} disabled={isCreating || Number(line.quantity) <= 1}>−</button>
-                    <span className="text-sm tabular-nums">{line.quantity}</span>
-                    <button type="button" className="text-muted-foreground" onClick={() => setLines((current) => current.map((item) => item.id === line.id ? { ...item, quantity: String(Math.min(selectedItem?.stock ?? 1, Number(item.quantity) + 1)) } : item))} disabled={isCreating || !selectedItem || Number(line.quantity) >= selectedItem.stock}>+</button>
+                <div key={line.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border p-2 @xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+                  <div className="col-span-full min-w-0 @xl:col-span-1">
+                    <Label htmlFor={`transfer-product-${line.id}`} className="sr-only">Producto {index + 1}</Label>
+                    <SearchableSelect
+                      id={`transfer-product-${line.id}`}
+                      value={line.productKey}
+                      onValueChange={(value) => setLines((current) => current.map((item) => item.id === line.id ? { ...item, productKey: value, quantity: "1" } : item))}
+                      disabled={isCreating || !fromId}
+                      placeholder={fromId ? "Seleccionar producto" : "Selecciona el origen"}
+                      searchPlaceholder="Buscar producto..."
+                      className="h-10 w-full min-w-0"
+                      items={availableItems}
+                    />
                   </div>
-                  <SearchableSelect
-                    value={line.productKey}
-                    onValueChange={(value) => setLines((current) => current.map((item) => item.id === line.id ? { ...item, productKey: value, quantity: "1" } : item))}
-                    disabled={isCreating || !fromId}
-                    placeholder={fromId ? "Agregar producto..." : "Selecciona primero el origen"}
-                    searchPlaceholder="Buscar producto..."
-                    className="h-10 w-full"
-                    items={availableItems}
-                  />
-                  <span className="text-sm text-muted-foreground">{selectedItem ? `${selectedItem.stock} disponibles` : "—"}</span>
+                  <div className="flex h-10 items-center gap-1 rounded-xl border">
+                    <Button type="button" size="icon-sm" variant="ghost" aria-label="Reducir cantidad" onClick={() => updateQuantity(-1)} disabled={isCreating || quantity <= 1}>−</Button>
+                    <span className="min-w-4 text-center text-sm tabular-nums">{line.quantity}</span>
+                    <Button type="button" size="icon-sm" variant="ghost" aria-label="Aumentar cantidad" onClick={() => updateQuantity(1)} disabled={isCreating || !selectedItem || quantity >= selectedItem.stock}>+</Button>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{selectedItem && `${selectedItem.stock} disponibles`}</span>
                   <Button type="button" variant="ghost" size="icon" aria-label="Quitar producto" onClick={() => setLines((current) => current.length === 1 ? [{ ...current[0], productKey: "", quantity: "1" }] : current.filter((item) => item.id !== line.id))} disabled={isCreating}>
                     <Trash2 className="size-4 text-muted-foreground" />
-                  </Button>
-                  {/* El boton vive en la ultima fila; en las demas queda un hueco invisible para alinear columnas */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn("h-10 gap-1.5 whitespace-nowrap", index !== lines.length - 1 && "hidden md:inline-flex md:invisible")}
-                    aria-hidden={index !== lines.length - 1}
-                    tabIndex={index !== lines.length - 1 ? -1 : undefined}
-                    onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((item) => item.id), 0) + 1, productKey: "", quantity: "1" }])}
-                    disabled={isCreating || !fromId}
-                  >
-                    <Plus className="size-3.5" /> Agregar producto
                   </Button>
                 </div>
               );
             })}
           </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 gap-1.5"
+              onClick={() => setLines((current) => [...current, { id: Math.max(...current.map((item) => item.id), 0) + 1, productKey: "", quantity: "1" }])}
+              disabled={isCreating || !fromId}
+            >
+              <Plus className="size-3.5" /> Agregar producto
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Nota</Label>
-          <Input placeholder="Motivo del traslado" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isCreating} className="h-12" />
+          <Label htmlFor="transfer-stock-note" className="text-xs">Nota</Label>
+          <Input id="transfer-stock-note" placeholder="Motivo del traslado" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isCreating} className="h-10" />
         </div>
 
         <Button onClick={handleSubmit} disabled={isCreating} className="h-11 w-full gap-2">

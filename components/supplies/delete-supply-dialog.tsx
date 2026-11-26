@@ -17,28 +17,26 @@ export function DeleteSupplyDialog({
   supply,
   open,
   onOpenChange,
-  onSuccess,
 }: {
   supply: Supply | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
 }) {
   const { deleteSupply, isDeleting } = useDeleteSupply(supply?.id ?? null);
 
   const handleDelete = async () => {
+    if (isDeleting || !supply) return;
     try {
       await deleteSupply();
-      toast.success("Suministro eliminado");
+      toast.success("Suministro desactivado");
       onOpenChange(false);
-      onSuccess();
     } catch (e: any) {
       toast.error(e.message || "Error al eliminar");
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!isDeleting) onOpenChange(nextOpen); }}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Eliminar suministro</DialogTitle>
@@ -46,7 +44,7 @@ export function DeleteSupplyDialog({
 
         <p className="text-sm text-muted-foreground">
           ¿Seguro que querés eliminar <span className="font-medium text-foreground">{supply?.name}</span>?
-          Se conservará su historial de uso.
+          Se desactivará y dejará de aparecer en los selectores. Su historial de uso se conservará.
         </p>
 
         <DialogFooter className="pt-2">

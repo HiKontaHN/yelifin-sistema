@@ -18,9 +18,10 @@ jest.mock("@/lib/auth", () => ({
   ),
 }));
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { DELETE } from "@/app/api/supplies/[id]/route";
 import { GET } from "@/app/api/supplies/route";
+import { requireModule } from "@/lib/auth";
 
 function queryText(call: unknown[]) {
   return (call[0] as TemplateStringsArray).join(" ").replace(/\s+/g, " ").trim();
@@ -58,6 +59,16 @@ describe("soft delete de suministros", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Suministro no encontrado" });
+  });
+
+  it("requiere permiso de eliminación en Suministros antes de desactivar", async () => {
+    jest.mocked(requireModule).mockResolvedValueOnce(new NextResponse(null, { status: 403 }));
+
+    const response = await DELETE(deleteRequest(), routeParams);
+
+    expect(response.status).toBe(403);
+    expect(requireModule).toHaveBeenCalledWith(expect.anything(), "INVENTORY", "canDelete", "SUPPLIES");
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("filtra los inactivos en el conteo y en el listado", async () => {

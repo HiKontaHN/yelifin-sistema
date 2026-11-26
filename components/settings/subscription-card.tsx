@@ -39,40 +39,38 @@ export function SubscriptionCard({ title }: { title: string }) {
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 text-sm md:flex-row md:items-center md:justify-between">
+      <CardContent className="flex flex-col gap-4 px-4 text-sm md:flex-row md:items-center md:justify-between md:pl-2.5 md:pr-6">
         {subscription ? (
-          <div className="flex flex-wrap gap-x-10 gap-y-3">
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">
+          <div className="grid grid-cols-3 gap-2 text-center md:flex md:flex-wrap md:gap-x-10 md:gap-y-3 md:text-left">
+            <div className="min-w-0 space-y-1">
+              <span className="block text-xs text-muted-foreground">
                 {subscription.is_degraded ? "Plan contratado" : "Plan actual"}
               </span>
-              <p className="font-medium">
+              <p className="wrap-break-word font-medium">
                 {subscription.contracted_plan?.name ?? subscription.plan?.name ?? "Sin plan"}
               </p>
+              {subscription.is_degraded && (
+                <div className="pt-1">
+                  <span className="block text-xs text-muted-foreground">Plan temporal</span>
+                  <p className="wrap-break-word font-medium">{subscription.plan?.name ?? "Gratis"}</p>
+                </div>
+              )}
             </div>
-            {subscription.is_degraded && (
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Plan temporal</span>
-                <p className="font-medium">{subscription.plan?.name ?? "Gratis"}</p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Estado</span>
+            <div className="min-w-0 space-y-1">
+              <span className="block text-xs text-muted-foreground">Estado</span>
               <div>
                 <Badge
                   variant={status === "ACTIVE" || status === "TRIAL" ? "secondary" : "outline"}
-                  className="text-xs"
+                  className="max-w-full whitespace-normal text-xs leading-tight"
                 >
                   {STATUS_LABEL[status] ?? "Sin suscripción"}
                 </Badge>
               </div>
             </div>
-            {interval && (
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Tipo de facturación</span>
-                <p className="font-medium">{interval}</p>
-              </div>
-            )}
+            <div className="min-w-0 space-y-1">
+              <span className="block text-xs text-muted-foreground">Tipo de facturación</span>
+              <p className="font-medium">{interval ?? "—"}</p>
+            </div>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -81,7 +79,7 @@ export function SubscriptionCard({ title }: { title: string }) {
         )}
 
         {isOwner && (
-          <Button size="sm" variant="outline" className="shrink-0" onClick={() => push("/settings/billing")}>
+          <Button size="sm" variant="outline" className="shrink-0 self-end md:self-auto" onClick={() => push("/settings/billing")}>
             Administrar suscripción
           </Button>
         )}

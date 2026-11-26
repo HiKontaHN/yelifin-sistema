@@ -70,7 +70,7 @@ export function ConfirmDialog({
         aria-describedby={description ? "confirm-dialog-description" : undefined}
         className="
           w-full
-          rounded-2xl
+          rounded-xl
           bg-background
           shadow-2xl
           animate-in

@@ -137,6 +137,27 @@
   }
 }
 
+/* En móvil, el selector de Radix conserva su lista y foco dentro de un marco centrado. */
+[data-radix-popper-content-wrapper]:has(> [data-slot="select-content"][data-presentation="modal"]) {
+  inset: 0 !important;
+  min-width: 0 !important;
+  transform: none !important;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+[data-radix-popper-content-wrapper]:has(> [data-slot="select-content"][data-presentation="modal"])::before {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 50%);
+  content: "";
+}
+
+[data-slot="select-content"][data-presentation="modal"] {
+  pointer-events: auto;
+}
+
 @layer utilities {
   .font-google-sans-flex {
     font-family: var(--font-google-sans-flex);

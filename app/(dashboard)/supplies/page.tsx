@@ -30,7 +30,11 @@ export default function SuppliesPage() {
     limit: pageSize,
   });
 
-  const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY");
+  useEffect(() => {
+    if (!isLoading) setPage((current) => Math.min(current, Math.max(1, Math.ceil(total / pageSize))));
+  }, [isLoading, pageSize, total]);
+
+  const { can_edit: canEdit, can_delete: canDelete } = useModulePermissions("INVENTORY", "SUPPLIES");
   const [createOpen, setCreateOpen] = useState(false);
   const [editSupply, setEditSupply] = useState<Supply | null>(null);
   const [deleteSupply, setDeleteSupply] = useState<Supply | null>(null);
@@ -87,7 +91,6 @@ export default function SuppliesPage() {
         supply={deleteSupply}
         open={!!deleteSupply}
         onOpenChange={(open) => !open && setDeleteSupply(null)}
-        onSuccess={() => mutate()}
       />
 
       <AddSupplyPurchaseDialog

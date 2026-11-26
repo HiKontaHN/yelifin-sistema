@@ -238,7 +238,7 @@ export function ResponsiveModal({
         style={keyboardFix ? { bottom: keyboardFix.bottom, maxHeight: keyboardFix.maxHeight } : undefined}
         className={cn(
           "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-          "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+          "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
           HEIGHT_CLASSES[height],
           "flex flex-col overflow-visible p-0",
           "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
@@ -246,7 +246,7 @@ export function ResponsiveModal({
           "sm:w-full",
           WIDTH_CLASSES[width],
           "min-h-[50dvh] sm:min-h-0",
-          "sm:rounded-2xl sm:border",
+          "sm:rounded-xl sm:border",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
           "data-[state=closed]:slide-out-to-bottom sm:data-[state=closed]:slide-out-to-bottom-[48%]",

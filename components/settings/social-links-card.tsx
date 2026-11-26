@@ -88,9 +88,11 @@ export function SocialLinksCard({ orgId }: { orgId: number }) {
               })}
             </div>
             {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
-            <Button type="submit" variant="outline" disabled={!hasChanges || isSaving} loading={isSaving}>
-              Guardar redes sociales
-            </Button>
+            <div className="flex justify-end md:justify-start">
+              <Button type="submit" variant="outline" disabled={!hasChanges || isSaving} loading={isSaving}>
+                Guardar redes sociales
+              </Button>
+            </div>
           </form>
         ) : isLoading ? (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -100,7 +102,7 @@ export function SocialLinksCard({ orgId }: { orgId: number }) {
         ) : (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm text-muted-foreground">No se pudieron cargar las redes sociales.</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => void retry()} disabled={!error}>
+            <Button type="button" variant="outline" size="sm" className="ml-auto md:ml-0" onClick={() => void retry()} disabled={!error}>
               Reintentar
             </Button>
           </div>

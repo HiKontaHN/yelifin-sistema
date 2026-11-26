@@ -523,12 +523,12 @@ function CategoriesPageContent() {
         <DialogContent
           className={cn(
             "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-            "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+            "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
             "max-h-[92dvh] flex flex-col p-0",
             "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
             "sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md",
-            "sm:rounded-2xl sm:border",
+            "sm:rounded-xl sm:border",
             "sm:max-h-[88vh]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
@@ -627,12 +627,12 @@ function CategoriesPageContent() {
         <DialogContent
           className={cn(
             "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-            "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+            "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
             "max-h-[92dvh] flex flex-col p-0",
             "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
             "sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md",
-            "sm:rounded-2xl sm:border",
+            "sm:rounded-xl sm:border",
             "sm:max-h-[88vh]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
@@ -715,12 +715,12 @@ function CategoriesPageContent() {
         <DialogContent
           className={cn(
             "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-            "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+            "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
             "max-h-[92dvh] flex flex-col p-0",
             "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
             "sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md",
-            "sm:rounded-2xl sm:border",
+            "sm:rounded-xl sm:border",
             "sm:max-h-[88vh]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",
@@ -786,12 +786,12 @@ function CategoriesPageContent() {
         <DialogContent
           className={cn(
             "fixed bottom-0 left-0 right-0 top-auto translate-x-0 translate-y-0",
-            "w-full max-w-full rounded-t-2xl rounded-b-none border-t border-x-0 border-b-0",
+            "w-full max-w-full rounded-t-xl rounded-b-none border-t border-x-0 border-b-0",
             "max-h-[92dvh] flex flex-col p-0",
             "sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2",
             "sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md",
-            "sm:rounded-2xl sm:border",
+            "sm:rounded-xl sm:border",
             "sm:max-h-[88vh]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=open]:slide-in-from-bottom sm:data-[state=open]:slide-in-from-bottom-[48%]",

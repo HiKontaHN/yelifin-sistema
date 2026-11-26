@@ -78,7 +78,7 @@ export function MobileCartSheet({
         ref={sheetRef}
         className={`
           fixed bottom-0 left-0 right-0 z-50 lg:hidden
-          flex flex-col bg-background rounded-t-2xl
+          flex flex-col bg-background rounded-t-xl
           border-t-2 border-border
           shadow-[0_-12px_40px_rgba(0,0,0,0.25)]
           transition-transform duration-300 ease-in-out
